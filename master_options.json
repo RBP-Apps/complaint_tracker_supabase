@@ -1,0 +1,2 @@
+/*O_o*/
+google.visualization.Query.setResponse({"version":"0.6","reqId":"0","status":"ok","sig":"1771361299","table":{"cols":[{"id":"I","label":"","type":"string"}],"rows":[{"c":[{"v":"CHECKED"}]},{"c":[{"v":"APPROVED-CLOSE"}]},{"c":[{"v":"OK-OPEN"}]},{"c":[{"v":"REJECT"}]}],"parsedNumHeaders":0}});
