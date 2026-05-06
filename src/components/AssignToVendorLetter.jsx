@@ -42,23 +42,23 @@ function DraftLetter() {
     const [selectedLetterType, setSelectedLetterType] = useState("Draft Letter");
 
     const togglePendingSelection = (complaintId) => {
-  const newSet = new Set(selectedPendingIds);
-  if (newSet.has(complaintId)) {
-    newSet.delete(complaintId);
-  } else {
-    newSet.add(complaintId);
-  }
-  setSelectedPendingIds(newSet);
-};
+        const newSet = new Set(selectedPendingIds);
+        if (newSet.has(complaintId)) {
+            newSet.delete(complaintId);
+        } else {
+            newSet.add(complaintId);
+        }
+        setSelectedPendingIds(newSet);
+    };
 
-const toggleSelectAllPending = (checked) => {
-  if (checked) {
-    const allIds = pendingTasks.map(t => t.complaintId);
-    setSelectedPendingIds(new Set(allIds));
-  } else {
-    setSelectedPendingIds(new Set());
-  }
-};
+    const toggleSelectAllPending = (checked) => {
+        if (checked) {
+            const allIds = pendingTasks.map(t => t.complaintId);
+            setSelectedPendingIds(new Set(allIds));
+        } else {
+            setSelectedPendingIds(new Set());
+        }
+    };
 
 
     const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwnIMOzsFbniWnPFhl3lzE-2W0l6lD23keuz57-ldS_umSXIJqpEK-qxLE6eM0s7drqrQ/exec"
@@ -876,21 +876,21 @@ const toggleSelectAllPending = (checked) => {
                                                     />
                                                 </th>
                                             )}
-                                           {activeTab === "pending" && (
-  <>
-    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-      <input
-        type="checkbox"
-        className="h-4 w-4 text-blue-600 border-gray-300 rounded cursor-pointer"
-        onChange={(e) => toggleSelectAllPending(e.target.checked)}
-      />
-    </th>
+                                            {activeTab === "pending" && (
+                                                <>
+                                                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="h-4 w-4 text-blue-600 border-gray-300 rounded cursor-pointer"
+                                                            onChange={(e) => toggleSelectAllPending(e.target.checked)}
+                                                        />
+                                                    </th>
 
-    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-      Actions
-    </th>
-  </>
-)}
+                                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                                        Actions
+                                                    </th>
+                                                </>
+                                            )}
                                             <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                                                 Complaint Id
                                             </th>
@@ -981,35 +981,35 @@ const toggleSelectAllPending = (checked) => {
                                                             />
                                                         </td>
                                                     )}
-{activeTab === "pending" && (
-  <>
-    {/* ✅ Checkbox */}
-    <td className="px-3 py-4 text-center">
-      <input
-        type="checkbox"
-        className="h-4 w-4 text-blue-600 border-gray-300 rounded cursor-pointer"
-        checked={selectedPendingIds?.has(task.complaintId)}
-        onChange={() => togglePendingSelection(task.complaintId)}
-      />
-    </td>
+                                                    {activeTab === "pending" && (
+                                                        <>
+                                                            {/* ✅ Checkbox */}
+                                                            <td className="px-3 py-4 text-center">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded cursor-pointer"
+                                                                    checked={selectedPendingIds?.has(task.complaintId)}
+                                                                    onChange={() => togglePendingSelection(task.complaintId)}
+                                                                />
+                                                            </td>
 
-    {/* ✅ Action */}
-    <td className="px-3 py-4 whitespace-nowrap">
-      <button
-        className="bg-gradient-to-r from-amber-400 to-orange-500 text-white py-1 px-3 rounded-md"
-        onClick={() => {
-          setSelectedTask(task.id)
-          setSelectedTaskData(task)
-          setIsDialogOpen(true)
-          setEmail("")
-          setSelectedCompany("")
-        }}
-      >
-        Review
-      </button>
-    </td>
-  </>
-)}
+                                                            {/* ✅ Action */}
+                                                            <td className="px-3 py-4 whitespace-nowrap">
+                                                                <button
+                                                                    className="bg-gradient-to-r from-amber-400 to-orange-500 text-white py-1 px-3 rounded-md"
+                                                                    onClick={() => {
+                                                                        setSelectedTask(task.id)
+                                                                        setSelectedTaskData(task)
+                                                                        setIsDialogOpen(true)
+                                                                        setEmail("")
+                                                                        setSelectedCompany("")
+                                                                    }}
+                                                                >
+                                                                    Review
+                                                                </button>
+                                                            </td>
+                                                        </>
+                                                    )}
                                                     <td className="px-3 py-4 whitespace-nowrap text-sm">{task.complaintId}</td>
                                                     <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{task.idNumber}</td>
                                                     <td className="px-3 py-4 whitespace-nowrap text-sm">{task.technicianName}</td>
@@ -1404,20 +1404,7 @@ const toggleSelectAllPending = (checked) => {
                                                 </div>
                                             </div>
                                             <div className="flex justify-end gap-2 mt-4">
-                                                {/* <button
-                                                    type="button"
-                                                    onClick={() => navigate(`/dashboard/admin-letter/${selectedTaskData?.complaintId}`, { 
-                                                        state: { 
-                                                            task: selectedTaskData,
-                                                            autoSelectCompany: "RBP ENERGY (INDIA) PVT. LTD."
-                                                        } 
-                                                    })}
-                                                    className="py-2 px-4 border border-blue-300 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 flex items-center"
-                                                    disabled={isSubmitting}
-                                                >
-                                                    <FileText className="mr-2 h-4 w-4" />
-                                                    Generate Letter Final 1
-                                                </button> */}
+                        
                                                 <button
                                                     type="button"
                                                     onClick={() => setIsDialogOpen(false)}
@@ -1639,7 +1626,7 @@ const toggleSelectAllPending = (checked) => {
                                     <X size={20} />
                                 </button>
                             </div>
-                            
+
                             <div className="p-6">
                                 <div className="space-y-4">
                                     <div>
@@ -1658,7 +1645,7 @@ const toggleSelectAllPending = (checked) => {
                                         Selected complaint for letter generation: <span className="font-semibold text-gray-700">{pendingTasks.find(t => t.complaintId === [...selectedPendingIds][0])?.complaintId || 'Unknown'}</span>
                                     </p>
                                 </div>
-                                
+
                                 <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
                                     <button
                                         type="button"
@@ -1673,12 +1660,12 @@ const toggleSelectAllPending = (checked) => {
                                             const selectedTasksArray = pendingTasks.filter(t => selectedPendingIds.has(t.complaintId));
                                             const firstSelectedId = [...selectedPendingIds][0];
                                             setIsGenerateModalOpen(false);
-                                            navigate(`/dashboard/admin-letter/${firstSelectedId}`, { 
-                                                state: { 
+                                            navigate(`/dashboard/admin-letter/${firstSelectedId}`, {
+                                                state: {
                                                     tasks: selectedTasksArray,
                                                     itemType: selectedLetterType,
                                                     autoSelectCompany: "RBP ENERGY (INDIA) PVT. LTD."
-                                                } 
+                                                }
                                             });
                                         }}
                                         className="py-2 px-4 border border-blue-300 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 flex items-center text-sm font-medium"

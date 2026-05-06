@@ -3,90 +3,97 @@
 
 import { useState, useEffect } from "react";
 import { Clipboard, Info } from "react-feather";
+import { Eye, EyeOff } from "lucide-react";
+
+
 import supabase from "../utils/supabase"
 function LoginPage() {
   const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  setIsLoading(true);
-  setError("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
-  try {
-    const { data, error } = await supabase
-      .from("Login")
-      .select("*")
-      .eq("username", username)
-      .eq("password", password)
-      .single();
 
-    if (error || !data) {
-      throw new Error("Invalid credentials");
-    }
 
-    // Extract data from Supabase row
-    const userPermission = data.page_access || "";
-    const userRole = data.role || "";
-    const technicianName = data.username || "";
-    const technicianContact = data.contact_no || "";
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
 
-    // Store in localStorage (same as before)
-    localStorage.setItem('currentUser', technicianName);
-    localStorage.setItem('userRole', userRole);
-    localStorage.setItem('userPermissions', userPermission);
-    localStorage.setItem('username', username);
-    localStorage.setItem('technicianContact', technicianContact);
+    try {
+      const { data, error } = await supabase
+        .from("Login")
+        .select("*")
+        .eq("username", username)
+        .eq("password", password)
+        .single();
 
-    console.log("Login successful - Stored data:", {
-      currentUser: technicianName,
-      userRole: userRole,
-      username: username,
-      technicianContact: technicianContact
-    });
+      if (error || !data) {
+        throw new Error("Invalid credentials");
+      }
 
-    // SAME redirect logic (unchanged)
-    let redirectPath = "/dashboard";
+      // Extract data from Supabase row
+      const userPermission = data.page_access || "";
+      const userRole = data.role || "";
+      const technicianName = data.username || "";
+      const technicianContact = data.contact_no || "";
 
-    if (userRole && userRole.toLowerCase() === 'admin') {
-      redirectPath = "/dashboard";
-    }
-    else if (userRole && userRole.toLowerCase() === 'technician') {
-      redirectPath = "/dashboard/tracker";
-    }
-    else if (userPermission && userPermission.toLowerCase() !== "all") {
-      const permissions = userPermission.split(',').map(p => p.trim().toLowerCase());
+      // Store in localStorage (same as before)
+      localStorage.setItem('currentUser', technicianName);
+      localStorage.setItem('userRole', userRole);
+      localStorage.setItem('userPermissions', userPermission);
+      localStorage.setItem('username', username);
+      localStorage.setItem('technicianContact', technicianContact);
 
-      const permissionRoutes = {
-        "dashboard": "/dashboard",
-        "new complaint": "/dashboard/new-complaint",
-        "assign complaint": "/dashboard/assign-complaint",
-        "tracker": "/dashboard/tracker",
-        "verification": "/dashboard/verification",
-        "document verification": "/dashboard/document-verification"
-      };
+      console.log("Login successful - Stored data:", {
+        currentUser: technicianName,
+        userRole: userRole,
+        username: username,
+        technicianContact: technicianContact
+      });
 
-      for (const permission of permissions) {
-        if (permissionRoutes[permission]) {
-          redirectPath = permissionRoutes[permission];
-          break;
+      // SAME redirect logic (unchanged)
+      let redirectPath = "/dashboard";
+
+      if (userRole && userRole.toLowerCase() === 'admin') {
+        redirectPath = "/dashboard";
+      }
+      else if (userRole && userRole.toLowerCase() === 'technician') {
+        redirectPath = "/dashboard/tracker";
+      }
+      else if (userPermission && userPermission.toLowerCase() !== "all") {
+        const permissions = userPermission.split(',').map(p => p.trim().toLowerCase());
+
+        const permissionRoutes = {
+          "dashboard": "/dashboard",
+          "new complaint": "/dashboard/new-complaint",
+          "assign complaint": "/dashboard/assign-complaint",
+          "tracker": "/dashboard/tracker",
+          "verification": "/dashboard/verification",
+          "document verification": "/dashboard/document-verification"
+        };
+
+        for (const permission of permissions) {
+          if (permissionRoutes[permission]) {
+            redirectPath = permissionRoutes[permission];
+            break;
+          }
         }
       }
-    }
 
-    setTimeout(() => {
+      setTimeout(() => {
+        setIsLoading(false);
+        window.location.href = redirectPath;
+      }, 1000);
+
+    } catch (error) {
+      console.error("Login error:", error);
+      setError("Invalid credentials. Please try again.");
       setIsLoading(false);
-      window.location.href = redirectPath;
-    }, 1000);
-
-  } catch (error) {
-    console.error("Login error:", error);
-    setError("Invalid credentials. Please try again.");
-    setIsLoading(false);
-  }
-};
+    }
+  };
   const copyCredentials = () => {
     setUsername("admin");
     setPassword("password123");
@@ -104,9 +111,28 @@ const handleSubmit = async (e) => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
       <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
-        <div className="mb-8 text-center">
-          <h1 className="mb-2 text-3xl font-bold text-gray-800">Complaints Tracker</h1>
-          <p className="text-gray-600">Login to manage and track complaints</p>
+        <div className="mb-8 flex flex-col items-center text-center">
+
+          {/* Row 1 */}
+          <div className="flex items-center justify-center gap-6">
+
+            <img
+              src="/Logo.PNG"
+              alt="logo"
+              className="w-28 h-28 object-contain"
+            />
+
+            <h1 className="text-4xl font-bold text-gray-800 leading-tight text-left">
+              Complaints Tracker
+            </h1>
+
+          </div>
+
+          {/* Row 2 */}
+          <p className="text-gray-600 mt-4">
+            Login to manage and track complaints
+          </p>
+
         </div>
 
         {error && (
@@ -137,7 +163,7 @@ const handleSubmit = async (e) => {
               />
             </div>
 
-            <div>
+            {/* <div>
               <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-700">
                 Password
               </label>
@@ -150,7 +176,34 @@ const handleSubmit = async (e) => {
                 className="h-11 w-full rounded-md border border-gray-300 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Enter your password"
               />
-            </div>
+            </div> */}
+
+             <div>
+      <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-700">
+        Password
+      </label>
+
+      <div className="relative">
+        <input
+          id="password"
+          type={showPassword ? "text" : "password"}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          className="h-11 w-full rounded-md border border-gray-300 px-3 pr-10 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="Enter your password"
+        />
+
+        {/* Eye Icon */}
+        <button
+          type="button"
+          onClick={() => setShowPassword(!showPassword)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+        >
+          {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+        </button>
+      </div>
+    </div>
           </div>
 
           <button

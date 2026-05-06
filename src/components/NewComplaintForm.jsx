@@ -282,33 +282,6 @@ function NewComplaintForm() {
 
 
 
-  // ✅ Helper to calculate next serial number from existing data
-  const calculateNextSerialNumber = (dataRows) => {
-    try {
-      let maxNumber = 0;
-
-      // Let's use the robust method from before but applied to the data we ALREADY have
-      const rawJson = JSON.stringify(dataRows);
-      const allMatches = rawJson.match(/CT-(\d+)/g);
-
-      if (allMatches) {
-        allMatches.forEach(match => {
-          const num = parseInt(match.split('-')[1]);
-          if (!isNaN(num)) {
-            maxNumber = Math.max(maxNumber, num);
-          }
-        });
-      }
-
-      const nextIdNumber = maxNumber > 0 ? maxNumber + 1 : 1;
-      const newId = `CT-${nextIdNumber.toString().padStart(3, '0')}`;
-      console.log('Calculated Next ID from Table Data:', newId);
-      setSerialNumber(newId);
-    } catch (err) {
-      console.error("Error calculating serial number:", err);
-    }
-  }
-
   // Update serial number whenever tableData changes (and has data)
   useEffect(() => {
     if (tableData && tableData.length > 0) {
@@ -334,7 +307,7 @@ function NewComplaintForm() {
     const initializeData = async () => {
       // ✅ Parallelize fetches for faster loading
       const dropdownPromise = fetchDropdownOptions()
-      const tablePromise = fetchTableData() // Also triggers calculateNextSerialNumber logic if integrated
+      const tablePromise = fetchTableData()
 
       // We still want to generate serial number reliably. 
       // Let's run it in parallel too.
@@ -367,46 +340,46 @@ function NewComplaintForm() {
   }
 
   // ✅ NEW FUNCTION - Open Update Modal with Pre-filled Data
- // ✅ Fixed UPDATE MODAL - Correct field mapping from Supabase columns
-const handleOpenUpdateModal = (rowIndex) => {
-  const currentRow = tableData[rowIndex]
-  console.log('Opening update modal for row:', rowIndex, currentRow)
+  // ✅ Fixed UPDATE MODAL - Correct field mapping from Supabase columns
+  const handleOpenUpdateModal = (rowIndex) => {
+    const currentRow = tableData[rowIndex]
+    console.log('Opening update modal for row:', rowIndex, currentRow)
 
-  // Pre-fill all form data with correct Supabase column names
-  setUpdateFormData({
-    rowIndex: rowIndex,
-    actualRowNumber: currentRow.id, // Store the actual row ID for reference
-    complaintId: currentRow.complaint_id || "",
-    companyName: currentRow.company_name || "",
-    modeOfCall: currentRow.mode_of_call || "",
-    idNumber: currentRow.id_number || "",
-    projectName: currentRow.project_name || "",
-    complaintNumber: currentRow.complaint_number || "",
-    complaintDate: currentRow.complaint_date ? new Date(currentRow.complaint_date) : null,
-    beneficiaryName: currentRow.beneficiary_name || "",
-    contactNumber: currentRow.contact_number || "",
-    village: currentRow.village || "",
-    block: currentRow.block || "",
-    district: currentRow.district || "",
-    product: currentRow.product || "",
-    make: currentRow.make || "",
-    rating: currentRow.rating || "",
-    qty: currentRow.qty || "",
-    insuranceType: currentRow.insurance_type || "",
-    natureOfComplaint: currentRow.nature_of_complaint || "",
-    technicianName: currentRow.technician_name || "",
-    technicianContact: currentRow.technician_contact || "",
-    assigneeWhatsapp: currentRow.assignee_whatsapp_number || "",
-    controllerRidNo: currentRow.controller_rid_no || "",
-    productSlNo: currentRow.product_sl_no || "",
-    challanDate: currentRow.challan_date ? new Date(currentRow.challan_date) : null,
-    closeDate: currentRow.close_date ? new Date(currentRow.close_date) : null,
-    challanNo: currentRow.challan_no || "",
-  })
+    // Pre-fill all form data with correct Supabase column names
+    setUpdateFormData({
+      rowIndex: rowIndex,
+      actualRowNumber: currentRow.id, // Store the actual row ID for reference
+      complaintId: currentRow.complaint_id || "",
+      companyName: currentRow.company_name || "",
+      modeOfCall: currentRow.mode_of_call || "",
+      idNumber: currentRow.id_number || "",
+      projectName: currentRow.project_name || "",
+      complaintNumber: currentRow.complaint_number || "",
+      complaintDate: currentRow.complaint_date ? new Date(currentRow.complaint_date) : null,
+      beneficiaryName: currentRow.beneficiary_name || "",
+      contactNumber: currentRow.contact_number || "",
+      village: currentRow.village || "",
+      block: currentRow.block || "",
+      district: currentRow.district || "",
+      product: currentRow.product || "",
+      make: currentRow.make || "",
+      rating: currentRow.rating || "",
+      qty: currentRow.qty || "",
+      insuranceType: currentRow.insurance_type || "",
+      natureOfComplaint: currentRow.nature_of_complaint || "",
+      technicianName: currentRow.technician_name || "",
+      technicianContact: currentRow.technician_contact || "",
+      assigneeWhatsapp: currentRow.assignee_whatsapp_number || "",
+      controllerRidNo: currentRow.controller_rid_no || "",
+      productSlNo: currentRow.product_sl_no || "",
+      challanDate: currentRow.challan_date ? new Date(currentRow.challan_date) : null,
+      closeDate: currentRow.close_date ? new Date(currentRow.close_date) : null,
+      challanNo: currentRow.challan_no || "",
+    })
 
-  setCurrentUpdateRow(rowIndex)
-  setShowUpdateModal(true)
-}
+    setCurrentUpdateRow(rowIndex)
+    setShowUpdateModal(true)
+  }
 
 
 
@@ -432,158 +405,59 @@ const handleOpenUpdateModal = (rowIndex) => {
     }
   }
 
-  // ✅ Handle Update Submit
-  // const handleUpdateSubmit = async (e) => {
-  //   e.preventDefault()
-
-  //   try {
-  //     setIsSubmitting(true)
-
-  //     const actualRowNumber = updateFormData.actualRowNumber
-  //     console.log('Updating row:', actualRowNumber, 'Data:', updateFormData)
-
-  //     // Prepare row data array (same as before, matching Google Sheets columns)
-  //     const currentRow = new Array(60).fill('')
-
-  //     // Keep existing values from the original row
-  //     const originalRow = tableData[currentUpdateRow]
-  //     currentRow[0] = originalRow[1] // Timestamp
-  //     currentRow[1] = updateFormData.complaintId // Complaint ID
-  //     currentRow[2] = updateFormData.companyName
-  //     currentRow[3] = updateFormData.modeOfCall
-  //     currentRow[4] = updateFormData.idNumber
-  //     currentRow[5] = updateFormData.projectName
-  //     currentRow[6] = updateFormData.complaintNumber
-  //     currentRow[7] = updateFormData.complaintDate ? updateFormData.complaintDate.toLocaleDateString('en-US') : ''
-  //     currentRow[8] = updateFormData.beneficiaryName
-  //     currentRow[9] = updateFormData.contactNumber
-  //     currentRow[10] = updateFormData.village
-  //     currentRow[11] = updateFormData.block
-  //     currentRow[12] = updateFormData.district
-  //     currentRow[13] = updateFormData.product
-  //     currentRow[14] = updateFormData.make
-  //     currentRow[15] = updateFormData.rating
-  //     currentRow[16] = updateFormData.qty
-  //     currentRow[17] = updateFormData.insuranceType
-  //     currentRow[18] = updateFormData.natureOfComplaint
-  //     currentRow[19] = updateFormData.technicianName
-  //     currentRow[20] = updateFormData.technicianContact
-  //     currentRow[21] = updateFormData.assigneeWhatsapp
-  //     currentRow[27] = updateFormData.controllerRidNo
-  //     currentRow[28] = updateFormData.productSlNo
-  //     currentRow[29] = updateFormData.challanDate ? updateFormData.challanDate.toLocaleDateString('en-US') : ''
-  //     currentRow[30] = updateFormData.closeDate ? updateFormData.closeDate.toLocaleDateString('en-US') : ''
-  //     currentRow[31] = updateFormData.challanNo
-
-  //     // Submit update to Google Sheets using actual row number
-  //     const formDataToSend = new FormData()
-  //     formDataToSend.append('action', 'updateRow')
-  //     formDataToSend.append('sheetName', 'FMS')
-  //     formDataToSend.append('rowIndex', actualRowNumber) // Use actual row number
-  //     formDataToSend.append('rowData', JSON.stringify(currentRow))
-
-  //     const response = await fetch(
-  //       'https://script.google.com/macros/s/AKfycbwnIMOzsFbniWnPFhl3lzE-2W0l6lD23keuz57-ldS_umSXIJqpEK-qxLE6eM0s7drqrQ/exec',
-
-  //       {
-  //         method: 'POST',
-  //         body: formDataToSend,
-  //         redirect: 'follow'
-  //       }
-  //     )
-
-  //     const responseText = await response.text()
-  //     console.log('Update response:', responseText)
-
-  //     try {
-  //       const result = JSON.parse(responseText)
-  //       if (result.success) {
-  //         alert('Record updated successfully!')
-
-  //         // Close modal
-  //         setShowUpdateModal(false)
-  //         setCurrentUpdateRow(null)
-  //         setUpdateFormData({})
-
-  //         // Refresh table data
-  //         await fetchTableData()
-  //       } else {
-  //         throw new Error(result.error || 'Update failed')
-  //       }
-  //     } catch (parseError) {
-  //       if (response.ok) {
-  //         alert('Record updated successfully!')
-
-  //         // Close modal
-  //         setShowUpdateModal(false)
-  //         setCurrentUpdateRow(null)
-  //         setUpdateFormData({})
-
-  //         await fetchTableData()
-  //       } else {
-  //         throw new Error('Update failed')
-  //       }
-  //     }
-
-  //   } catch (error) {
-  //     console.error('Update error:', error)
-  //     alert(`Update failed: ${error.message}`)
-  //   } finally {
-  //     setIsSubmitting(false)
-  //   }
-  // }
 
 
-const handleUpdateSubmit = async (e) => {
-  e.preventDefault()
 
-  try {
-    setIsSubmitting(true)
+  const handleUpdateSubmit = async (e) => {
+    e.preventDefault()
 
-    const { error } = await supabase
-      .from("FMS")
-      .update({
-        company_name: updateFormData.companyName,
-        mode_of_call: updateFormData.modeOfCall,
-        id_number: updateFormData.idNumber,
-        project_name: updateFormData.projectName,
-        complaint_number: updateFormData.complaintNumber,
-        complaint_date: updateFormData.complaintDate,
-        beneficiary_name: updateFormData.beneficiaryName,
-        contact_number: updateFormData.contactNumber,
-        village: updateFormData.village,
-        block: updateFormData.block,
-        district: updateFormData.district,
-        product: updateFormData.product,
-        make: updateFormData.make,
-        rating: updateFormData.rating,
-        qty: updateFormData.qty,
-        insurance_type: updateFormData.insuranceType,
-        nature_of_complaint: updateFormData.natureOfComplaint,
-        technician_name: updateFormData.technicianName,
-        technician_contact: updateFormData.technicianContact,
-        assignee_whatsapp_number: updateFormData.assigneeWhatsapp,
-        controller_rid_no: updateFormData.controllerRidNo,
-        product_sl_no: updateFormData.productSlNo,
-        challan_date: updateFormData.challanDate,
-        close_date: updateFormData.closeDate,
-        challan_no: updateFormData.challanNo
-      })
-      .eq("complaint_id", updateFormData.complaintId)
+    try {
+      setIsSubmitting(true)
 
-    if (error) throw error
+      const { error } = await supabase
+        .from("FMS")
+        .update({
+          company_name: updateFormData.companyName,
+          mode_of_call: updateFormData.modeOfCall,
+          id_number: updateFormData.idNumber,
+          project_name: updateFormData.projectName,
+          complaint_number: updateFormData.complaintNumber,
+          complaint_date: updateFormData.complaintDate,
+          beneficiary_name: updateFormData.beneficiaryName,
+          contact_number: updateFormData.contactNumber,
+          village: updateFormData.village,
+          block: updateFormData.block,
+          district: updateFormData.district,
+          product: updateFormData.product,
+          make: updateFormData.make,
+          rating: updateFormData.rating,
+          qty: updateFormData.qty,
+          insurance_type: updateFormData.insuranceType,
+          nature_of_complaint: updateFormData.natureOfComplaint,
+          technician_name: updateFormData.technicianName,
+          technician_contact: updateFormData.technicianContact,
+          assignee_whatsapp_number: updateFormData.assigneeWhatsapp,
+          controller_rid_no: updateFormData.controllerRidNo,
+          product_sl_no: updateFormData.productSlNo,
+          challan_date: updateFormData.challanDate,
+          close_date: updateFormData.closeDate,
+          challan_no: updateFormData.challanNo
+        })
+        .eq("complaint_id", updateFormData.complaintId)
 
-    alert("Updated successfully")
-    setShowUpdateModal(false)
-    await fetchTableData()
+      if (error) throw error
 
-  } catch (error) {
-    console.error(error)
-    alert(error.message)
-  } finally {
-    setIsSubmitting(false)
+      alert("Updated successfully")
+      setShowUpdateModal(false)
+      await fetchTableData()
+
+    } catch (error) {
+      console.error(error)
+      alert(error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
-}
 
 
 
@@ -626,13 +500,43 @@ const handleUpdateSubmit = async (e) => {
         technician_name: formData.technicianName,
         technician_contact: formData.technicianContact,
         assignee_whatsapp_number: formData.assigneeWhatsapp,
+
+        // ✅ FIXED
         challan_no: formData.challanNo,
-        assign_to_vendor: formData.assignToVendor
+        challan_date: challanDate,
+        controller_rid_no: formData.controllerRidNo,
+        product_sl_no: formData.productSlNo || "",
+
+        assign_to_vendor: formData.assignToVendor,
       }])
+
+
 
       if (error) throw error
 
       alert("Created ✅")
+
+      // ✅ WHATSAPP INTEGRATION
+      try {
+        if (formData.technicianContact) {
+          const { data: whatsappData, error: whatsappError } = await supabase.functions.invoke('send-whatsapp-complaint', {
+            body: {
+              technicianContact: formData.technicianContact,
+              companyName: formData.companyName,
+              beneficiaryName: formData.beneficiaryName,
+              contactNumber: formData.contactNumber,
+              district: formData.district,
+              block: formData.block,
+              village: formData.village,
+              product: formData.product
+            }
+          })
+          if (whatsappError) console.error('WhatsApp Error:', whatsappError)
+          else console.log('WhatsApp Response:', whatsappData)
+        }
+      } catch (wsErr) {
+        console.error('WhatsApp Invoke Error:', wsErr)
+      }
 
       // ✅ FORM RESET
       setFormData({
@@ -1703,8 +1607,8 @@ const handleUpdateSubmit = async (e) => {
                   {/* Desktop Table View - Hidden on mobile with FIXED HEADER */}
                   <div className="hidden lg:block border border-gray-200 rounded-lg overflow-hidden">
                     <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-100 sticky top-0 z-10">
+                      <table className="min-w-full divide-y divide-gray-200 text-center text-nowrap">
+                        <thead className="bg-gray-100 sticky top-0 z-10 text-center">
                           <tr>
                             <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Action
@@ -1727,27 +1631,45 @@ const handleUpdateSubmit = async (e) => {
                             <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Technician Name
                             </th>
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th className="px-3 py-3 text-xs font-medium text-gray-500 uppercase">
+                              Challan No
+                            </th>
+
+                            <th className="px-3 py-3 text-xs font-medium text-gray-500 uppercase">
+                              Challan Date
+                            </th>
+
+                            <th className="px-3 py-3 text-xs font-medium text-gray-500 uppercase">
+                              Controller RID
+                            </th>
+
+                            <th className="px-3 py-3 text-xs font-medium text-gray-500 uppercase">
+                              Product SL No
+                            </th>
+                            <th className="px-3 py-3 text-xs font-medium text-gray-500 uppercase">
+                              Insurance Type
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Beneficiary Name
                             </th>
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Contact Number
                             </th>
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Village
                             </th>
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               District
                             </th>
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Product
                             </th>
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Nature Of Complaint
                             </th>
                           </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
+                        <tbody className="bg-white divide-y divide-gray-200 text-center">
                           {tableData.map((row, rowIndex) => (
                             <tr key={`complaint-${row.id}-${rowIndex}`} className="hover:bg-gray-50">
 
@@ -1790,6 +1712,26 @@ const handleUpdateSubmit = async (e) => {
 
                               <td className="px-3 py-4 text-sm">
                                 {row.technician_name || "-"}
+                              </td>
+                              <td className="px-3 py-4 text-sm">
+                                {row.challan_no || "-"}
+                              </td>
+
+                              <td className="px-3 py-4 text-sm">
+                                {row.challan_date
+                                  ? new Date(row.challan_date).toLocaleDateString()
+                                  : "-"}
+                              </td>
+
+                              <td className="px-3 py-4 text-sm">
+                                {row.controller_rid_no || "-"}
+                              </td>
+
+                              <td className="px-3 py-4 text-sm">
+                                {row.product_sl_no || "-"}
+                              </td>
+                              <td className="px-3 py-4 text-sm">
+                                {row.insurance_type || "-"}
                               </td>
 
                               <td className="px-3 py-4 text-sm">

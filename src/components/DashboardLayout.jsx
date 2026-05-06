@@ -158,9 +158,9 @@ function DashboardLayout({ children }) {
       <div className="flex h-16 items-center border-b border-gray-700 px-4">
         <div className="bg-gray-700 p-1 rounded-full mr-3 flex items-center justify-center">
           <img
-            src="/RBP-Logo.jpg"
+            src="/Logo.PNG"
             alt="RBP logo"
-            className=" object-contain rounded-full shadow-md"
+            className=" object-contain "
           />
         </div>
         <h1 className="text-xl font-bold">Complaints Tracker</h1>

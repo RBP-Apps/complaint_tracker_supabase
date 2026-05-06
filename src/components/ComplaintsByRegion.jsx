@@ -158,34 +158,69 @@ useEffect(() => {
     }
   )
 
+  // const districtSummary = useMemo(() => {
+  //   const map = new Map()
+
+  //   filteredComplaints.forEach((c) => {
+  //     const key = c.district || "UNKNOWN"
+  //     if (!map.has(key)) {
+  //       map.set(key, {
+  //         district: key,
+  //         total: 0,
+  //         resolved: 0,
+  //         pending: 0,
+  //       })
+  //     }
+  //     const entry = map.get(key)
+  //     entry.total += 1
+
+  //     const s = String(c.status || "").toUpperCase()
+  //     if (s.includes("APPROVED-CLOSE") || s.includes("COMPLETED")) {
+  //       entry.resolved += 1
+  //     } else {
+  //       entry.pending += 1
+  //     }
+  //   })
+
+  //   return Array.from(map.values()).sort((a, b) =>
+  //     a.district.localeCompare(b.district)
+  //   )
+  // }, [filteredComplaints])
+
   const districtSummary = useMemo(() => {
-    const map = new Map()
+  const map = new Map()
 
-    filteredComplaints.forEach((c) => {
-      const key = c.district || "UNKNOWN"
-      if (!map.has(key)) {
-        map.set(key, {
-          district: key,
-          total: 0,
-          resolved: 0,
-          pending: 0,
-        })
-      }
-      const entry = map.get(key)
-      entry.total += 1
+  filteredComplaints.forEach((c) => {
+    const rawDistrict = c.district || "UNKNOWN"
 
-      const s = String(c.status || "").toUpperCase()
-      if (s.includes("APPROVED-CLOSE") || s.includes("COMPLETED")) {
-        entry.resolved += 1
-      } else {
-        entry.pending += 1
-      }
-    })
+    const key = rawDistrict.trim().toLowerCase() // 🔥 FIX
 
-    return Array.from(map.values()).sort((a, b) =>
-      a.district.localeCompare(b.district)
-    )
-  }, [filteredComplaints])
+    if (!map.has(key)) {
+      map.set(key, {
+        district: key.charAt(0).toUpperCase() + key.slice(1),
+        total: 0,
+        resolved: 0,
+        pending: 0,
+      })
+    }
+
+    const entry = map.get(key)
+    entry.total += 1
+
+    const s = String(c.status || "").toUpperCase()
+    if (s.includes("APPROVED-CLOSE") || s.includes("COMPLETED")) {
+      entry.resolved += 1
+    } else {
+      entry.pending += 1
+    }
+  })
+
+  return Array.from(map.values()).sort((a, b) =>
+    a.district.localeCompare(b.district)
+  )
+}, [filteredComplaints])
+
+
 
   const grandTotals = useMemo(() => {
     return districtSummary.reduce(

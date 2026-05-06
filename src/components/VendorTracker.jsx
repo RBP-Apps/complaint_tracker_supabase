@@ -259,6 +259,7 @@ const fetchComplaintsForVendor = async () => {
 
     return { pending: pendingCount, history: historyCount };
   };
+
   // Fetch dropdown options from master sheet
   useEffect(() => {
    const fetchDropdownOptions = async () => {
@@ -301,26 +302,9 @@ const fetchComplaintsForVendor = async () => {
     fetchAssignToVendorData(); // NEW: Fetch AssignToVendor data
   }, []);
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
 
-    // Show upload section when checkbox is checked
-    if (name === "sendDetailsToVendor") {
-      setShowUpload(checked);
-      if (!checked) {
-        setSelectedFiles([]); // Clear selected files when unchecked
-      }
-    }
-  };
 
-  const handleSelectChange = (name, value) => {
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
+ 
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files);
     setSelectedFiles(files);
@@ -444,18 +428,6 @@ const generateVTId = async () => {
   }
 };
 
-  const handleReset = () => {
-    setFormData({
-      vendorName: "",
-      productType: "",
-      sendDetailsToVendor: false,
-      vendorComplaintId: "",
-    });
-    setVendorDate(null);
-    setShowUpload(false);
-    setSelectedFiles([]);
-    setDataError(null);
-  };
 
   // NEW: Get filtered data for current tab
   const filteredTableData = getFilteredTableData();

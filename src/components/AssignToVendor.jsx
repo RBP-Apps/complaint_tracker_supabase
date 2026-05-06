@@ -395,15 +395,15 @@ function AssignToVendorForm() {
                           <th className="px-4 py-3 text-left">Upload File</th>
                         </tr>
                       ) : (
-                        <tr>
-                          <th>Action</th>
-                          <th>Complaint ID</th>
-                          <th>Company Name</th>
-                          <th>Beneficiary Name</th>
-                          <th>Contact Number</th>
-                          <th>District</th>
-                          <th>Product</th>
-                          <th>Nature of Complaint</th>
+                        <tr className="text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">
+                          <th className="px-4 py-3 text-left">Action</th>
+                          <th className="px-4 py-3 text-left">Complaint ID</th>
+                          <th className="px-4 py-3 text-left">Company Name</th>
+                          <th className="px-4 py-3 text-left">Beneficiary Name</th>
+                          <th className="px-4 py-3 text-left">Contact Number</th>
+                          <th className="px-4 py-3 text-left">District</th>
+                          <th className="px-4 py-3 text-left">Product</th>
+                          <th className="px-4 py-3 text-left">Nature of Complaint</th>
                         </tr>
                       )}
                     </thead>
@@ -434,8 +434,8 @@ function AssignToVendorForm() {
                               <td className="px-4 py-3 whitespace-nowrap">
                                 <span
                                   className={`px-2 py-1 rounded text-xs font-semibold ${row.send_details_to_vendor
-                                      ? "bg-green-100 text-green-700"
-                                      : "bg-red-100 text-red-700"
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-red-100 text-red-700"
                                     }`}
                                 >
                                   {row.send_details_to_vendor ? "Yes" : "No"}
@@ -482,7 +482,7 @@ function AssignToVendorForm() {
                         // 🔵 Pending (same as before)
                         return (
                           <tr key={index} className="hover:bg-gray-50">
-                            <td className="px-4 py-3">
+                            <td className="px-4 py-3 text-left">
                               <button
                                 onClick={() => handleViewComplaint(row)}
                                 className="px-3 py-1 bg-blue-500 text-white rounded-md"
@@ -490,13 +490,34 @@ function AssignToVendorForm() {
                                 View
                               </button>
                             </td>
-                            <td className="px-4 py-3 text-blue-600">{row.complaint_id || "-"}</td>
-                            <td className="px-4 py-3">{row.company_name || "-"}</td>
-                            <td className="px-4 py-3">{row.beneficiary_name || "-"}</td>
-                            <td className="px-4 py-3">{row.contact_number || "-"}</td>
-                            <td className="px-4 py-3">{row.district || "-"}</td>
-                            <td className="px-4 py-3">{row.product || "-"}</td>
-                            <td className="px-4 py-3">{row.nature_of_complaint || "-"}</td>
+
+                            <td className="px-4 py-3 text-left text-blue-600">
+                              {row.complaint_id || "-"}
+                            </td>
+
+                            <td className="px-4 py-3 text-left">
+                              {row.company_name || "-"}
+                            </td>
+
+                            <td className="px-4 py-3 text-left">
+                              {row.beneficiary_name || "-"}
+                            </td>
+
+                            <td className="px-4 py-3 text-left">
+                              {row.contact_number || "-"}
+                            </td>
+
+                            <td className="px-4 py-3 text-left">
+                              {row.district || "-"}
+                            </td>
+
+                            <td className="px-4 py-3 text-left">
+                              {row.product || "-"}
+                            </td>
+
+                            <td className="px-4 py-3 text-left">
+                              {row.nature_of_complaint || "-"}
+                            </td>
                           </tr>
                         );
                       })}
