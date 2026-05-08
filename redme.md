@@ -4,24 +4,24 @@ create table public."FMS" (
   complaint_id character varying(50) null,
   company_name character varying(150) null,
   mode_of_call character varying(50) null,
-  id_number bigint null,
+  id_number text null,
   project_name character varying(150) null,
   complaint_number character varying(100) null,
   complaint_date date null,
   beneficiary_name character varying(150) null,
-  contact_number character varying(20) null,
+  contact_number text null,
   village character varying(150) null,
   block character varying(150) null,
   district character varying(150) null,
   product character varying(150) null,
   make character varying(150) null,
-  rating integer null,
+  rating text null,
   qty integer null,
   insurance_type character varying(100) null,
   nature_of_complaint text null,
   technician_name character varying(150) null,
-  technician_contact character varying(20) null,
-  assignee_whatsapp_number character varying(20) null,
+  technician_contact text null,
+  assignee_whatsapp_number text null,
   planned timestamp without time zone null,
   actual timestamp without time zone null,
   delay integer null,
@@ -47,6 +47,11 @@ create table public."FMS" (
 create trigger trigger_set_planned BEFORE INSERT on "FMS" for EACH row
 execute FUNCTION set_planned_default ();
 
+
+
+
+
+
 create table public."AssignToVendor" (
   id bigserial not null,
   timestamp timestamp without time zone null,
@@ -57,26 +62,29 @@ create table public."AssignToVendor" (
   date date null,
   complaint_id character varying(50) null,
   upload_file text null,
-  planned timestamp without time zone null,
-  actual timestamp without time zone null,
   created_at timestamp without time zone null default now(),
   constraint AssignToVendor_pkey primary key (id)
 ) TABLESPACE pg_default;
+
+
+
 
 
 create table public."Login" (
   id bigserial not null,
   username character varying(100) not null,
   password text not null,
-  user_access character varying(50) null,
   role character varying(50) null,
   contact_no character varying(20) null,
   alternate_contact_no character varying(20) null,
   tech_working_district character varying(150) null,
   created_at timestamp without time zone null default now(),
+  page_access text[] null,
+  email character varying(150) null,
   constraint Login_pkey primary key (id),
   constraint Login_username_key unique (username)
 ) TABLESPACE pg_default;
+
 
 
 create table public."Master" (
@@ -100,15 +108,17 @@ create table public."Master" (
   constraint Master_pkey primary key (id)
 ) TABLESPACE pg_default;
 
+
+
 create table public."Tracker" (
   id bigserial not null,
   timestamp timestamp without time zone null,
   serial_no character varying(100) null,
   complaint_id character varying(50) null,
   technician_name character varying(150) null,
-  technician_number character varying(20) null,
+  technician_number text null,
   beneficiary_name character varying(150) null,
-  contact_number character varying(20) null,
+  contact_number text null,
   village character varying(150) null,
   block character varying(150) null,
   district character varying(150) null,
@@ -125,21 +135,13 @@ create table public."Tracker" (
   address text null,
   planned timestamp without time zone null,
   actual timestamp without time zone null,
-  checked text null default false,
+  checked text null,
   remark text null,
   created_at timestamp without time zone null default now(),
   constraint Tracker_pkey primary key (id)
 ) TABLESPACE pg_default;
 
-create trigger trigger_tracker_planned BEFORE INSERT
-or
-update on "Tracker" for EACH row
-execute FUNCTION tracker_auto_planned ();
 
-create trigger trigger_update_fms
-after
-update on "Tracker" for EACH row
-execute FUNCTION update_fms_from_tracker ();
 
 create table public."VendorTracker" (
   id bigserial not null,
@@ -153,7 +155,8 @@ create table public."VendorTracker" (
   planned timestamp without time zone null,
   actual timestamp without time zone null,
   created_at timestamp without time zone null default now(),
+  planned_assignto_vendor timestamp without time zone null,
+  actual_assignto_vendor timestamp without time zone null,
   constraint VendorTracker_pkey primary key (id)
 ) TABLESPACE pg_default;
-
 

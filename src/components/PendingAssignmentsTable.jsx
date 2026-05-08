@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import AssignComplaintForm from "./AssignComplaintForm"
+import supabase from "../utils/supabase"
 
 function PendingAssignmentsTable() {
   const [pendingComplaints, setPendingComplaints] = useState([])
@@ -13,9 +14,6 @@ function PendingAssignmentsTable() {
   const [searchTerm, setSearchTerm] = useState("")
   const [companyFilter, setCompanyFilter] = useState("")
   const [modeOfCallFilter, setModeOfCallFilter] = useState("")
-
-  // Google Apps Script Web App URL - Replace with your actual deployed script URL
-  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwnIMOzsFbniWnPFhl3lzE-2W0l6lD23keuz57-ldS_umSXIJqpEK-qxLE6eM0s7drqrQ/exec"
 
 
   const formatDateString = (dateValue) => {
@@ -104,156 +102,90 @@ function PendingAssignmentsTable() {
     return [...new Set(modes)].sort()
   }
 
-  // Function to fetch data from Google Sheets
   useEffect(() => {
     const fetchComplaints = async () => {
       setIsLoading(true)
       setError(null)
-
       try {
-        // Fetch the entire sheet using Google Sheets API directly
-        const sheetUrl = "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=FMS"
-        const response = await fetch(sheetUrl)
-        const text = await response.text()
+        // Fetch FMS from Supabase: planned not null, actual is null (pending assignment)
+        const { data, error } = await supabase
+          .from("FMS")
+          .select("*")
+          .not("planned", "is", null)
+          .is("actual", null)
 
-        // Extract the JSON part from the response
-        const jsonStart = text.indexOf('{')
-        const jsonEnd = text.lastIndexOf('}') + 1
-        const jsonData = text.substring(jsonStart, jsonEnd)
+        if (error) throw error
 
-        const data = JSON.parse(jsonData)
+        const complaintData = (data || [])
+          .filter(row => row.complaint_id)
+          .map((row, index) => ({
+            actualRowIndex: index + 1,
+            timestamp: row.timestamp || "",
+            complaintNo: row.complaint_id || "",
+            date: row.timestamp || "",
+            head: row.company_name || "",
+            companyName: row.company_name || "",
+            modeOfCall: row.mode_of_call || "",
+            idNumber: row.id_number || "",
+            projectName: row.project_name || "",
+            complaintNumber: row.complaint_id || "",
+            complaintDate: row.complaint_date || "",
+            beneficiaryName: row.beneficiary_name || "",
+            contactNumber: row.contact_number || "",
+            village: row.village || "",
+            block: row.block || "",
+            district: row.district || "",
+            product: row.product || "",
+            make: row.make || "",
+            system: row.system_voltage || "",
+            voltageRating: row.rating || "",
+            qty: row.qty || "",
+            priority: row.rating || "Medium",
+            insuranceType: row.insurance_type || "",
+            natureOfComplaint: row.nature_of_complaint || "",
+            status: "Pending",
+            fullRowData: row
+          }))
 
-        // Process the complaints data
-        if (data && data.table && data.table.rows) {
-          const complaintData = []
-
-          // Skip the header row and process the data rows
-          data.table.rows.slice(1).forEach((row, index) => {
-            if (row.c) {
-              // Check if column Y (Planned - index 24) has data and column Z (Actual - index 25) is null/empty
-              const hasPlannedData = row.c[24] && row.c[24].v !== null && row.c[24].v !== "";
-              const isActualEmpty = !row.c[25] || row.c[25].v === null || row.c[25].v === "";
-
-              // Only include rows where Planned has data and Actual is null (pending assignment)
-              if (hasPlannedData && isActualEmpty) {
-                const complaint = {
-                  // CORRECTED: Google Sheets API rows slice(1) skips first row, 
-                  // but your headers are in row 6, so actual row = index + 2 + (additional offset if needed)
-                  // Based on your screenshot showing data in rows 41, 46, etc.
-                  actualRowIndex: index + 7,
-
-                  // Map columns according to your exact sequence from the data
-                  timestamp: row.c[0] ? (row.c[0].f || formatDateString(row.c[0].v) || row.c[0].v) : "", // Column A
-                  complaintNo: row.c[1] ? row.c[1].v : "", // Column B
-                  date: row.c[2] ? (row.c[2].f || formatDateString(row.c[2].v) || row.c[2].v) : "", // Column C
-                  head: row.c[3] ? row.c[3].v : "", // Column D
-                  companyName: row.c[4] ? row.c[4].v : "", // Column E
-                  modeOfCall: row.c[5] ? row.c[5].v : "", // Column F
-                  idNumber: row.c[6] ? row.c[6].v : "", // Column G
-                  projectName: row.c[7] ? row.c[7].v : "", // Column H
-                  complaintNumber: row.c[8] ? row.c[8].v : "", // Column I - THIS IS THE MAIN IDENTIFIER
-                  complaintDate: row.c[9] ? (row.c[9].f || formatDateString(row.c[9].v) || row.c[9].v) : "", // Column J
-                  beneficiaryName: row.c[10] ? row.c[10].v : "", // Column K
-                  contactNumber: row.c[11] ? row.c[11].v : "", // Column L
-                  village: row.c[12] ? row.c[12].v : "", // Column M
-                  block: row.c[13] ? row.c[13].v : "", // Column N
-                  district: row.c[14] ? row.c[14].v : "", // Column O
-                  product: row.c[15] ? row.c[15].v : "", // Column P
-                  make: row.c[16] ? row.c[16].v : "", // Column Q
-                  system: row.c[17] ? row.c[17].v : "", // Column R
-                  voltageRating: row.c[18] ? row.c[18].v : "", // Column S
-                  qty: row.c[19] ? row.c[19].v : "", // Column T
-                  acDc: row.c[20] ? row.c[20].v : "", // Column U
-                  priority: row.c[21] ? row.c[21].v : "Medium", // Column V
-                  insuranceType: row.c[22] ? row.c[22].v : "", // Column W
-                  natureOfComplaint: row.c[23] ? row.c[23].v : "", // Column X
-                  status: "Pending",
-                  // Store the complete row data for future reference
-                  fullRowData: row.c
-                }
-
-                // Only add if complaintNumber exists and is not empty
-                if (complaint.complaintNumber && complaint.complaintNumber.toString().trim() !== "") {
-                  complaintData.push(complaint)
-                }
-              }
-            }
-          })
-
-          console.log("Fetched complaints with row indices:", complaintData.map(c => ({
-            complaintNumber: c.complaintNumber,
-            actualRowIndex: c.actualRowIndex
-          })));
-
-          setPendingComplaints(complaintData)
-        }
+        setPendingComplaints(complaintData)
       } catch (err) {
         console.error("Error fetching complaints data:", err)
         setError(err.message)
-        // On error, set to empty array
         setPendingComplaints([])
       } finally {
         setIsLoading(false)
       }
     }
-
     fetchComplaints()
   }, [])
   const handleAssignComplaint = async (complaintId, assigneeData) => {
     try {
       console.log("Starting assignment for complaint:", complaintId);
 
-      // ✅ STEP 1: Find the actual row number from backend
-      const findRowResponse = await fetch(
-        `${GOOGLE_SCRIPT_URL}?action=findComplaintRow&complaintNo=${encodeURIComponent(complaintId)}`
-      );
-      const findRowResult = await findRowResponse.json();
+      // Update FMS table in Supabase directly
+      const { error } = await supabase
+        .from("FMS")
+        .update({
+          technician_name: assigneeData.technicianName || "",
+          technician_contact: assigneeData.technicianContact || "",
+          assignee_name: assigneeData.assigneeName || "",
+          assignee_whatsapp_number: assigneeData.assigneeWhatsapp || "",
+          location: assigneeData.location || "",
+          complaint_details: assigneeData.complaintDetails || "",
+          expected_completion_date: assigneeData.expectedCompletionDate || null,
+          notes_for_technician: assigneeData.notesForTechnician || "",
+          actual: new Date().toISOString()
+        })
+        .eq("complaint_id", complaintId)
 
-      if (!findRowResult.success) {
-        throw new Error(findRowResult.error);
-      }
+      if (error) throw error
 
-      const actualRowNumber = findRowResult.rowNumber;
-      console.log("Found actual row number:", actualRowNumber);
-
-      // ✅ STEP 2: Now assign with the correct row number
-      const assignmentData = {
-        actualTimestamp: new Date().toISOString(),
-        technicianName: assigneeData.technicianName || "",
-        technicianContact: assigneeData.technicianContact || "",
-        assigneeName: assigneeData.assigneeName || "",
-        assigneeWhatsapp: assigneeData.assigneeWhatsapp || "",
-        location: assigneeData.location || "",
-        complaintDetails: assigneeData.complaintDetails || "",
-        expectedCompletionDate: assigneeData.expectedCompletionDate || "",
-        notesForTechnician: assigneeData.notesForTechnician || ""
-      };
-
-      const formData = new FormData();
-      formData.append('sheetName', 'FMS');
-      formData.append('action', 'assignComplaint');
-      formData.append('rowNumber', actualRowNumber.toString());
-      formData.append('assigneeData', JSON.stringify(assignmentData));
-
-      const response = await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
-
-      const result = await response.json();
-      if (!result.success) throw new Error(result.error || "Assignment failed");
-
-      setPendingComplaints(prev =>
-        prev.filter(c => c.complaintNo !== complaintId)
-      );
-      setIsDialogOpen(false);
-      alert(`Complaint ${complaintId} assigned successfully!`);
-
+      setPendingComplaints(prev => prev.filter(c => c.complaintNo !== complaintId))
+      setIsDialogOpen(false)
+      alert(`Complaint ${complaintId} assigned successfully!`)
     } catch (error) {
-      console.error("Assignment error:", error);
-      alert(`Failed to assign: ${error.message}`);
+      console.error("Assignment error:", error)
+      alert(`Failed to assign: ${error.message}`)
     }
   };
   // ... (keep rest of the component code the same)

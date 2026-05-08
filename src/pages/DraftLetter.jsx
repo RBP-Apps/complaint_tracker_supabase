@@ -37,7 +37,6 @@ function DraftLetter() {
     const [emailBody, setEmailBody] = useState("")
     const [emailAttachments, setEmailAttachments] = useState([])
 
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwnIMOzsFbniWnPFhl3lzE-2W0l6lD23keuz57-ldS_umSXIJqpEK-qxLE6eM0s7drqrQ/exec"
 
     // Helper to ensure Google Drive links open in viewer instead of downloading
     const getViewerUrl = (url) => {
@@ -198,10 +197,6 @@ function DraftLetter() {
             alert("Please select a company.")
             return
         }
-        if (!email) {
-            alert("Selected company has no email address. Please check Master sheet.")
-            return
-        }
 
         setIsSubmitting(true)
 
@@ -213,110 +208,27 @@ function DraftLetter() {
 
             const companyDetails = companyOptions.find(c => c.name === selectedCompany) || {}
 
-            // Save selection to localStorage for AdminLetter.jsx to pick up
-            const savedData = localStorage.getItem(`admin_letter_${task.complaintId}`);
-            let letterInfoToUse = {};
-            if (savedData) {
-                const parsed = JSON.parse(savedData);
-                letterInfoToUse = parsed.letterInfo;
-                // Update header info in local storage too
-                parsed.headerInfo = {
-                    companyName: companyDetails.name,
-                    address: companyDetails.address,
-                    location: "", // Not available in master?
-                    contact: `Phone No. ${companyDetails.phone} Email : ${companyDetails.email}`
-                };
-                localStorage.setItem(`admin_letter_${task.complaintId}`, JSON.stringify(parsed));
-            } else {
-                letterInfoToUse = {
-                    letterNo: `SSY/2025/${Math.floor(Math.random() * 900) + 100}`,
-                    date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
-                    subject: "जिला कोण्डागांव में सौर सुजला योजनांतर्गत स्थापित सिंचाई सोलर पंप के संबंध में ।",
-                    reference: [
-                        "पत्र क्र. 2386/क्रेडा/जि.का./SSY/O&M/F-04/2024-25 कोण्डागांव, दिनांक 06.11.2025,",
-                        "जिला कार्यालय कोण्डागांव का पत्र क्रमांक / दिनांक 2067 / 26.09.2025, 2282 / 29.10.2025, 2112 / 29.09.2025 |"
-                    ],
-                    officerName: "जिला प्रभारी,",
-                    department: "छत्तीसगढ़ राज्य अक्षय ऊर्जा विकास अभिकरण (क्रेडा)",
-                    districtOffice: `जिला कार्यालय, ${task.district || 'कोण्डागांव'} (छ०ग०)`,
-                    salutation: "महोदय,",
-                    introParagraph: "उपरोक्त विषयांतर्गत लेख है कि, जिला कोण्डागांव अंतर्गत हमारे द्वारा विभिन्न स्थलों में सोलर पंपों स्थापित किया गया है। जिसकी अकार्य शीलता की सूचना हमें आपके संदर्भित पत्र के माध्यम से प्राप्त हुआ। जिसका विवरण निम्नानुसार है-",
-                    closingParagraph: "उपरोक्त साईट के संयंत्र का सुधार कार्य हमारे द्वारा कर दिया गया है, तथा संयंत्र वर्तमान में कार्य शील है। इस पत्र के साथ साईट की संपुष्टि पत्र संलग्न है। पत्र आपकी ओर सादर सूचनार्थ हेतु प्रेषित।",
-                    thankYou: "सधन्यवाद !",
-                    regards: "भवदीय",
-                    forCompany: `वास्ते, ${companyDetails.name}`,
-                    designation: "अधिकृत हस्ताक्षरकर्ता",
-                    copiesTo: [
-                        "कार्यपालन अभियंता महोदय, (RE-05) क्रेडा प्रधान कार्यालय, रायपुर को सादर सूचनार्थ प्रेषित।",
-                        "कार्यपालन अभियंता महोदय,क्रेडा जोनल कार्यालय, जगदलपुर को सादर सूचनार्थ प्रेषित।"
-                    ]
-                }
+            // Update Supabase FMS table with selected company
+            const { error: updateError } = await supabase
+                .from("FMS")
+                .update({ company: selectedCompany, email: companyDetails.email || "" })
+                .eq("complaint_id", task.complaintId)
+
+            if (updateError) {
+                console.warn("FMS update failed (non-critical):", updateError.message)
             }
-
-
-            // Construct Header Info for the helper
-            const headerInfo = {
-                companyName: companyDetails.name,
-                address: companyDetails.address,
-                location: "",
-                contact: `Phone No. ${companyDetails.phone} Email : ${companyDetails.email}`
-            };
-
-            // Dynamic import to avoid top-level import issue in this chunk? No, React supports top level.
-            // I will add the import in a separate chunk in this multi_replace.
-
-            const htmlContent = (await import("../utils/letterTemplate.js")).generateLetterHTML(task, headerInfo, letterInfoToUse);
-
-            const formData = new FormData()
-            formData.append('action', 'sendComplaintLetter') // New action for email
-            formData.append('email', email)
-            formData.append('subject', letterInfoToUse.subject)
-            formData.append('htmlBody', htmlContent)
-            formData.append('complaintId', task.complaintId)
-            formData.append('companyName', selectedCompany) // Save company name
-
-            formData.append('checkedValue', task.checked || (task.trackerStatus === 'APPROVED-CLOSE' ? 'APPROVED-CLOSE' : ''))
-            formData.append('remarkValue', task.remark || '')
-
-            console.log('DraftLetter: Submitting data:', {
-                action: 'sendComplaintLetter',
-                email,
-                company: selectedCompany
-            })
-
-            const response = await fetch(GOOGLE_SCRIPT_URL, {
-                method: 'POST',
-                body: formData,
-            })
-
-            const result = await response.json()
-            console.log('DraftLetter: Response:', result)
-
-            if (!result.success) {
-                // If backend warns about missing action, we might need to fallback
-                if (result.error && result.error.includes("action")) {
-                    alert("Backend does not support sending email yet. Please contact admin.")
-                } else {
-                    throw new Error(result.error || 'Failed to send email')
-                }
-            } else {
-                alert(`Letter generated and sent to ${email} successfully!`)
-            }
-
-
-            // I will update the lists as before to give feedback.
-            setPendingTasks(prev => prev.filter(t => t.complaintId !== task.complaintId))
-
-            setHistoryTasks(prev => {
-                const exists = prev.some(t => t.complaintId === task.complaintId)
-                if (exists) {
-                    return prev.map(t => t.complaintId === task.complaintId ? task : t)
-                }
-                return [...prev, task]
-            })
 
             setIsDialogOpen(false)
             resetDialogState()
+
+            // Navigate to AdminLetter page for letter generation
+            navigate(`/dashboard/admin-letter/${task.complaintId}`, {
+                state: {
+                    tasks: [task],
+                    itemType: "Battery",
+                    autoSelectCompany: selectedCompany
+                }
+            })
 
         } catch (err) {
             console.error("DraftLetter: Error updating task:", err)
@@ -429,57 +341,11 @@ function DraftLetter() {
             return
         }
 
-        setIsSendingEmail(true)
-        try {
-            // Each recipient carries their own fileId; also include any extra attachments from dropdown
-            const recipientsWithFiles = emailRecipients.map(r => ({
-                ...r,
-                fileId: r.fileId || ""
-            }))
-            // Extra attachments added via dropdown (not already linked to a recipient)
-            const extraFileIds = emailAttachments
-                .filter(a => !emailRecipients.some(r => r.fileId === a.fileId))
-                .map(a => a.fileId)
-
-            const formData = new FormData()
-            formData.append('action', 'sendBulkEmail')
-            formData.append('recipients', JSON.stringify(recipientsWithFiles))
-            formData.append('subject', emailSubject)
-            formData.append('body', emailBody)
-            formData.append('complaintId', emailModalRow?.complaintId || '')
-            formData.append('fileIds', JSON.stringify(extraFileIds))
-
-            console.log('DraftLetter: Sending bulk email:', {
-                recipients: recipientsWithFiles.length,
-                subject: emailSubject,
-                complaintId: emailModalRow?.complaintId,
-                extraAttachments: extraFileIds.length
-            })
-
-            const response = await fetch(GOOGLE_SCRIPT_URL, {
-                method: 'POST',
-                body: formData,
-            })
-
-            const result = await response.json()
-
-            if (result.success) {
-                alert("Email sent successfully to selected recipients")
-                setEmailModalOpen(false)
-                setEmailModalRow(null)
-                setEmailRecipients([])
-                setEmailSubject("")
-                setEmailBody("")
-                setEmailAttachments([])
-            } else {
-                throw new Error(result.error || 'Failed to send email')
-            }
-        } catch (err) {
-            console.error('DraftLetter: Email modal send error:', err)
-            alert('Failed to send email: ' + err.message)
-        } finally {
-            setIsSendingEmail(false)
-        }
+        // Email sending requires a backend email service.
+        // PDF links are already saved to Supabase. You can share the PDF links directly.
+        const recipientList = emailRecipients.map(r => r.email).join(", ")
+        alert(`Email service not configured.\n\nRecipients: ${recipientList}\n\nPlease share the PDF links from the History tab directly.`)
+        setEmailModalOpen(false)
     }
 
     const toggleSelectAllHistory = (checked) => {
@@ -496,122 +362,12 @@ function DraftLetter() {
             alert("Please select at least one recipient")
             return
         }
-
-        setIsSendingEmail(true)
-
-        try {
-            const selectedTasks = historyTasks.filter(t => selectedHistoryIds.has(t.complaintId))
-            const { generateLetterHTML } = await import("../utils/letterTemplate.js")
-
-            let successCount = 0
-            let failCount = 0
-
-            for (const task of selectedTasks) {
-                try {
-                    // Use saved letter data from localStorage if available, otherwise build defaults
-                    const savedData = localStorage.getItem(`admin_letter_${task.complaintId}`)
-                    let letterInfoToUse = {}
-                    let headerInfo = {}
-
-                    if (savedData) {
-                        const parsed = JSON.parse(savedData)
-                        letterInfoToUse = parsed.letterInfo || {}
-                        headerInfo = parsed.headerInfo || {
-                            companyName: task.companyName,
-                            address: "",
-                            location: "",
-                            contact: ""
-                        }
-                    } else {
-                        // Build default letter info
-                        letterInfoToUse = {
-                            letterNo: `SSY/2025/${Math.floor(Math.random() * 900) + 100}`,
-                            date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
-                            subject: "जिला कोण्डागांव में सौर सुजला योजनांतर्गत स्थापित सिंचाई सोलर पंप के संबंध में ।",
-                            reference: [
-                                "पत्र क्र. 2386/क्रेडा/जि.का./SSY/O&M/F-04/2024-25 कोण्डागांव, दिनांक 06.11.2025,",
-                                "जिला कार्यालय कोण्डागांव का पत्र क्रमांक / दिनांक 2067 / 26.09.2025, 2282 / 29.10.2025, 2112 / 29.09.2025 |"
-                            ],
-                            officerName: "जिला प्रभारी,",
-                            department: "छत्तीसगढ़ राज्य अक्षय ऊर्जा विकास अभिकरण (क्रेडा)",
-                            districtOffice: `जिला कार्यालय, ${task.district || 'कोण्डागांव'} (छ०ग०)`,
-                            salutation: "महोदय,",
-                            introParagraph: "उपरोक्त विषयांतर्गत लेख है कि, जिला कोण्डागांव अंतर्गत हमारे द्वारा विभिन्न स्थलों में सोलर पंपों स्थापित किया गया है। जिसकी अकार्य शीलता की सूचना हमें आपके संदर्भित पत्र के माध्यम से प्राप्त हुआ। जिसका विवरण निम्नानुसार है-",
-                            closingParagraph: "उपरोक्त साईट के संयंत्र का सुधार कार्य हमारे द्वारा कर दिया गया है, तथा संयंत्र वर्तमान में कार्य शील है। इस पत्र के साथ साईट की संपुष्टि पत्र संलग्न है। पत्र आपकी ओर सादर सूचनार्थ हेतु प्रेषित।",
-                            thankYou: "सधन्यवाद !",
-                            regards: "भवदीय",
-                            forCompany: `वास्ते, ${task.companyName}`,
-                            designation: "अधिकृत हस्ताक्षरकर्ता",
-                            copiesTo: [
-                                "कार्यपालन अभियंता महोदय, (RE-05) क्रेडा प्रधान कार्यालय, रायपुर को सादर सूचनार्थ प्रेषित।",
-                                "कार्यपालन अभियंता महोदय,क्रेडा जोनल कार्यालय, जगदलपुर को सादर सूचनार्थ प्रेषित।"
-                            ]
-                        }
-                        headerInfo = {
-                            companyName: task.companyName,
-                            address: "",
-                            location: "",
-                            contact: ""
-                        }
-                    }
-
-                    const taskEmail = task.email
-                    if (!taskEmail) {
-                        console.warn(`DraftLetter: Skipping ${task.complaintId} — no email address`)
-                        failCount++
-                        continue
-                    }
-
-                    const htmlContent = generateLetterHTML(task, headerInfo, letterInfoToUse)
-
-                    const formData = new FormData()
-                    formData.append('action', 'sendBulkEmail')
-                    formData.append('recipients', JSON.stringify([{ email: taskEmail, name: task.companyName || '' }]))
-                    formData.append('subject', letterInfoToUse.subject || '')
-                    formData.append('htmlBody', htmlContent) // Traditional letter HTML
-                    formData.append('fileIds', JSON.stringify([])) // No Drive attachments for bulk generator
-                    formData.append('complaintId', task.complaintId)
-                    formData.append('checkedValue', task.checked || '')
-                    formData.append('remarkValue', task.remark || '')
-
-                    console.log(`DraftLetter: Sending email for ${task.complaintId} to ${taskEmail}`)
-
-                    const response = await fetch(GOOGLE_SCRIPT_URL, {
-                        method: 'POST',
-                        body: formData,
-                    })
-
-                    const result = await response.json()
-
-                    if (result.success) {
-                        successCount++
-                    } else {
-                        console.error(`DraftLetter: Failed for ${task.complaintId}:`, result.error)
-                        failCount++
-                    }
-                } catch (innerErr) {
-                    console.error(`DraftLetter: Error sending email for ${task.complaintId}:`, innerErr)
-                    failCount++
-                }
-            }
-
-            // Show result summary
-            if (failCount === 0) {
-                alert("Email sent successfully to selected recipients")
-            } else if (successCount > 0) {
-                alert(`Email sent to ${successCount} recipient(s). ${failCount} failed.`)
-            } else {
-                alert(`Failed to send emails. Please check email addresses and try again.`)
-            }
-
-            setSelectedHistoryIds(new Set())
-
-        } catch (err) {
-            console.error("DraftLetter: Batch email error:", err)
-            alert("Failed to send emails: " + err.message)
-        } finally {
-            setIsSendingEmail(false)
-        }
+        // Email sending requires a backend email service.
+        // PDF links are already saved to Supabase. You can share the PDF links directly.
+        const selectedTasks = historyTasks.filter(t => selectedHistoryIds.has(t.complaintId))
+        const summary = selectedTasks.map(t => `${t.complaintId}: ${t.pdfUrl || 'No PDF'}`).join("\n")
+        alert(`Email service not configured.\n\nSelected ${selectedTasks.length} record(s):\n${summary}\n\nPlease share the PDF links directly.`)
+        setSelectedHistoryIds(new Set())
     }
 
     const getCurrentTasks = () => {
@@ -1333,7 +1089,7 @@ function DraftLetter() {
                                                             className="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                                         >
                                                             <option value="">Select a company</option>
-                                                            {companyOptions.map((opt, index) => (
+                                                            {companyOptions.filter(opt => opt.name && opt.name.trim() !== "").map((opt, index) => (
                                                                 <option key={index} value={opt.name}>
                                                                     {opt.name}
                                                                 </option>

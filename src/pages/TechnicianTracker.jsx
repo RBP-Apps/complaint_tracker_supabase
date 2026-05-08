@@ -10,6 +10,7 @@ import { Calendar, Upload, MapPin, Loader, Edit, Check, X } from "react-feather"
 import DatePicker from "react-datepicker"
 import "react-datepicker/dist/react-datepicker.css"
 import DashboardLayout from "../components/DashboardLayout"
+import supabase from "../utils/supabase"
 
 function TechnicianTracker() {
   const [activeTab, setActiveTab] = useState("pending")
@@ -49,8 +50,7 @@ function TechnicianTracker() {
     ? (username || "").substring(4).trim()
     : ""
 
-  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwnIMOzsFbniWnPFhl3lzE-2W0l6lD23keuz57-ldS_umSXIJqpEK-qxLE6eM0s7drqrQ/exec"
-  const DRIVE_FOLDER_ID = "1-H5DWKRV2u_ueqtLX-ISTPvuySGYBLoT"
+
 
   const getFilteredPendingTasks = () => {
     console.log("🔵 Getting Pending Tasks, techDisplayName:", techDisplayName);
@@ -211,193 +211,86 @@ function TechnicianTracker() {
     const fetchTasks = async () => {
       setIsLoading(true)
       setError(null)
-
       try {
-        // Fetch FMS data for pending tasks
-        const sheetUrl = "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=FMS"
-        const response = await fetch(sheetUrl)
-        const text = await response.text()
+        // Fetch pending tasks from Supabase FMS (planned1 set, actual1 null)
+        const { data: fmsData, error: fmsError } = await supabase
+          .from("FMS")
+          .select("*")
+          .not("planned1", "is", null)
+          .is("actual1", null)
 
-        const jsonStart = text.indexOf('{')
-        const jsonEnd = text.lastIndexOf('}') + 1
-        const jsonData = text.substring(jsonStart, jsonEnd)
+        if (fmsError) throw fmsError
 
-        const data = JSON.parse(jsonData)
+        const pendingData = (fmsData || []).map((row, index) => ({
+          rowIndex: index + 1,
+          complaintNo: row.complaint_id || "",
+          date: row.timestamp ? formatDateString(row.timestamp) : "",
+          head: row.company_name || "",
+          companyName: row.company_name || "",
+          modeOfCall: row.mode_of_call || "",
+          idNumber: row.id_number || "",
+          projectName: row.project_name || "",
+          complaintNumber: row.complaint_id || "",
+          complaintDate: row.complaint_date ? formatDateString(row.complaint_date) : "",
+          beneficiaryName: row.beneficiary_name || "",
+          contactNumber: row.contact_number || "",
+          village: row.village || "",
+          block: row.block || "",
+          district: row.district || "",
+          product: row.product || "",
+          make: row.make || "",
+          systemVoltage: row.system_voltage || "",
+          rating: row.rating || "",
+          qty: row.qty || "",
+          priority: row.rating || "",
+          insuranceType: row.insurance_type || "",
+          natureOfComplaint: row.nature_of_complaint || "",
+          technicianName: row.technician_name || "",
+          technicianContact: row.technician_contact || "",
+          assigneeName: row.assignee_name || "",
+          assigneeWhatsApp: row.assignee_whatsapp_number || "",
+          location: row.location || "",
+          complaintDetails: row.complaint_details || "",
+          expectedCompletionDate: row.expected_completion_date ? formatDateString(row.expected_completion_date) : "",
+          notesForTechnician: row.notes_for_technician || "",
+          id: row.complaint_id || `COMP-${index + 1}`,
+          fullRowData: row
+        }))
 
-        const pendingData = []
+        // Fetch history from Supabase Tracker table
+        const { data: trackerData, error: trackerError } = await supabase
+          .from("Tracker")
+          .select("*")
+          .order("id", { ascending: false })
 
-        if (data && data.table && data.table.rows) {
-          console.log('Total rows in FMS sheet:', data.table.rows.length);
+        if (trackerError) throw trackerError
 
-          data.table.rows.forEach((row, index) => {
-            console.log(`\n=== Row ${index + 1} ===`);
-            console.log('Has row.c?', !!row.c);
-
-            if (row.c) {
-              console.log('Total columns in this row:', row.c.length);
-              console.log('Column AJ (index 35) value:', row.c[35] ? row.c[35].v : 'EMPTY/NULL');
-              console.log('Column AK (index 36) value:', row.c[36] ? row.c[36].v : 'EMPTY/NULL');
-              console.log('Complaint Number (index 8):', row.c[8] ? row.c[8].v : 'EMPTY');
-
-              const hasColumnAJ = row.c[35] && row.c[35].v !== null && row.c[35].v !== "";
-              const hasEmptyColumnAK = !row.c[36] || row.c[36].v === null || row.c[36].v === "";
-
-              console.log('Column AJ has value?', hasColumnAJ);
-              console.log('Column AK is empty?', hasEmptyColumnAK);
-              console.log('WILL ADD TO PENDING?', hasColumnAJ && hasEmptyColumnAK);
-
-              if (hasColumnAJ && hasEmptyColumnAK) {
-                const task = {
-                  rowIndex: index + 1,
-                  complaintNo: row.c[1] ? row.c[1].v : "",
-                  date: row.c[2] ? formatDateString(row.c[2].v) : "",
-                  head: row.c[3] ? row.c[3].v : "",
-                  companyName: row.c[4] ? row.c[4].v : "",
-                  modeOfCall: row.c[5] ? row.c[5].v : "",
-                  idNumber: row.c[6] ? row.c[6].v : "",
-                  projectName: row.c[7] ? row.c[7].v : "",
-                  complaintNumber: row.c[8] ? row.c[8].v : "",
-                  complaintDate: row.c[9] ? formatDateString(row.c[9].v) : "",
-                  beneficiaryName: row.c[10] ? row.c[10].v : "",
-                  contactNumber: row.c[11] ? row.c[11].v : "",
-                  village: row.c[12] ? row.c[12].v : "",
-                  block: row.c[13] ? row.c[13].v : "",
-                  district: row.c[14] ? row.c[14].v : "",
-                  product: row.c[15] ? row.c[15].v : "",
-                  make: row.c[16] ? row.c[16].v : "",
-                  systemVoltage: row.c[17] ? row.c[17].v : "",
-                  rating: row.c[18] ? row.c[18].v : "",
-                  qty: row.c[19] ? row.c[19].v : "",
-                  acDc: row.c[20] ? row.c[20].v : "",
-                  priority: row.c[21] ? row.c[21].v : "",
-                  insuranceType: row.c[22] ? row.c[22].v : "",
-                  natureOfComplaint: row.c[23] ? row.c[23].v : "",
-                  technicianName: row.c[27] ? row.c[27].v : "",
-                  technicianContact: row.c[28] ? row.c[28].v : "",
-                  assigneeName: row.c[29] ? row.c[29].v : "",
-                  assigneeWhatsApp: row.c[30] ? row.c[30].v : "",
-                  location: row.c[31] ? row.c[31].v : "",
-                  complaintDetails: row.c[32] ? row.c[32].v : "",
-                  expectedCompletionDate: row.c[33] ? formatDateString(row.c[33].v) : "",
-                  notesForTechnician: row.c[34] ? row.c[34].v : "",
-                  id: row.c[1] ? row.c[1].v : `COMP-${index + 1}`,
-                  assignee: row.c[29] ? row.c[29].v : "",
-                  technician: row.c[27] ? row.c[27].v : "",
-                  details: row.c[32] ? row.c[32].v : "",
-                  targetDate: row.c[33] ? formatDateString(row.c[33].v) : "",
-                  fullRowData: row.c
-                }
-
-                console.log('✅ ADDED TASK:', task.complaintNumber);
-                pendingData.push(task)
-              }
-            }
-          })
-        }
-
-        // Fetch Tracker sheet data for history - FIXED: Get ALL data from Tracker sheet
-        console.log("Fetching Tracker sheet data...");
-        const trackerSheetUrl = "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=Tracker"
-        const trackerResponse = await fetch(trackerSheetUrl)
-        const trackerText = await trackerResponse.text()
-
-        console.log("Tracker response status:", trackerResponse.status);
-
-        const trackerJsonStart = trackerText.indexOf('{')
-        const trackerJsonEnd = trackerText.lastIndexOf('}') + 1
-        const trackerJsonData = trackerText.substring(trackerJsonStart, trackerJsonEnd)
-
-        const trackerData = JSON.parse(trackerJsonData)
-        console.log("Tracker data:", trackerData);
-
-        const historyData = []
-
-        if (trackerData && trackerData.table && trackerData.table.rows) {
-          console.log("Tracker rows found:", trackerData.table.rows.length);
-
-          trackerData.table.rows.forEach((row, index) => {
-            console.log(`\n=== Tracker Row ${index + 1} ===`);
-            console.log('Has row.c?', !!row.c);
-
-            if (row.c && row.c.length > 0) {
-              const firstCell = row.c[0] ? row.c[0].v : "";
-              const secondCell = row.c[1] ? row.c[1].v : "";
-
-              console.log('First cell:', firstCell);
-              console.log('Second cell:', secondCell);
-
-              // Skip only header rows
-              if (firstCell === "Timestamp" || firstCell === "Technician" ||
-                secondCell === "Attend id" || secondCell === "Assignee Response") {
-                console.log(`Skipping header row ${index + 1}`);
-                return;
-              }
-
-              if (!row.c[1] || !row.c[1].v) {
-                console.log(`Skipping empty row ${index + 1}`);
-                return;
-              }
-
-              // FIXED: Include ALL rows from Tracker sheet (remove status filter)
-              console.log("Processing ALL tracker row:", index + 1);
-
-              const historyTask = {
-                id: row.c[1] ? row.c[1].v : `TRACK-${index + 1}`,
-                timestamp: row.c[0] ? row.c[0].v : "",
-                attendId: row.c[1] ? row.c[1].v : "",
-                complaintNumber: row.c[2] ? row.c[2].v : "",
-                technicianName: row.c[3] ? row.c[3].v : "",
-                beneficiaryName: row.c[4] ? row.c[4].v : "",
-                contactNumber: row.c[5] ? row.c[5].v : "",
-                village: row.c[6] ? row.c[6].v : "",
-                block: row.c[7] ? row.c[7].v : "",
-                district: row.c[8] ? row.c[8].v : "",
-                product: row.c[9] ? row.c[9].v : "",
-                make: row.c[10] ? row.c[10].v : "",
-                systemVoltage: row.c[11] ? row.c[11].v : "",
-                natureOfComplaint: row.c[12] ? row.c[12].v : "",
-                uploadDocuments: row.c[13] ? row.c[13].v : "",
-                geotagPhoto: row.c[14] ? row.c[14].v : "",
-                remarks: row.c[15] ? row.c[15].v : "",
-                trackerStatus: row.c[16] ? row.c[16].v : "",
-                assigneeName: row.c[17] ? row.c[17].v : "",
-                checked: row.c[18] ? row.c[18].v : "",
-                remark: row.c[19] ? row.c[19].v : "",
-                latitude: row.c[20] ? row.c[20].v : "",
-                longitude: row.c[21] ? row.c[21].v : "",
-                address: row.c[22] ? row.c[22].v : "",
-                companyName: "",
-                modeOfCall: "",
-                idNumber: "",
-                projectName: "",
-                complaintDate: "",
-                rating: "",
-                qty: "",
-                acDc: "",
-                priority: "",
-                insuranceType: "",
-                technicianContact: "",
-                assigneeWhatsApp: "",
-                location: "",
-                complaintDetails: "",
-                expectedCompletionDate: "",
-                notesForTechnician: ""
-              }
-
-              console.log("✅ ADDED TO HISTORY:", historyTask);
-              historyData.push(historyTask)
-            }
-          })
-        } else {
-          console.log("No tracker data found");
-        }
-
-        console.log("Final Pending tasks:", pendingData.length);
-        console.log("Final History tasks:", historyData.length);
+        const historyData = (trackerData || []).map((row) => ({
+          id: row.serial_no || `TRACK-${row.id}`,
+          timestamp: row.timestamp || "",
+          attendId: row.serial_no || "",
+          complaintNumber: row.complaint_id || "",
+          technicianName: row.technician_name || "",
+          beneficiaryName: row.beneficiary_name || "",
+          contactNumber: row.contact_number || "",
+          village: row.village || "",
+          block: row.block || "",
+          district: row.district || "",
+          product: row.product || "",
+          make: row.make || "",
+          systemVoltage: row.system_voltage || "",
+          natureOfComplaint: row.nature_of_complaint || "",
+          uploadDocuments: row.upload_documents || "",
+          geotagPhoto: row.geotag_photo || "",
+          remarks: row.action_taken || "",
+          trackerStatus: row.tracker_status || "",
+          latitude: row.latitude || "",
+          longitude: row.longitude || "",
+          address: row.address || ""
+        }))
 
         setPendingTasks(pendingData)
         setHistoryTasks(historyData)
-
       } catch (err) {
         console.error("Error fetching tasks data:", err)
         setError(err.message)
@@ -410,20 +303,10 @@ function TechnicianTracker() {
 
     const fetchTechnicianOptions = async () => {
       try {
-        const sheetUrl = "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=master"
-        const response = await fetch(sheetUrl)
-        const text = await response.text()
-
-        const jsonStart = text.indexOf('{')
-        const jsonEnd = text.lastIndexOf('}') + 1
-        const jsonData = text.substring(jsonStart, jsonEnd)
-
-        const data = JSON.parse(jsonData)
-
-        if (data && data.table && data.table.rows) {
-          const options = data.table.rows.slice(2).map(row => row.c[5]?.v || "").filter(name => name && name.trim() !== "")
-          setTechnicianOptions([...new Set(options)].sort())
-        }
+        const { data, error } = await supabase.from("Master").select("technician_name")
+        if (error) throw error
+        const options = data.map(r => r.technician_name).filter(Boolean)
+        setTechnicianOptions([...new Set(options)].sort())
       } catch (err) {
         console.error("Error fetching technician options:", err)
         setTechnicianOptions([])
@@ -437,37 +320,15 @@ function TechnicianTracker() {
   // All other functions remain the same...
   const uploadFileToDrive = async (file, fileType) => {
     if (!file) return null;
-
     try {
       setUploadStatus(`Uploading ${fileType}...`);
-
-      const reader = new FileReader();
-      const fileBase64 = await new Promise((resolve, reject) => {
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const formData = new FormData();
-      formData.append('action', 'uploadFile');
-      formData.append('fileName', file.name);
-      formData.append('mimeType', file.type);
-      formData.append('folderId', DRIVE_FOLDER_ID);
-      formData.append('data', fileBase64);
-
-      const response = await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        body: formData
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to upload file');
-      }
-
-      return `https://drive.google.com/uc?id=${result.fileId}`;
-
+      const fileName = `${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage
+        .from("vendor_tracker")
+        .upload(fileName, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supabase.storage.from("vendor_tracker").getPublicUrl(fileName);
+      return data.publicUrl;
     } catch (err) {
       console.error(`Error uploading ${fileType}:`, err);
       alert(`Failed to upload ${fileType}: ${err.message}`);
@@ -503,24 +364,16 @@ function TechnicianTracker() {
 
       await submitToTrackerSheet(task, completionDate, remarks, documentUrl, photoUrl, status);
 
-      const formData = new FormData();
-      formData.append('action', 'updateSpecificColumns');
-      formData.append('sheetName', 'FMS');
-      formData.append('complaintNumber', task.complaintNumber);
-      formData.append('updates', JSON.stringify({
-        trackerStatus: status
-      }));
-
-      const response = await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to update tracker status in FMS');
-      }
+    // Update FMS status in Supabase
+    try {
+      const { error: fmsError } = await supabase
+        .from("FMS")
+        .update({ last_attend_status: status })
+        .eq("complaint_id", task.complaintNumber)
+      if (fmsError) console.warn("FMS status update failed (non-critical):", fmsError.message)
+    } catch (fmsErr) {
+      console.warn("FMS status update error (non-critical):", fmsErr)
+    }
 
       if (status === "close_task") {
         setPendingTasks(prev =>
@@ -548,118 +401,55 @@ function TechnicianTracker() {
     }
   };
 
-  const submitToTrackerSheet = async (
-    task,
-    completionDate,
-    remarks,
-    documentUrl,
-    photoUrl,
-    trackerStatus
-  ) => {
+  const submitToTrackerSheet = async (task, completionDate, remarks, documentUrl, photoUrl, trackerStatus) => {
     try {
-      const formData = new FormData();
-      formData.append('sheetName', 'Tracker');
-      formData.append('action', 'insert');
+      // Generate RBPST serial number from Supabase
+      const { data: lastRow } = await supabase
+        .from("Tracker")
+        .select("serial_no")
+        .order("id", { ascending: false })
+        .limit(1)
 
-      const currentTimestamp = new Date().toLocaleString('en-US');
-
-      const generateAttendId = async () => {
-        try {
-          const sheetUrl =
-            "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=Tracker";
-          const response = await fetch(sheetUrl);
-          const text = await response.text();
-
-          const jsonStart = text.indexOf('{');
-          const jsonEnd = text.lastIndexOf('}') + 1;
-          const jsonData = text.substring(jsonStart, jsonEnd);
-
-          const data = JSON.parse(jsonData);
-
-          let maxNumber = 0;
-
-          if (data && data.table && data.table.rows) {
-            data.table.rows.forEach((row) => {
-              if (row.c && row.c[1] && row.c[1].v) {
-                const cellValue = row.c[1].v.toString();
-                if (cellValue.startsWith('RBPST-')) {
-                  const numberPart = cellValue.replace('RBPST-', '');
-                  const number = parseInt(numberPart);
-                  if (!isNaN(number) && number > maxNumber) {
-                    maxNumber = number;
-                  }
-                }
-              }
-            });
-          }
-
-          const nextNumber = maxNumber + 1;
-          return `RBPST-${nextNumber.toString().padStart(2, '0')}`;
-        } catch (error) {
-          console.error("Error checking existing IDs:", error);
-          return "RBPST-01";
-        }
-      };
-
-      const attendId = await generateAttendId();
-
-      const latitude = photoLocation ? photoLocation.latitude : "";
-      const longitude = photoLocation ? photoLocation.longitude : "";
-      const address = photoLocation ? photoLocation.formattedAddress : "";
-
-      const trackerRow = [
-        currentTimestamp,
-        attendId,
-        task.id || "",
-        technicianName || task.technicianName || "",
-        task.beneficiaryName || "",
-        task.contactNumber || "",
-        task.village || "",
-        task.block || "",
-        task.district || "",
-        task.product || "",
-        task.make || "",
-        task.systemVoltage || "",
-        task.natureOfComplaint || "",
-        documentUrl || "",
-
-        (photoUrl && photoUrl.includes("drive.google.com")
-          ? (() => {
-            const match = photoUrl.match(/[-\w]{25,}/);
-            return match ? `https://drive.google.com/uc?id=${match[0]}` : "";
-          })()
-          : ""
-        ),
-
-        remarks || "",
-        trackerStatus || "pending",
-        "",
-        "", "", "",
-        latitude || "",
-        longitude || "",
-        address || ""
-      ];
-
-      console.log("📋 Tracker Row:", trackerRow);
-
-      formData.append("rowData", JSON.stringify(trackerRow));
-
-      const response = await fetch(GOOGLE_SCRIPT_URL, {
-        method: "POST",
-        body: formData,
-      });
-
-      const result = await response.json();
-      console.log("✅ Response:", result);
-
-      if (!result.success) {
-        throw new Error(result.error || "Failed to submit to Tracker sheet");
+      let nextNumber = 1
+      if (lastRow && lastRow.length > 0 && lastRow[0].serial_no) {
+        const num = parseInt(lastRow[0].serial_no.replace("RBPST-", "")) || 0
+        nextNumber = num + 1
       }
+      const attendId = `RBPST-${String(nextNumber).padStart(2, "0")}`
 
-      return true;
+      const latitude = photoLocation ? photoLocation.latitude : null
+      const longitude = photoLocation ? photoLocation.longitude : null
+      const address = photoLocation ? photoLocation.formattedAddress : ""
+
+      const { error } = await supabase.from("Tracker").insert([{
+        timestamp: new Date(),
+        serial_no: attendId,
+        complaint_id: task.id || task.complaintNumber || "",
+        technician_name: technicianName || task.technicianName || "",
+        technician_number: task.technicianContact || "",
+        beneficiary_name: task.beneficiaryName || "",
+        contact_number: task.contactNumber || "",
+        village: task.village || "",
+        block: task.block || "",
+        district: task.district || "",
+        product: task.product || "",
+        make: task.make || "",
+        system_voltage: task.systemVoltage || "",
+        nature_of_complaint: task.natureOfComplaint || "",
+        upload_documents: documentUrl || "",
+        geotag_photo: photoUrl || "",
+        action_taken: remarks || "",
+        tracker_status: trackerStatus || "pending",
+        latitude: latitude || null,
+        longitude: longitude || null,
+        address: address || ""
+      }])
+
+      if (error) throw error
+      return true
     } catch (error) {
-      console.error("❌ Error:", error);
-      throw error;
+      console.error("❌ Tracker insert error:", error)
+      throw error
     }
   };
 
@@ -839,76 +629,50 @@ function TechnicianTracker() {
   const handleSubmitEdit = async (task) => {
     setIsSubmitting(true);
     try {
-      const updates = {};
+      const supabaseUpdates = {}
+      if (editedData.technicianName !== undefined) supabaseUpdates.technician_name = editedData.technicianName
+      if (editedData.technicianContact !== undefined) supabaseUpdates.technician_contact = editedData.technicianContact
+      if (editedData.assigneeName !== undefined) supabaseUpdates.assignee_name = editedData.assigneeName
+      if (editedData.assigneeWhatsApp !== undefined) supabaseUpdates.assignee_whatsapp_number = editedData.assigneeWhatsApp
+      if (editedData.location !== undefined) supabaseUpdates.location = editedData.location
+      if (editedData.complaintDetails !== undefined) supabaseUpdates.complaint_details = editedData.complaintDetails
+      if (editedData.expectedCompletionDate !== undefined) supabaseUpdates.expected_completion_date = editedData.expectedCompletionDate
+      if (editedData.notesForTechnician !== undefined) supabaseUpdates.notes_for_technician = editedData.notesForTechnician
+      if (editedData.trackerStatus !== undefined) supabaseUpdates.last_attend_status = editedData.trackerStatus
 
-      if (editedData.technicianName !== undefined) {
-        updates['technicianName'] = editedData.technicianName;
-      }
-      if (editedData.technicianContact !== undefined) {
-        updates['technicianContact'] = editedData.technicianContact;
-      }
-      if (editedData.assigneeName !== undefined) {
-        updates['assigneeName'] = editedData.assigneeName;
-      }
-      if (editedData.assigneeWhatsApp !== undefined) {
-        updates['assigneeWhatsApp'] = editedData.assigneeWhatsApp;
-      }
-      if (editedData.location !== undefined) {
-        updates['location'] = editedData.location;
-      }
-      if (editedData.complaintDetails !== undefined) {
-        updates['complaintDetails'] = editedData.complaintDetails;
-      }
-      if (editedData.expectedCompletionDate !== undefined) {
-        updates['expectedCompletionDate'] = editedData.expectedCompletionDate;
-      }
-      if (editedData.notesForTechnician !== undefined) {
-        updates['notesForTechnician'] = editedData.notesForTechnician;
+      if (Object.keys(supabaseUpdates).length > 0) {
+        const { error } = await supabase
+          .from("FMS")
+          .update(supabaseUpdates)
+          .eq("complaint_id", task.complaintNumber)
+        if (error) throw error
       }
 
-      if (editedData.trackerStatus !== undefined) {
-        updates['trackerStatus'] = editedData.trackerStatus;
-      }
-
-      const formData = new FormData();
-      formData.append('action', 'updateSpecificColumns');
-      formData.append('sheetName', 'FMS');
-      formData.append('complaintNumber', task.complaintNumber);
-      formData.append('updates', JSON.stringify(updates));
-
-      const response = await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to update row');
-      }
+      // Update local state
+      const localUpdates = {}
+      if (editedData.technicianName !== undefined) localUpdates.technicianName = editedData.technicianName
+      if (editedData.technicianContact !== undefined) localUpdates.technicianContact = editedData.technicianContact
+      if (editedData.assigneeName !== undefined) localUpdates.assigneeName = editedData.assigneeName
+      if (editedData.assigneeWhatsApp !== undefined) localUpdates.assigneeWhatsApp = editedData.assigneeWhatsApp
+      if (editedData.location !== undefined) localUpdates.location = editedData.location
+      if (editedData.complaintDetails !== undefined) localUpdates.complaintDetails = editedData.complaintDetails
+      if (editedData.expectedCompletionDate !== undefined) localUpdates.expectedCompletionDate = editedData.expectedCompletionDate
+      if (editedData.notesForTechnician !== undefined) localUpdates.notesForTechnician = editedData.notesForTechnician
+      if (editedData.trackerStatus !== undefined) localUpdates.trackerStatus = editedData.trackerStatus
 
       if (activeTab === "pending") {
-        setPendingTasks(prev =>
-          prev.map(t =>
-            t.id === task.id ? { ...t, ...updates } : t
-          )
-        );
+        setPendingTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...localUpdates } : t))
       } else {
-        setHistoryTasks(prev =>
-          prev.map(t =>
-            t.id === task.id ? { ...t, ...updates } : t
-          )
-        );
+        setHistoryTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...localUpdates } : t))
       }
-
-      setEditingRow(null);
-      setEditedData({});
-      alert("Task updated successfully!");
+      setEditingRow(null)
+      setEditedData({})
+      alert("Task updated successfully!")
     } catch (err) {
-      console.error("Error updating task:", err);
-      alert("Failed to update task: " + err.message);
+      console.error("Error updating task:", err)
+      alert("Failed to update task: " + err.message)
     } finally {
-      setIsSubmitting(false);
+      setIsSubmitting(false)
     }
   };
 

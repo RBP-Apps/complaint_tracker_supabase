@@ -6,7 +6,7 @@ import { Calendar, Upload, MapPin, Loader, Edit, Check, X } from "react-feather"
 import DatePicker from "react-datepicker"
 import "react-datepicker/dist/react-datepicker.css"
 import DashboardLayout from "../components/DashboardLayout"
-import  supabase from "../utils/supabase"
+import supabase from "../utils/supabase"
 
 function ComplaintTracker() {
   const [activeTab, setActiveTab] = useState("pending")
@@ -25,176 +25,297 @@ function ComplaintTracker() {
 
 
 
+  // useEffect(() => {
+  //   const fetchTasks = async () => {
+  //     setIsLoading(true);
+  //     setError(null);
+
+  //     try {
+  //       console.log("🚀 Fetching from Supabase...");
+
+  //       const { data: trackerData, error: trackerError } = await supabase
+  //         .from("Tracker")
+  //         .select("*")
+  //         .range(0, 99999)
+
+  //       if (trackerError) throw trackerError;
+
+  //       const { data: fmsData, error: fmsError } = await supabase
+  //         .from("FMS")
+  //         .select("complaint_id, id_number");
+
+  //       if (fmsError) throw fmsError;
+
+  //       // 🔴 ID Number mapping (same logic)
+  //       const idNumberMap = {};
+  //       fmsData.forEach((row) => {
+  //         idNumberMap[String(row.complaint_id).trim()] = row.id_number;
+  //       });
+
+  //       const pendingData = [];
+  //       const historyData = [];
+
+  //       trackerData.forEach((row) => {
+  //         const task = {
+  //           id: row.serial_no,
+  //           serialNo: row.serial_no,
+  //           complaintId: row.complaint_id,
+  //           idNumber: idNumberMap[String(row.complaint_id).trim()] || "-",
+
+  //           technicianName: row.technician_name,
+  //           technicianContact: row.technician_number,
+  //           beneficiaryName: row.beneficiary_name,
+  //           contactNumber: row.contact_number,
+
+  //           village: row.village,
+  //           block: row.block,
+  //           district: row.district,
+
+  //           product: row.product,
+  //           make: row.make,
+
+  //           systemVoltage: row.system_voltage,
+  //           natureOfComplaint: row.nature_of_complaint,
+
+  //           uploadDocuments: row.upload_documents,
+  //           geotagPhoto: row.geotag_photo,
+
+  //           remarks: row.action_taken,
+  //           trackerStatus: row.tracker_status,
+
+  //           assigneeName: "",
+
+  //           plannedDate: row.planned,
+  //           actualDate: row.actual,
+
+  //           columnV: row.planned,
+  //           columnW: row.actual,
+  //           checked: row.checked,
+  //           remark: row.remark,
+  //         };
+
+  //         const hasColumnV = row.planned !== null;
+  //         const hasColumnW = row.actual !== null;
+
+  //         if (hasColumnV && !hasColumnW) {
+  //           pendingData.push(task);
+  //         } else if (hasColumnV && hasColumnW) {
+  //           historyData.push(task);
+  //         }
+  //       });
+
+  //       setPendingTasks(pendingData);
+  //       setHistoryTasks(historyData);
+
+  //     } catch (err) {
+  //       console.error("❌ Fetch error:", err);
+  //       setError(err.message);
+  //       setPendingTasks([]);
+  //       setHistoryTasks([]);
+  //     } finally {
+  //       setIsLoading(false);
+  //     }
+  //   };
+
+  //   fetchTasks()
+  //   fetchCheckedOptions()
+  // }, [])
+
+
+
   useEffect(() => {
- const fetchTasks = async () => {
-  setIsLoading(true);
-  setError(null);
+  const fetchTasks = async () => {
+    setIsLoading(true);
+    setError(null);
 
-  try {
-    console.log("🚀 Fetching from Supabase...");
+    try {
+      console.log("🚀 Fetching from Supabase...");
 
-    const { data: trackerData, error: trackerError } = await supabase
-      .from("Tracker")
-      .select("*");
+      // 🔥 Batch Fetch Logic
+      let allTrackerData = [];
+      let from = 0;
+      const batchSize = 1000;
+      let hasMore = true;
 
-    if (trackerError) throw trackerError;
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from("Tracker")
+          .select("*")
+          .order("id", { ascending: false })
+          .range(from, from + batchSize - 1);
 
-    const { data: fmsData, error: fmsError } = await supabase
-      .from("FMS")
-      .select("complaint_id, id_number");
+        if (error) throw error;
 
-    if (fmsError) throw fmsError;
+        if (data && data.length > 0) {
+          allTrackerData = [...allTrackerData, ...data];
+          from += batchSize;
 
-    // 🔴 ID Number mapping (same logic)
-    const idNumberMap = {};
-    fmsData.forEach((row) => {
-      idNumberMap[String(row.complaint_id).trim()] = row.id_number;
-    });
+          console.log(`✅ Loaded ${allTrackerData.length} rows`);
+        } else {
+          hasMore = false;
+        }
+      }
 
-    const pendingData = [];
-    const historyData = [];
+      const trackerData = allTrackerData;
 
-    trackerData.forEach((row) => {
-      const task = {
-        id: row.serial_no,
-        serialNo: row.serial_no,
-        complaintId: row.complaint_id,
-        idNumber: idNumberMap[String(row.complaint_id).trim()] || "-",
+      const { data: fmsData, error: fmsError } = await supabase
+        .from("FMS")
+        .select("complaint_id, id_number");
 
-        technicianName: row.technician_name,
-        technicianContact: row.technician_number,
-        beneficiaryName: row.beneficiary_name,
-        contactNumber: row.contact_number,
+      if (fmsError) throw fmsError;
 
-        village: row.village,
-        block: row.block,
-        district: row.district,
+      // 🔴 ID Number mapping (same logic)
+      const idNumberMap = {};
+      fmsData.forEach((row) => {
+        idNumberMap[String(row.complaint_id).trim()] = row.id_number;
+      });
 
-        product: row.product,
-        make: row.make,
+      const pendingData = [];
+      const historyData = [];
 
-        systemVoltage: row.system_voltage,
-        natureOfComplaint: row.nature_of_complaint,
+      trackerData.forEach((row) => {
+        const task = {
+          id: row.serial_no,
+          serialNo: row.serial_no,
+          complaintId: row.complaint_id,
+          idNumber: idNumberMap[String(row.complaint_id).trim()] || "-",
 
-        uploadDocuments: row.upload_documents,
-        geotagPhoto: row.geotag_photo,
+          technicianName: row.technician_name,
+          technicianContact: row.technician_number,
+          beneficiaryName: row.beneficiary_name,
+          contactNumber: row.contact_number,
 
-        remarks: row.action_taken,
-        trackerStatus: row.tracker_status,
+          village: row.village,
+          block: row.block,
+          district: row.district,
 
-        assigneeName: "",
+          product: row.product,
+          make: row.make,
 
-        plannedDate: row.planned,
-        actualDate: row.actual,
+          systemVoltage: row.system_voltage,
+          natureOfComplaint: row.nature_of_complaint,
 
-        columnV: row.planned,
-        columnW: row.actual,
-        checked: row.checked,
-        remark: row.remark,
+          uploadDocuments: row.upload_documents,
+          geotagPhoto: row.geotag_photo,
+
+          remarks: row.action_taken,
+          trackerStatus: row.tracker_status,
+
+          assigneeName: "",
+
+          plannedDate: row.planned,
+          actualDate: row.actual,
+
+          columnV: row.planned,
+          columnW: row.actual,
+          checked: row.checked,
+          remark: row.remark,
+        };
+
+        const hasColumnV = row.planned !== null;
+        const hasColumnW = row.actual !== null;
+
+        if (hasColumnV && !hasColumnW) {
+          pendingData.push(task);
+        } else if (hasColumnV && hasColumnW) {
+          historyData.push(task);
+        }
+      });
+
+      setPendingTasks(pendingData);
+      setHistoryTasks(historyData);
+
+    } catch (err) {
+      console.error("❌ Fetch error:", err);
+      setError(err.message);
+      setPendingTasks([]);
+      setHistoryTasks([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  fetchTasks();
+  fetchCheckedOptions();
+}, []);
+
+
+
+
+
+  const fetchCheckedOptions = async () => {
+    try {
+      console.log("🚀 Fetching checked options from Supabase...");
+
+      const { data, error } = await supabase
+        .from("Master")
+        .select("checked");
+
+      if (error) throw error;
+
+      const options = data
+        .map((row) => row.checked)
+        .filter(Boolean);
+
+      setCheckedOptions([...new Set(options)]);
+
+    } catch (err) {
+      console.error("❌ Error fetching options:", err);
+    }
+  };
+
+
+
+
+  const handleUpdateTask = async () => {
+    setIsSubmitting(true);
+
+    try {
+      const task = pendingTasks.find(t => t.id === selectedTask);
+      if (!task) throw new Error("Task not found");
+
+      const actualDate = new Date();
+
+      const { error } = await supabase
+        .from("Tracker")
+        .update({
+          checked: checked,
+          remark: remark || "",
+          actual: actualDate,
+        })
+        .eq("serial_no", task.serialNo);
+
+      if (error) throw error;
+
+      const updatedTask = {
+        ...task,
+        checked: checked,
+        remark: remark,
+        actualDate: actualDate,
       };
 
-      const hasColumnV = row.planned !== null;
-      const hasColumnW = row.actual !== null;
+      setPendingTasks(prev => prev.filter(t => t.serialNo !== task.serialNo));
 
-      if (hasColumnV && !hasColumnW) {
-        pendingData.push(task);
-      } else if (hasColumnV && hasColumnW) {
-        historyData.push(task);
-      }
-    });
+      setHistoryTasks(prev => {
+        const exists = prev.some(t => t.serialNo === task.serialNo);
+        if (exists) {
+          return prev.map(t => t.serialNo === task.serialNo ? updatedTask : t);
+        }
+        return [...prev, updatedTask];
+      });
 
-    setPendingTasks(pendingData);
-    setHistoryTasks(historyData);
+      alert(`Task ${selectedTask} updated successfully`);
 
-  } catch (err) {
-    console.error("❌ Fetch error:", err);
-    setError(err.message);
-    setPendingTasks([]);
-    setHistoryTasks([]);
-  } finally {
-    setIsLoading(false);
-  }
-};
+      setIsDialogOpen(false);
+      resetDialogState();
 
-    fetchTasks()
-    fetchCheckedOptions()
-  }, [])
-
-
-
- const fetchCheckedOptions = async () => {
-  try {
-    console.log("🚀 Fetching checked options from Supabase...");
-
-    const { data, error } = await supabase
-      .from("Master")
-      .select("checked");
-
-    if (error) throw error;
-
-    const options = data
-      .map((row) => row.checked)
-      .filter(Boolean);
-
-    setCheckedOptions([...new Set(options)]);
-
-  } catch (err) {
-    console.error("❌ Error fetching options:", err);
-  }
-};
-
-
-
-
-const handleUpdateTask = async () => {
-  setIsSubmitting(true);
-
-  try {
-    const task = pendingTasks.find(t => t.id === selectedTask);
-    if (!task) throw new Error("Task not found");
-
-    const actualDate = new Date();
-
-    const { error } = await supabase
-      .from("Tracker")
-      .update({
-        checked: checked,
-        remark: remark || "",
-        actual: actualDate,
-      })
-      .eq("serial_no", task.serialNo);
-
-    if (error) throw error;
-
-    const updatedTask = {
-      ...task,
-      checked: checked,
-      remark: remark,
-      actualDate: actualDate,
-    };
-
-    setPendingTasks(prev => prev.filter(t => t.serialNo !== task.serialNo));
-
-    setHistoryTasks(prev => {
-      const exists = prev.some(t => t.serialNo === task.serialNo);
-      if (exists) {
-        return prev.map(t => t.serialNo === task.serialNo ? updatedTask : t);
-      }
-      return [...prev, updatedTask];
-    });
-
-    alert(`Task ${selectedTask} updated successfully`);
-
-    setIsDialogOpen(false);
-    resetDialogState();
-
-  } catch (err) {
-    console.error("❌ Update error:", err);
-    alert("Failed: " + err.message);
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+    } catch (err) {
+      console.error("❌ Update error:", err);
+      alert("Failed: " + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const resetDialogState = () => {
     setSelectedTask(null)

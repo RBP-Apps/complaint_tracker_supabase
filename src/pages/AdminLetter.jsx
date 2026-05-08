@@ -5,6 +5,7 @@ import { pdf } from "@react-pdf/renderer";
 import DashboardLayout from "../components/DashboardLayout";
 import LetterPDFDocument from "../components/LetterPDFDocument";
 import RBPLetterPDF from "../components/RBPLetterPDF";
+import supabase from "../utils/supabase";
 
 
 const AdminLetter = () => {
@@ -17,8 +18,6 @@ const AdminLetter = () => {
     const [isSavingPDF, setIsSavingPDF] = useState(false);
     const [companyOptions, setCompanyOptions] = useState([]);
     const [selectedEmail, setSelectedEmail] = useState("tanay.vidhyut@gmail.com");
-
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwnIMOzsFbniWnPFhl3lzE-2W0l6lD23keuz57-ldS_umSXIJqpEK-qxLE6eM0s7drqrQ/exec";
 
     // Header Content State
     const [headerInfo, setHeaderInfo] = useState({
@@ -509,96 +508,66 @@ const AdminLetter = () => {
         setIsSavingPDF(true);
 
         try {
-           
-
-
             // 🔥 STEP 2: condition check
-const isColumnANTrue =
-    taskData?.columnAN === true ||
-    taskData?.columnAN === "true" ||
-    taskData?.columnAN === "TRUE";
+            const isColumnANTrue =
+                taskData?.columnAN === true ||
+                taskData?.columnAN === "true" ||
+                taskData?.columnAN === "TRUE";
 
-const isRBP =
-    headerInfo?.companyName?.toUpperCase().includes("RBP");
+            const isRBP = headerInfo?.companyName?.toUpperCase().includes("RBP");
 
-console.log("STEP2 CHECK 👉", {
-    columnAN: taskData?.columnAN,
-    company: headerInfo?.companyName,
-    isColumnANTrue,
-    isRBP
-});
+            console.log("STEP2 CHECK 👉", { columnAN: taskData?.columnAN, company: headerInfo?.companyName, isColumnANTrue, isRBP });
 
-// 🔥 STEP 3: decide PDF component
-const PdfComponent =
-    isColumnANTrue && isRBP
-        ? (
-            <RBPLetterPDF
-                headerInfo={headerInfo}
-                letterInfo={letterInfo}
-                tableColumns={tableColumns}
-                tableData={tableData}
-            />
-        )
-        : (
-            <LetterPDFDocument
-                headerInfo={headerInfo}
-                letterInfo={letterInfo}
-                tableColumns={tableColumns}
-                tableData={tableData}
-            />
-        );
+            // 🔥 STEP 3: decide PDF component
+            const PdfComponent = isColumnANTrue && isRBP
+                ? (<RBPLetterPDF headerInfo={headerInfo} letterInfo={letterInfo} tableColumns={tableColumns} tableData={tableData} />)
+                : (<LetterPDFDocument headerInfo={headerInfo} letterInfo={letterInfo} tableColumns={tableColumns} tableData={tableData} />);
 
-// 🔥 STEP 4: generate PDF
-const pdfBlob = await pdf(PdfComponent).toBlob();
-            
+            // 🔥 STEP 4: generate PDF blob
+            const pdfBlob = await pdf(PdfComponent).toBlob();
 
+            // 🔥 STEP 5: Upload to Supabase Storage (vendor_tracker bucket)
+            const fileName = `AdminLetter_${complaintId}_${Date.now()}.pdf`;
+            const { error: uploadError } = await supabase.storage
+                .from("vendor_tracker")
+                .upload(fileName, pdfBlob, { contentType: "application/pdf", upsert: true });
 
-            // 2. Upload to Google Drive (Download to browser removed as per request)
-            const reader = new FileReader();
-            const base64data = await new Promise((resolve, reject) => {
-                reader.onloadend = () => resolve(reader.result.split(',')[1]);
-                reader.onerror = reject;
-                reader.readAsDataURL(pdfBlob);
-            });
+            if (uploadError) throw new Error("PDF upload failed: " + uploadError.message);
 
-            const uploadData = new URLSearchParams();
-            uploadData.append('action', 'uploadFile');
-            uploadData.append('fileName', `AdminLetter_${complaintId}.pdf`);
-            uploadData.append('data', base64data);
-            uploadData.append('mimeType', 'application/pdf');
-            uploadData.append('folderId', '1fD7xiE6Tec_X4CwbllShNH6S04U33VsM');
+            const { data: urlData } = supabase.storage
+                .from("vendor_tracker")
+                .getPublicUrl(fileName);
 
-            const uploadRes = await fetch(GOOGLE_SCRIPT_URL, {
-                method: 'POST',
-                body: uploadData
-            });
-            const uploadResult = await uploadRes.json();
+            const pdfUrl = urlData.publicUrl;
+            console.log("✅ PDF uploaded to Supabase Storage:", pdfUrl);
 
-            if (uploadResult.success) {
-                const pdfUrl = uploadResult.fileUrl;
-                const saveParams = new URLSearchParams();
-                saveParams.append('action', 'savePdfLinkToFMS');
-                saveParams.append('complaintId', complaintId);
-                saveParams.append('companyName', headerInfo.companyName);
-                saveParams.append('email', selectedEmail);
-                saveParams.append('pdfUrl', pdfUrl);
+            // 🔥 STEP 6: Update FMS table in Supabase (non-blocking if fails)
+            try {
+                const currentDate = new Date().toISOString().split('T')[0];
+                const { error: updateError } = await supabase
+                    .from("FMS")
+                    .update({
+                        pdf: pdfUrl,
+                        company: headerInfo.companyName,
+                        email: selectedEmail,
+                        actual1: currentDate
+                    })
+                    .eq("complaint_id", complaintId);
 
-                const saveRes = await fetch(GOOGLE_SCRIPT_URL, {
-                    method: 'POST',
-                    body: saveParams
-                });
-                const saveResult = await saveRes.json();
-
-                if (saveResult.success) {
-                    alert("Letter data saved and updated in FMS successfully!");
-                    setIsSavingPDF(false);
-                    navigate("/dashboard/draft-letter", { state: { tab: "history" } });
+                if (updateError) {
+                    console.warn("FMS update failed (non-critical):", updateError.message);
+                    alert(`Letter PDF generated successfully!\n\nPDF Link: ${pdfUrl}\n\n(Note: FMS auto-update failed.)`);
                 } else {
-                    throw new Error(saveResult.error || "Failed to update FMS");
+                    alert("Letter PDF generated and saved successfully!");
                 }
-            } else {
-                throw new Error(uploadResult.error || "Failed to upload PDF");
+            } catch (updateErr) {
+                console.warn("FMS save error (non-critical):", updateErr);
+                alert(`Letter PDF generated successfully!\n\nPDF Link: ${pdfUrl}`);
             }
+
+            setIsSavingPDF(false);
+            navigate(-1);
+
         } catch (error) {
             console.error("Error saving PDF:", error);
             alert("Error: " + error.message);
