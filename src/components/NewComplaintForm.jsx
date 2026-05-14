@@ -13,6 +13,7 @@ function NewComplaintForm() {
   const [complaintDate, setComplaintDate] = useState(null)
   const [challanDate, setChallanDate] = useState(null)
   const [closeDate, setCloseDate] = useState(null)
+  const [resolvedDate, setResolvedDate] = useState(null)
   const [serialNumber, setSerialNumber] = useState('CT-001')
 
   // States for inline table editing
@@ -72,6 +73,7 @@ function NewComplaintForm() {
     technicianContact: "",
     assigneeWhatsapp: "",
     challanNo: "",
+    reporterName: "",
     assignToVendor: false,
   })
 
@@ -374,6 +376,8 @@ function NewComplaintForm() {
       productSlNo: currentRow.product_sl_no || "",
       challanDate: currentRow.challan_date ? new Date(currentRow.challan_date) : null,
       closeDate: currentRow.close_date ? new Date(currentRow.close_date) : null,
+      resolvedDate: currentRow.resolved_date ? new Date(currentRow.resolved_date) : null,
+      reporterName: currentRow.reporter_name || "",
       challanNo: currentRow.challan_no || "",
     })
 
@@ -441,6 +445,8 @@ function NewComplaintForm() {
           product_sl_no: updateFormData.productSlNo,
           challan_date: updateFormData.challanDate,
           close_date: updateFormData.closeDate,
+          resolved_date: updateFormData.resolvedDate,
+          reporter_name: updateFormData.reporterName,
           challan_no: updateFormData.challanNo
         })
         .eq("complaint_id", updateFormData.complaintId)
@@ -504,6 +510,8 @@ function NewComplaintForm() {
         // ✅ FIXED
         challan_no: formData.challanNo,
         challan_date: challanDate,
+        resolved_date: resolvedDate,
+        reporter_name: formData.reporterName,
         controller_rid_no: formData.controllerRidNo,
         product_sl_no: formData.productSlNo || "",
 
@@ -528,7 +536,9 @@ function NewComplaintForm() {
               district: formData.district,
               block: formData.block,
               village: formData.village,
-              product: formData.product
+              product: formData.product,
+              resolvedDate: resolvedDate ? resolvedDate.toLocaleDateString('en-GB') : "",
+              reporterName: formData.reporterName
             }
           })
           if (whatsappError) console.error('WhatsApp Error:', whatsappError)
@@ -562,12 +572,14 @@ function NewComplaintForm() {
         technicianContact: "",
         assigneeWhatsapp: "",
         challanNo: "",
+        reporterName: "",
         assignToVendor: false,
       })
 
       setComplaintDate(null)
       setChallanDate(null)
       setCloseDate(null)
+      setResolvedDate(null)
 
       // ✅ TABLE REFRESH
       await fetchTableData()
@@ -992,6 +1004,35 @@ function NewComplaintForm() {
                           ))}
                         </select>
                       </div >
+
+                      {/* Resolved Date */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Resolved Date
+                        </label>
+                        <DatePicker
+                          selected={resolvedDate}
+                          onChange={(date) => setResolvedDate(date)}
+                          dateFormat="dd/MM/yyyy"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholderText="Select resolved date"
+                        />
+                      </div>
+
+                      {/* Reporter Name */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Reporter Name
+                        </label>
+                        <input
+                          type="text"
+                          name="reporterName"
+                          value={formData.reporterName}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Enter Reporter Name"
+                        />
+                      </div>
 
 
 
@@ -1456,6 +1497,35 @@ function NewComplaintForm() {
                               <option key={index} value={option}>{option}</option>
                             ))}
                           </select>
+                        </div>
+
+                        {/* Resolved Date */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Resolved Date
+                          </label>
+                          <DatePicker
+                            selected={updateFormData.resolvedDate}
+                            onChange={(date) => setUpdateFormData(prev => ({ ...prev, resolvedDate: date }))}
+                            dateFormat="dd/MM/yyyy"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholderText="Select resolved date"
+                          />
+                        </div>
+
+                        {/* Reporter Name */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Reporter Name
+                          </label>
+                          <input
+                            type="text"
+                            name="reporterName"
+                            value={updateFormData.reporterName}
+                            onChange={handleUpdateFormChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Enter Reporter Name"
+                          />
                         </div>
 
                         {/* Technician Name */}

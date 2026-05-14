@@ -16,7 +16,7 @@ serve(async (req) => {
   }
 
   try {
-    const { technicianContact, companyName, beneficiaryName, contactNumber, district, block, village, product } = await req.json()
+    const { technicianContact, companyName, beneficiaryName, contactNumber, district, block, village, product, resolvedDate, reporterName } = await req.json()
 
     if (!technicianContact) {
       throw new Error('Technician contact is required')
@@ -41,7 +41,7 @@ serve(async (req) => {
           to: formattedPhone,
           type: 'template',
           template: {
-            name: 'complaint_tracker_whatsapp',
+            name: 'new_complaint_comnplaint_tracker_final',
             language: {
               code: 'en_US',
             },
@@ -56,6 +56,8 @@ serve(async (req) => {
                   { type: 'text', text: block || 'N/A' },
                   { type: 'text', text: village || 'N/A' },
                   { type: 'text', text: product || 'N/A' },
+                  { type: 'text', text: resolvedDate || 'N/A' },
+                  { type: 'text', text: reporterName || 'N/A' },
                 ],
               },
             ],

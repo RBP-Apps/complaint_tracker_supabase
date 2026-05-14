@@ -280,11 +280,6 @@ export default function UserManagement() {
     }));
   };
 
-  const formatPageAccess = (pages) => {
-    if (!pages || pages.length === 0) return "No Access";
-    if (pages.includes("all")) return "ALL PAGES";
-    return pages.join(", ");
-  };
 
   const getRoleBadgeClass = (role) => {
     switch (role?.toLowerCase()) {
@@ -380,7 +375,7 @@ export default function UserManagement() {
         {/* Desktop Table View */}
         {!loading && filteredUsers.length > 0 && (
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden hidden xl:block">
-            <div className="max-h-[70vh] overflow-y-auto">
+            <div className="max-h-[50vh] overflow-y-auto">
               <table className="w-full min-w-[1200px]">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
