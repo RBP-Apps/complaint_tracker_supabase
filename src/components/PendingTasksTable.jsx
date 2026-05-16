@@ -683,26 +683,27 @@ const generateNextRBPSTId = async () => {
       return pendingTasks;
     }
 
-    // If admin or user, show all tasks
-    if (userRole.toLowerCase() === 'admin' || userRole.toLowerCase() === 'user') {
-      console.log('TrackerPendingTable - Admin/User role, showing all tasks')
+    // If admin, show all tasks
+    const lowerRole = String(userRole || "").toLowerCase();
+    if (lowerRole === 'admin') {
+      console.log('TrackerPendingTable - Admin role, showing all tasks')
       return pendingTasks;
     }
 
-    // If tech role and has username, filter by technician name
-    if (userRole.toLowerCase() === 'tech' && username) {
-      console.log('TrackerPendingTable - Tech role, filtering by technician name:', username)
+    // If tech or user role and has username, filter by technician name
+    if ((lowerRole === 'tech' || lowerRole === 'user') && username) {
+      console.log(`TrackerPendingTable - ${lowerRole} role, filtering by technician name:`, username)
       const filtered = pendingTasks.filter((task) => {
-        const match = task.technicianName === username;
+        const match = String(task.technicianName || "").toLowerCase() === String(username || "").toLowerCase();
         return match;
       });
       console.log('TrackerPendingTable - Filtered tasks count:', filtered.length)
       return filtered;
     }
 
-    // If tech role but no username, show empty
-    if (userRole.toLowerCase() === 'tech' && !username) {
-      console.log('TrackerPendingTable - Tech role but no username, showing empty')
+    // If tech/user role but no username, show empty
+    if ((lowerRole === 'tech' || lowerRole === 'user') && !username) {
+      console.log(`TrackerPendingTable - ${lowerRole} role but no username, showing empty`)
       return [];
     }
 

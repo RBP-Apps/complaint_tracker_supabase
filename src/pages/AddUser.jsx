@@ -153,6 +153,8 @@ export default function UserManagement() {
     setEditData({ ...editData, [e.target.name]: e.target.value });
   };
 
+  // console.log(editData)
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -294,11 +296,11 @@ export default function UserManagement() {
 
   return (
     <DashboardLayout>
-      <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+      <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-gray-50 to-gray-100">
         {/* Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
               User Management
             </h1>
             <p className="text-gray-500 mt-1">
@@ -516,8 +518,10 @@ export default function UserManagement() {
                             onChange={handleEditChange}
                             className="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                           >
+                            <option value="">Select</option>
                             <option value="USER">User</option>
                             <option value="ADMIN">Admin</option>
+                            <option value="TECH">Tech</option>
                           </select>
                         ) : (
                           <span

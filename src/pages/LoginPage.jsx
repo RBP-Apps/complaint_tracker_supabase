@@ -7,6 +7,7 @@ import { Eye, EyeOff } from "lucide-react";
 
 
 import supabase from "../utils/supabase"
+import { clearAuth } from "../utils/auth";
 function LoginPage() {
   const [username, setUsername] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -22,66 +23,100 @@ function LoginPage() {
     setIsLoading(true);
     setError("");
 
+    const cleanUsername = username.trim();
+    const cleanPassword = password.trim();
+
     try {
-      const { data, error } = await supabase
+      // More flexible query without .single() to prevent common errors
+      const { data: users, error: dbError } = await supabase
         .from("Login")
         .select("*")
-        .eq("username", username)
-        .eq("password", password)
-        .single();
+        .eq("username", cleanUsername);
 
-      if (error || !data) {
-        throw new Error("Invalid credentials");
+      if (dbError) {
+        console.error("Database Error:", dbError);
+        throw new Error("Database connection error");
       }
 
-      // Extract data from Supabase row
-      const userPermission = data.page_access || "";
-      const userRole = data.role || "";
-      const technicianName = data.username || "";
-      const technicianContact = data.contact_no || "";
+      console.log("Database search result:", users);
 
-      // Store in localStorage (same as before)
+      if (!users || users.length === 0) {
+        console.warn("Login Failed: No user found with username:", cleanUsername);
+        throw new Error("User ID not found");
+      }
+
+      // Check password manually to provide better error messages
+      const userMatch = users.find(u => u.password === cleanPassword);
+      
+      if (!userMatch) {
+        console.warn("Login Failed: Password incorrect for user:", cleanUsername);
+        throw new Error("Incorrect password");
+      }
+
+      const data = userMatch;
+
+      // Extract data from Supabase row
+      const userPermission = Array.isArray(data.page_access) ? data.page_access : [];
+      const userRole = String(data.role || "").toLowerCase();
+      const technicianName = String(data.username || "");
+      const technicianContact = String(data.contact_no || "");
+
+      console.log("Login successful - Processed User Data:", {
+        technicianName,
+        userRole,
+        userPermission,
+      });
+
+      // Store in localStorage
       localStorage.setItem('currentUser', technicianName);
       localStorage.setItem('userRole', userRole);
-      localStorage.setItem('userPermissions', userPermission);
+      localStorage.setItem('userPermissions', JSON.stringify(userPermission));
       localStorage.setItem('username', username);
       localStorage.setItem('technicianContact', technicianContact);
 
-      console.log("Login successful - Stored data:", {
-        currentUser: technicianName,
-        userRole: userRole,
-        username: username,
-        technicianContact: technicianContact
-      });
-
-      // SAME redirect logic (unchanged)
+      // Redirect logic based on role and permissions
       let redirectPath = "/dashboard";
 
-      if (userRole && userRole.toLowerCase() === 'admin') {
+      if (userRole === 'admin') {
         redirectPath = "/dashboard";
-      }
-      else if (userRole && userRole.toLowerCase() === 'technician') {
+      } else if (userRole === 'tech' || userRole === 'technician') {
         redirectPath = "/dashboard/tracker";
-      }
-      else if (userPermission && userPermission.toLowerCase() !== "all") {
-        const permissions = userPermission.split(',').map(p => p.trim().toLowerCase());
-
+      } else {
+        // Find the first matching route for the user's permissions
         const permissionRoutes = {
           "dashboard": "/dashboard",
           "new complaint": "/dashboard/new-complaint",
           "assign complaint": "/dashboard/assign-complaint",
           "tracker": "/dashboard/tracker",
           "verification": "/dashboard/verification",
-          "document verification": "/dashboard/document-verification"
+          "document verification": "/dashboard/document-verification",
+          "assign-vendor": "/dashboard/assign-vendor",
+          "vendor-tracker": "/dashboard/vendor-tracker"
         };
 
-        for (const permission of permissions) {
-          if (permissionRoutes[permission]) {
-            redirectPath = permissionRoutes[permission];
+        // Priority redirect to tracker if available
+        let foundPath = false;
+        for (const permission of userPermission) {
+          const key = String(permission || "").toLowerCase().trim();
+          if (key === "tracker" || key === "all") {
+            redirectPath = "/dashboard/tracker";
+            foundPath = true;
             break;
           }
         }
+
+        if (!foundPath) {
+          for (const permission of userPermission) {
+            const key = String(permission || "").toLowerCase().trim();
+            if (permissionRoutes[key]) {
+              redirectPath = permissionRoutes[key];
+              break;
+            }
+          }
+        }
       }
+
+      console.log("Redirecting to:", redirectPath);
 
       setTimeout(() => {
         setIsLoading(false);
@@ -89,23 +124,17 @@ function LoginPage() {
       }, 1000);
 
     } catch (error) {
-      console.error("Login error:", error);
+      console.error("Login detail error:", error);
       setError("Invalid credentials. Please try again.");
       setIsLoading(false);
     }
   };
-  const copyCredentials = () => {
-    setUsername("admin");
-    setPassword("password123");
-  };
+
+
 
   // Clear any existing login data on component mount
   useEffect(() => {
-    localStorage.removeItem('currentUser');
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('userPermissions');
-    localStorage.removeItem('username');
-    localStorage.removeItem('technicianContact');
+    clearAuth();
   }, []);
 
   return (
@@ -163,20 +192,6 @@ function LoginPage() {
               />
             </div>
 
-            {/* <div>
-              <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="h-11 w-full rounded-md border border-gray-300 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter your password"
-              />
-            </div> */}
 
              <div>
       <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-700">

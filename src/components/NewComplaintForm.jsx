@@ -538,7 +538,8 @@ function NewComplaintForm() {
               village: formData.village,
               product: formData.product,
               resolvedDate: resolvedDate ? resolvedDate.toLocaleDateString('en-GB') : "",
-              reporterName: formData.reporterName
+              reporterName: formData.reporterName,
+              complaintId: serialNumber
             }
           })
           if (whatsappError) console.error('WhatsApp Error:', whatsappError)
@@ -1676,7 +1677,7 @@ function NewComplaintForm() {
                 <>
                   {/* Desktop Table View - Hidden on mobile with FIXED HEADER */}
                   <div className="hidden lg:block border border-gray-200 rounded-lg overflow-hidden">
-                    <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                    <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                       <table className="min-w-full divide-y divide-gray-200 text-center text-nowrap">
                         <thead className="bg-gray-100 sticky top-0 z-10 text-center">
                           <tr>

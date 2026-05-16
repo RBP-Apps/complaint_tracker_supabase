@@ -65,69 +65,69 @@ function ComplaintsTable() {
 
   // Data fetching useEffect - KEEP WORKING VERSION
   useEffect(() => {
-  const fetchComplaints = async () => {
-    setIsLoading(true)
-    setError(null)
+    const fetchComplaints = async () => {
+      setIsLoading(true)
+      setError(null)
 
-    try {
-      const { data, error } = await supabase
-        .from("FMS")
-        .select("*")
+      try {
+        const { data, error } = await supabase
+          .from("FMS")
+          .select("*")
 
-      if (error) throw error
+        if (error) throw error
 
-      const complaintData = []
+        const complaintData = []
 
-      data.forEach((row) => {
-        const complaint = {
-          complaintId: row.complaint_id || "",
-          companyName: row.company_name || "",
-          modeOfCall: row.mode_of_call || "",
-          idNumber: row.id_number || "",
-          projectName: row.project_name || "",
-          complaintNumber: row.complaint_number || "",
-          complaintDate: row.complaint_date
-            ? formatDateString(row.complaint_date)
-            : "",
-          beneficiaryName: row.beneficiary_name || "",
-          contactNumber: row.contact_number || "",
-          village: row.village || "",
-          block: row.block || "",
-          district: row.district || "",
-          product: row.product || "",
-          make: row.make || "",
-          rating: row.rating || "",
-          qty: row.qty || "",
-          insuranceType: row.insurance_type || "",
-          natureOfComplaint: row.nature_of_complaint || "",
-          technicianName: row.technician_name || "",
-          technicianContact: row.technician_contact || "",
-          assigneeWhatsApp: row.assignee_whatsapp_number || "",
-          status: row.status || "Open",
-          closeDate:
-            row.status === "APPROVED-CLOSE" && row.close_date
-              ? formatDateString(row.close_date)
+        data.forEach((row) => {
+          const complaint = {
+            complaintId: row.complaint_id || "",
+            companyName: row.company_name || "",
+            modeOfCall: row.mode_of_call || "",
+            idNumber: row.id_number || "",
+            projectName: row.project_name || "",
+            complaintNumber: row.complaint_number || "",
+            complaintDate: row.complaint_date
+              ? formatDateString(row.complaint_date)
               : "",
-        }
+            beneficiaryName: row.beneficiary_name || "",
+            contactNumber: row.contact_number || "",
+            village: row.village || "",
+            block: row.block || "",
+            district: row.district || "",
+            product: row.product || "",
+            make: row.make || "",
+            rating: row.rating || "",
+            qty: row.qty || "",
+            insuranceType: row.insurance_type || "",
+            natureOfComplaint: row.nature_of_complaint || "",
+            technicianName: row.technician_name || "",
+            technicianContact: row.technician_contact || "",
+            assigneeWhatsApp: row.assignee_whatsapp_number || "",
+            status: row.status || "Open",
+            closeDate:
+              row.status === "APPROVED-CLOSE" && row.close_date
+                ? formatDateString(row.close_date)
+                : "",
+          }
 
-        if (complaint.complaintId) {
-          complaintData.push(complaint)
-        }
-      })
+          if (complaint.complaintId) {
+            complaintData.push(complaint)
+          }
+        })
 
-      setComplaints(complaintData)
+        setComplaints(complaintData)
 
-    } catch (err) {
-      console.error("Error fetching complaints data:", err)
-      setError(err.message)
-      setComplaints([])
-    } finally {
-      setIsLoading(false)
+      } catch (err) {
+        console.error("Error fetching complaints data:", err)
+        setError(err.message)
+        setComplaints([])
+      } finally {
+        setIsLoading(false)
+      }
     }
-  }
 
-  fetchComplaints()
-}, [])
+    fetchComplaints()
+  }, [])
 
   const formatStatus = (statusValue) => {
     if (!statusValue) return "In Progress";
@@ -245,34 +245,34 @@ function ComplaintsTable() {
   }
 
   // Handle Delete Complaint (Admin Only)
-const handleDelete = async (complaintId) => {
-  if (!window.confirm("Are you sure you want to delete this record?")) {
-    return;
-  }
+  const handleDelete = async (complaintId) => {
+    if (!window.confirm("Are you sure you want to delete this record?")) {
+      return;
+    }
 
-  setIsLoading(true);
+    setIsLoading(true);
 
-  try {
-    const { error } = await supabase
-      .from("FMS")
-      .delete()
-      .eq("complaint_id", complaintId);
+    try {
+      const { error } = await supabase
+        .from("FMS")
+        .delete()
+        .eq("complaint_id", complaintId);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    alert("Record deleted successfully!");
+      alert("Record deleted successfully!");
 
-    setComplaints(prev =>
-      prev.filter(c => c.complaintId !== complaintId)
-    );
+      setComplaints(prev =>
+        prev.filter(c => c.complaintId !== complaintId)
+      );
 
-  } catch (error) {
-    console.error("Delete error:", error);
-    alert(`Failed to delete record: ${error.message}`);
-  } finally {
-    setIsLoading(false);
-  }
-};
+    } catch (error) {
+      console.error("Delete error:", error);
+      alert(`Failed to delete record: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
 
   // Memoized unique values for dropdowns
@@ -655,7 +655,7 @@ const handleDelete = async (complaintId) => {
               </div>
 
               {/* Desktop Table View */}
-              <div className="hidden md:block overflow-x-auto max-h-[600px] overflow-y-auto">
+              <div className="hidden md:block overflow-x-auto max-h-[300px] overflow-y-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-100 sticky top-0 z-10">
                     <tr>
@@ -685,13 +685,13 @@ const handleDelete = async (complaintId) => {
                         <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{complaint.idNumber}</td>
 
 
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{complaint.beneficiaryName}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{complaint.contactNumber}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{complaint.village}</td>
+                        <td className="px-3 py-4  text-sm text-gray-500">{complaint.beneficiaryName}</td>
+                        <td className="px-3 py-4  text-sm text-gray-500">{complaint.contactNumber}</td>
+                        <td className="px-3 py-4 text-sm text-gray-500">{complaint.village}</td>
                         <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{complaint.block}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{complaint.district}</td>
+                        <td className="px-3 py-4  text-sm text-gray-500">{complaint.district}</td>
                         <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{complaint.projectName}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{complaint.natureOfComplaint}</td>
+                        <td className="px-3 py-4  text-sm text-gray-500">{complaint.natureOfComplaint}</td>
                         <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{complaint.technicianName}</td>
 
                         <td className="px-3 py-4 whitespace-nowrap">{complaint.status}</td>
@@ -722,9 +722,7 @@ const handleDelete = async (complaintId) => {
         </div>
       </div>
 
-      <div className="mt-6 text-xs text-gray-500 text-center">
-        © {new Date().getFullYear()} Complaints Tracker. All rights reserved. | Powered By - Botivate
-      </div>
+
     </div>
   )
 }

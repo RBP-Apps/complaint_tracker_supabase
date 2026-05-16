@@ -62,7 +62,7 @@ function TechnicianTracker() {
     }
 
     const filtered = pendingTasks.filter(task => {
-      const matchesTechUser = task.technicianName?.toLowerCase().includes(techDisplayName.toLowerCase());
+      const matchesTechUser = String(task.technicianName || "").toLowerCase().includes(techDisplayName.toLowerCase());
       return matchesTechUser;
     });
 
@@ -80,7 +80,7 @@ function TechnicianTracker() {
     }
 
     const filtered = historyTasks.filter(task => {
-      const matchesTechUser = task.technicianName?.toLowerCase().includes(techDisplayName.toLowerCase());
+      const matchesTechUser = String(task.technicianName || "").toLowerCase().includes(techDisplayName.toLowerCase());
       return matchesTechUser;
     });
 

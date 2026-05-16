@@ -1,10 +1,10 @@
 
 
 "use client"
-
 import { useState, useEffect } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { Clipboard, Home, CheckCircle, Clock, LogOut, MapPin, Menu, FileText, UserCheck, DollarSign, BarChart, Tool, Edit2 } from "react-feather";
+import { getUserPermissions, getUserRole, hasPageAccess, clearAuth } from "../utils/auth";
 
 function DashboardLayout({ children }) {
   const location = useLocation()
@@ -12,7 +12,7 @@ function DashboardLayout({ children }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [userPermissions, setUserPermissions] = useState([])
   const [username, setUsername] = useState("")
-  const [userRole, setUserRole] = useState("") // New state for user role
+  const [userRole, setUserRole] = useState("") 
   const [openMenu, setOpenMenu] = useState(null);
 
   // Check if we're on mobile
@@ -29,36 +29,16 @@ function DashboardLayout({ children }) {
     }
   }, [])
 
-  // Get user permissions from localStorage
+  // Get user permissions using utilities
   useEffect(() => {
-    const storedPermissions = localStorage.getItem("userPermissions")
-    const storedUsername = localStorage.getItem("username")
-    const storedRole = localStorage.getItem("userRole")
-
-    // Parse permissions - handling both "all" and comma-separated values
-    if (storedPermissions) {
-      if (storedPermissions.toLowerCase() === "all") {
-        setUserPermissions(["all"])
-      } else {
-        setUserPermissions(storedPermissions.split(",").map((item) => item.trim().toLowerCase()))
-      }
-    }
-
-    if (storedUsername) {
-      setUsername(storedUsername)
-    }
-
-    if (storedRole) {
-      setUserRole(storedRole)
-    }
+    setUserPermissions(getUserPermissions())
+    setUserRole(getUserRole())
+    setUsername(localStorage.getItem("username") || "")
   }, [])
 
   // Check if user has permission to access a specific route
-  const hasPermission = (routeName) => {
-    if (!userPermissions.length) return false
-    if (userPermissions.includes("all")) return true
-
-    return userPermissions.some((permission) => routeName.toLowerCase().includes(permission.toLowerCase()))
+  const hasPermission = (permissionKey) => {
+    return hasPageAccess(permissionKey);
   }
 
   // All possible nav items
@@ -88,10 +68,40 @@ function DashboardLayout({ children }) {
       permissionKey: "vendor-tracker",
     },
     {
+      name: "Assign Complaint",
+      href: "/dashboard/assign-complaint",
+      icon: UserCheck,
+      permissionKey: "assign-complaint",
+    },
+    {
       name: "Tracker",
       href: "/dashboard/tracker",
       icon: FileText,
       permissionKey: "tracker",
+    },
+    {
+      name: "Verification",
+      href: "/dashboard/verification",
+      icon: CheckCircle,
+      permissionKey: "verification",
+    },
+    {
+      name: "Document Verification",
+      href: "/dashboard/document-verification",
+      icon: Clipboard,
+      permissionKey: "document-verification",
+    },
+    {
+      name: "Petrol Expenses",
+      href: "/dashboard/petrol-expenses",
+      icon: DollarSign,
+      permissionKey: "petrol-expenses",
+    },
+    {
+      name: "Report",
+      href: "/dashboard/Report",
+      icon: BarChart,
+      permissionKey: "report",
     },
     {
       name: "Approved",
@@ -121,35 +131,30 @@ function DashboardLayout({ children }) {
       name: "Tracker History",
       href: "/dashboard/tracker-history",
       icon: Clock,
-      permissionKey: "all", // Restricted to admin (who usually have 'all' permission) or specifically added
+      permissionKey: "tracker-history",
     },
     {
       name: "Master Data",
       href: "/dashboard/master-page",
       icon: Clock,
-      permissionKey: "all", // Restricted to admin (who usually have 'all' permission) or specifically added
+      permissionKey: "master-page",
     },
     {
       name: "Users",
       href: "/dashboard/user-add",
       icon: Clock,
-      permissionKey: "all", // Restricted to admin (who usually have 'all' permission) or specifically added
+      permissionKey: "user-add",
     },
   ]
 
 
-  // Filter nav items based on user permissions (same for all users including tech)
+  // Filter nav items based on user permissions
   const navItems = allNavItems.filter((item) => {
-    if (item.name === "Tracker History") {
-      return userRole && userRole.toLowerCase() === 'admin';
-    }
     return hasPermission(item.permissionKey);
   })
 
   const handleLogout = () => {
-    localStorage.removeItem("userPermissions")
-    localStorage.removeItem("username")
-    localStorage.removeItem("userRole")
+    clearAuth();
     window.location.href = "/"
   }
 

@@ -28,52 +28,170 @@ import UserAdd from "./pages/AddUser"
 import MasterPage from "./pages/MasterAdd"
 
 
+import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
   return (
     <Router>
       <Routes>
+        {/* Public Routes */}
         <Route path="/" element={<LoginPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/dashboard/new-complaint" element={<NewComplaintPage />} />
+
+        {/* Protected Dashboard Routes */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute permissionKey="dashboard">
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/new-complaint"
+          element={
+            <ProtectedRoute permissionKey="new complaint">
+              <NewComplaintPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/dashboard/assign-complaint"
-          element={<AssignComplaintPage />}
+          element={
+            <ProtectedRoute permissionKey="assign-complaint">
+              <AssignComplaintPage />
+            </ProtectedRoute>
+          }
         />
-        <Route path="/dashboard/tracker" element={<TrackerPage />} />
-        <Route path="/dashboard/verification" element={<VerificationPage />} />
+        <Route
+          path="/dashboard/tracker"
+          element={
+            <ProtectedRoute permissionKey="tracker">
+              <TrackerPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/verification"
+          element={
+            <ProtectedRoute permissionKey="verification">
+              <VerificationPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/dashboard/document-verification"
-          element={<DocumentVerificationPage />}
+          element={
+            <ProtectedRoute permissionKey="document-verification">
+              <DocumentVerificationPage />
+            </ProtectedRoute>
+          }
         />
         <Route
           path="/dashboard/petrol-expenses"
-          element={<PetrolExpensesPage />}
+          element={
+            <ProtectedRoute permissionKey="petrol-expenses">
+              <PetrolExpensesPage />
+            </ProtectedRoute>
+          }
         />
-        <Route path="/dashboard/Report" element={<Reportpage />} />
+        <Route
+          path="/dashboard/Report"
+          element={
+            <ProtectedRoute permissionKey="report">
+              <Reportpage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/dashboard/technician-dasboard"
-          element={<TechnicianDashboard />}
+          element={
+            <ProtectedRoute permissionKey="tracker">
+              <TechnicianDashboard />
+            </ProtectedRoute>
+          }
         />
         <Route
           path="/dashboard/technician-tracker"
-          element={<TechnicianTracker />}
+          element={
+            <ProtectedRoute permissionKey="tracker">
+              <TechnicianTracker />
+            </ProtectedRoute>
+          }
         />
-        <Route path="/dashboard/approved" element={<Approved />} />
-        <Route path="/dashboard/draft-letter" element={<DraftLetter />} />
+        <Route
+          path="/dashboard/approved"
+          element={
+            <ProtectedRoute permissionKey="approved">
+              <Approved />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/draft-letter"
+          element={
+            <ProtectedRoute permissionKey="draft-letter">
+              <DraftLetter />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/dashboard/admin-letter/:complaintId"
-          element={<AdminLetter />}
+          element={
+            <ProtectedRoute permissionKey="approved">
+              <AdminLetter />
+            </ProtectedRoute>
+          }
         />
         <Route
           path="/dashboard/tracker-history"
-          element={<TrackerHistoryPage />}
+          element={
+            <ProtectedRoute permissionKey="tracker-history">
+              <TrackerHistoryPage />
+            </ProtectedRoute>
+          }
         />
-        <Route path="/dashboard/assign-vendor" element={<AssignToVendor />} />
-        <Route path="/dashboard/vendor-tracker" element={<VendorTracker />} />
-        <Route path="/dashboard/user-add" element={<UserAdd />} />
-        <Route path="/dashboard/master-page" element={<MasterPage />} />
-        <Route path="/dashboard/assign-vendor-letter" element={<AssignToVendorLetter />} />
+        <Route
+          path="/dashboard/assign-vendor"
+          element={
+            <ProtectedRoute permissionKey="assign-vendor">
+              <AssignToVendor />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/vendor-tracker"
+          element={
+            <ProtectedRoute permissionKey="vendor-tracker">
+              <VendorTracker />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/user-add"
+          element={
+            <ProtectedRoute permissionKey="user-add">
+              <UserAdd />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/master-page"
+          element={
+            <ProtectedRoute permissionKey="master-page">
+              <MasterPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/assign-vendor-letter"
+          element={
+            <ProtectedRoute permissionKey="approved">
+              <AssignToVendorLetter />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>

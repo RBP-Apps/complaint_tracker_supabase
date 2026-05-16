@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
+import { getUserRole, getUserPermissions, hasPageAccess } from '../utils/auth';
+
 const Dashboard = () => {
   const [userData, setUserData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentUser, setCurrentUser] = useState('');
-  const [userPermissions, setUserPermissions] = useState('');
+  const [userPermissions, setUserPermissions] = useState([]);
   const [hasAccess, setHasAccess] = useState(false);
 
   const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwnIMOzsFbniWnPFhl3lzE-2W0l6lD23keuz57-ldS_umSXIJqpEK-qxLE6eM0s7drqrQ/exec';
@@ -14,25 +16,17 @@ const Dashboard = () => {
 
   useEffect(() => {
     const storedUsername = localStorage.getItem('username');
-    const storedPermissions = localStorage.getItem('userPermissions');
-    const storedRole = localStorage.getItem('userRole'); // NEW - Role fetch kar rahe hain
-
+    
     if (!storedUsername) {
       window.location.href = '/login';
       return;
     }
 
     setCurrentUser(storedUsername);
-    setUserPermissions(storedPermissions || '');
+    setUserPermissions(getUserPermissions());
 
-    // Role based access check
-    const userRole = storedRole ? storedRole.toLowerCase() : '';
-
-    const hasTrackerAccess = userRole === 'admin' ||
-      userRole === 'technician' ||
-      (storedPermissions && storedPermissions.toLowerCase().includes('tracker'));
-
-    if (hasTrackerAccess) {
+    // Use hasPageAccess for access control
+    if (hasPageAccess('tracker')) {
       setHasAccess(true);
     } else {
       alert('Access Denied: You do not have permission to view this page');
@@ -279,7 +273,7 @@ const Dashboard = () => {
                 Technician Dashboard - <span className="text-blue-600">{currentUser}</span>
               </h1>
               <p className="mt-2 text-gray-600">
-                Access Level: <span className="font-medium">{userPermissions || 'Standard User'}</span>
+                Access Level: <span className="font-medium">{Array.isArray(userPermissions) ? userPermissions.join(', ') : (userPermissions || 'Standard User')}</span>
               </p>
             </div>
 

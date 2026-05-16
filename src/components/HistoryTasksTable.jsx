@@ -425,26 +425,27 @@ const uploadFileToDrive = async (file, fileType) => {
       return historyData;
     }
 
-    // If admin or user, show all history
-    if (userRole.toLowerCase() === 'admin' || userRole.toLowerCase() === 'user') {
-      console.log('TrackerHistoryTable - Admin/User role, showing all history')
+    // If admin, show all history
+    const lowerRole = String(userRole || "").toLowerCase();
+    if (lowerRole === 'admin') {
+      console.log('TrackerHistoryTable - Admin role, showing all history')
       return historyData;
     }
 
-    // If tech role and has username, filter by technician name
-    if (userRole.toLowerCase() === 'tech' && username) {
-      console.log('TrackerHistoryTable - Tech role, filtering by technician name:', username)
+    // If tech or user role and has username, filter by technician name
+    if ((lowerRole === 'tech' || lowerRole === 'user') && username) {
+      console.log(`TrackerHistoryTable - ${lowerRole} role, filtering by technician name:`, username)
       const filtered = historyData.filter((record) => {
-        const match = record.technicianName === username;
+        const match = String(record.technicianName || "").toLowerCase() === String(username || "").toLowerCase();
         return match;
       });
       console.log('TrackerHistoryTable - Filtered history count:', filtered.length)
       return filtered;
     }
 
-    // If tech role but no username, show empty
-    if (userRole.toLowerCase() === 'tech' && !username) {
-      console.log('TrackerHistoryTable - Tech role but no username, showing empty')
+    // If tech/user role but no username, show empty
+    if ((lowerRole === 'tech' || lowerRole === 'user') && !username) {
+      console.log(`TrackerHistoryTable - ${lowerRole} role but no username, showing empty`)
       return [];
     }
 
