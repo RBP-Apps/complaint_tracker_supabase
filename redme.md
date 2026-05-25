@@ -51,7 +51,6 @@ execute FUNCTION set_planned_default ();
 
 
 
-
 create table public."AssignToVendor" (
   id bigserial not null,
   timestamp timestamp without time zone null,

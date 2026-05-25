@@ -302,7 +302,6 @@ function PendingAssignmentsTable() {
     <div className="p-4">
       <div className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <h1 className="text-xl font-bold">Pending Complaint Assignments ({filteredComplaints.length})</h1>
-
         <div className="relative">
           <input
             type="search"
@@ -369,12 +368,10 @@ function PendingAssignmentsTable() {
               <p className="text-gray-500">No pending complaints found</p>
             </div>
           ) : (
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-100">
+            <div className="overflow-auto max-h-[400px]">
+  <table className="min-w-full divide-y divide-gray-200">
+    <thead className="bg-gray-100 sticky top-0 z-10">
                 <tr>
-                  {/* <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                    Row #
-                  </th> */}
                   <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     Actions
                   </th>
@@ -430,27 +427,28 @@ function PendingAssignmentsTable() {
                         Assign
                       </button>
                     </td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm font-medium">{complaint.complaintNumber}</td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm">{complaint.complaintDate}</td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm">{complaint.head}</td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm">{complaint.companyName}</td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm">{complaint.modeOfCall}</td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm">{complaint.beneficiaryName}</td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm">{complaint.contactNumber}</td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm">{complaint.village}</td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm">{complaint.district}</td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm">{complaint.product}</td>
-                    <td className="px-3 py-4 whitespace-nowrap">
+                    <td className="px-3 py-4  text-sm font-medium">{complaint.complaintNumber}</td>
+                    <td className="px-3 py-4  text-sm">{complaint.complaintDate}</td>
+                    <td className="px-3 py-4  text-sm">{complaint.head}</td>
+                    <td className="px-3 py-4  text-sm">{complaint.companyName}</td>
+                    <td className="px-3 py-4  text-sm">{complaint.modeOfCall}</td>
+                    <td className="px-3 py-4  text-sm">{complaint.beneficiaryName}</td>
+                    <td className="px-3 py-4  text-sm">{complaint.contactNumber}</td>
+                    <td className="px-3 py-4  text-sm">{complaint.village}</td>
+                    <td className="px-3 py-4  text-sm">{complaint.district}</td>
+                    <td className="px-3 py-4  text-sm">{complaint.product}</td>
+                    <td className="px-3 py-4 ">
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full text-white ${getPriorityColor(complaint.priority)}`}>
                         {complaint.priority}
                       </span>
                     </td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm">{complaint.natureOfComplaint}</td>
+                    <td className="px-3 py-4  text-sm">{complaint.natureOfComplaint}</td>
 
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>
@@ -463,13 +461,13 @@ function PendingAssignmentsTable() {
               <div className="absolute inset-0 bg-gray-500 opacity-75" onClick={() => setIsDialogOpen(false)}></div>
             </div>
 
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <div className="relative inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <div className="sm:flex sm:items-start">
                   <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                    <h3 className="text-lg leading-6 font-medium text-gray-900">
+                    <h3 className="text-lg leading-6 font-medium text-blue-600">
                       Assign Complaint: {selectedComplaintData?.complaintNumber || selectedComplaint}
-                      <span className="text-sm text-gray-500 ml-2">(Row: {selectedComplaintData?.actualRowIndex})</span>
+                      {/* <span className="text-sm text-gray-500 ml-2">(Row: {selectedComplaintData?.actualRowIndex})</span> */}
                     </h3>
                     <div className="mt-4 max-h-[60vh] overflow-auto">
                       <AssignComplaintForm

@@ -37,7 +37,6 @@ function App() {
         {/* Public Routes */}
         <Route path="/" element={<LoginPage />} />
 
-        {/* Protected Dashboard Routes */}
         <Route
           path="/dashboard"
           element={

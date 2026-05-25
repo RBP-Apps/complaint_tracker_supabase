@@ -88,6 +88,7 @@ function VerifiedTasksTable() {
 
           // Skip the header row and process the data rows
           data.table.rows.slice(0).forEach((row, index) => {
+            console.log(row.c)
             if (row.c) {
               // Format dates if they exist
               let timestampValue = row.c[0] ? row.c[0].v : "";

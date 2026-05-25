@@ -68,40 +68,10 @@ function DashboardLayout({ children }) {
       permissionKey: "vendor-tracker",
     },
     {
-      name: "Assign Complaint",
-      href: "/dashboard/assign-complaint",
-      icon: UserCheck,
-      permissionKey: "assign-complaint",
-    },
-    {
       name: "Tracker",
       href: "/dashboard/tracker",
       icon: FileText,
       permissionKey: "tracker",
-    },
-    {
-      name: "Verification",
-      href: "/dashboard/verification",
-      icon: CheckCircle,
-      permissionKey: "verification",
-    },
-    {
-      name: "Document Verification",
-      href: "/dashboard/document-verification",
-      icon: Clipboard,
-      permissionKey: "document-verification",
-    },
-    {
-      name: "Petrol Expenses",
-      href: "/dashboard/petrol-expenses",
-      icon: DollarSign,
-      permissionKey: "petrol-expenses",
-    },
-    {
-      name: "Report",
-      href: "/dashboard/Report",
-      icon: BarChart,
-      permissionKey: "report",
     },
     {
       name: "Approved",
