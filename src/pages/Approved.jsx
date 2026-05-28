@@ -24,105 +24,6 @@ function ComplaintTracker() {
   const [checkedOptions, setCheckedOptions] = useState([])
 
 
-
-  // useEffect(() => {
-  //   const fetchTasks = async () => {
-  //     setIsLoading(true);
-  //     setError(null);
-
-  //     try {
-  //       console.log("🚀 Fetching from Supabase...");
-
-  //       const { data: trackerData, error: trackerError } = await supabase
-  //         .from("Tracker")
-  //         .select("*")
-  //         .range(0, 99999)
-
-  //       if (trackerError) throw trackerError;
-
-  //       const { data: fmsData, error: fmsError } = await supabase
-  //         .from("FMS")
-  //         .select("complaint_id, id_number");
-
-  //       if (fmsError) throw fmsError;
-
-  //       // 🔴 ID Number mapping (same logic)
-  //       const idNumberMap = {};
-  //       fmsData.forEach((row) => {
-  //         idNumberMap[String(row.complaint_id).trim()] = row.id_number;
-  //       });
-
-  //       const pendingData = [];
-  //       const historyData = [];
-
-  //       trackerData.forEach((row) => {
-  //         const task = {
-  //           id: row.serial_no,
-  //           serialNo: row.serial_no,
-  //           complaintId: row.complaint_id,
-  //           idNumber: idNumberMap[String(row.complaint_id).trim()] || "-",
-
-  //           technicianName: row.technician_name,
-  //           technicianContact: row.technician_number,
-  //           beneficiaryName: row.beneficiary_name,
-  //           contactNumber: row.contact_number,
-
-  //           village: row.village,
-  //           block: row.block,
-  //           district: row.district,
-
-  //           product: row.product,
-  //           make: row.make,
-
-  //           systemVoltage: row.system_voltage,
-  //           natureOfComplaint: row.nature_of_complaint,
-
-  //           uploadDocuments: row.upload_documents,
-  //           geotagPhoto: row.geotag_photo,
-
-  //           remarks: row.action_taken,
-  //           trackerStatus: row.tracker_status,
-
-  //           assigneeName: "",
-
-  //           plannedDate: row.planned,
-  //           actualDate: row.actual,
-
-  //           columnV: row.planned,
-  //           columnW: row.actual,
-  //           checked: row.checked,
-  //           remark: row.remark,
-  //         };
-
-  //         const hasColumnV = row.planned !== null;
-  //         const hasColumnW = row.actual !== null;
-
-  //         if (hasColumnV && !hasColumnW) {
-  //           pendingData.push(task);
-  //         } else if (hasColumnV && hasColumnW) {
-  //           historyData.push(task);
-  //         }
-  //       });
-
-  //       setPendingTasks(pendingData);
-  //       setHistoryTasks(historyData);
-
-  //     } catch (err) {
-  //       console.error("❌ Fetch error:", err);
-  //       setError(err.message);
-  //       setPendingTasks([]);
-  //       setHistoryTasks([]);
-  //     } finally {
-  //       setIsLoading(false);
-  //     }
-  //   };
-
-  //   fetchTasks()
-  //   fetchCheckedOptions()
-  // }, [])
-
-
-
   useEffect(() => {
   const fetchTasks = async () => {
     setIsLoading(true);
@@ -281,7 +182,7 @@ function ComplaintTracker() {
         .update({
           checked: checked,
           remark: remark || "",
-          actual: actualDate,
+          actual: actualDate.toISOString(),
         })
         .eq("serial_no", task.serialNo);
 
