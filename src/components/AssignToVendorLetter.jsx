@@ -8,6 +8,7 @@ import DatePicker from "react-datepicker"
 import "react-datepicker/dist/react-datepicker.css"
 import DashboardLayout from "../components/DashboardLayout"
 import supabase from "../utils/supabase"
+import SearchableSelect from "./SearchableSelect"
 
 function DraftLetter() {
     const navigate = useNavigate()
@@ -532,40 +533,37 @@ function DraftLetter() {
                     </div>
 
                     {/* District Filter */}
-                    <select
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        value={filterDistrict}
-                        onChange={(e) => setFilterDistrict(e.target.value)}
-                    >
-                        <option value="">All Districts</option>
-                        {[...new Set(getCurrentTasks().map(t => t.district))].filter(Boolean).sort().map(dist => (
-                            <option key={dist} value={dist}>{dist}</option>
-                        ))}
-                    </select>
+                    <div className="w-full">
+                        <SearchableSelect
+                            placeholder="All Districts"
+                            allOptionLabel="All Districts"
+                            options={[...new Set(getCurrentTasks().map(t => t.district))].filter(Boolean).sort()}
+                            value={filterDistrict}
+                            onChange={(val) => setFilterDistrict(val)}
+                        />
+                    </div>
 
                     {/* Block Filter */}
-                    <select
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        value={filterBlock}
-                        onChange={(e) => setFilterBlock(e.target.value)}
-                    >
-                        <option value="">All Blocks</option>
-                        {[...new Set(getCurrentTasks().map(t => t.block))].filter(Boolean).sort().map(block => (
-                            <option key={block} value={block}>{block}</option>
-                        ))}
-                    </select>
+                    <div className="w-full">
+                        <SearchableSelect
+                            placeholder="All Blocks"
+                            allOptionLabel="All Blocks"
+                            options={[...new Set(getCurrentTasks().map(t => t.block))].filter(Boolean).sort()}
+                            value={filterBlock}
+                            onChange={(val) => setFilterBlock(val)}
+                        />
+                    </div>
 
                     {/* Technician Filter */}
-                    <select
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        value={filterTechnician}
-                        onChange={(e) => setFilterTechnician(e.target.value)}
-                    >
-                        <option value="">All Technicians</option>
-                        {[...new Set(getCurrentTasks().map(t => t.technicianName))].filter(Boolean).sort().map(tech => (
-                            <option key={tech} value={tech}>{tech}</option>
-                        ))}
-                    </select>
+                    <div className="w-full">
+                        <SearchableSelect
+                            placeholder="All Technicians"
+                            allOptionLabel="All Technicians"
+                            options={[...new Set(getCurrentTasks().map(t => t.technicianName))].filter(Boolean).sort()}
+                            value={filterTechnician}
+                            onChange={(val) => setFilterTechnician(val)}
+                        />
+                    </div>
                 </div>
 
                 {/* Send Email button for History tab */}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { Search, Filter, Calendar, X } from "react-feather";
 import supabase from "../utils/supabase";
+import SearchableSelect from "./SearchableSelect";
 
 function FullTrackerHistoryTable() {
     const [complaints, setComplaints] = useState([])
@@ -389,68 +390,57 @@ function FullTrackerHistoryTable() {
 
                         <div className="space-y-1.5">
                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">District</label>
-                            <select
-                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none bg-white transition-all cursor-pointer"
+                            <SearchableSelect
+                                placeholder="All Districts"
+                                allOptionLabel="All Districts"
+                                options={uniqueValues.districts}
                                 value={filterInputs.district}
-                                onChange={(e) => setFilterInputs({ ...filterInputs, district: e.target.value })}
-                            >
-                                <option value="">All Districts</option>
-                                {uniqueValues.districts.map(d => <option key={d} value={d}>{d}</option>)}
-                            </select>
+                                onChange={(val) => setFilterInputs({ ...filterInputs, district: val })}
+                            />
                         </div>
 
                         <div className="space-y-1.5">
                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Block</label>
-                            <select
-                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none bg-white transition-all cursor-pointer"
+                            <SearchableSelect
+                                placeholder="All Blocks"
+                                allOptionLabel="All Blocks"
+                                options={uniqueValues.blocks}
                                 value={filterInputs.block}
-                                onChange={(e) => setFilterInputs({ ...filterInputs, block: e.target.value, village: "" })}
-                            >
-                                <option value="">All Blocks</option>
-                                {uniqueValues.blocks.map(b => <option key={b} value={b}>{b}</option>)}
-                            </select>
+                                onChange={(val) => setFilterInputs({ ...filterInputs, block: val, village: "" })}
+                            />
                         </div>
 
                         <div className="space-y-1.5">
                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Village</label>
-                            <input
-                                list="history-villages-list"
-                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                            <SearchableSelect
                                 placeholder="Search Village..."
+                                allOptionLabel="All Villages"
+                                options={availableVillages}
                                 value={filterInputs.village}
-                                onChange={(e) => setFilterInputs({ ...filterInputs, village: e.target.value })}
+                                onChange={(val) => setFilterInputs({ ...filterInputs, village: val })}
                             />
-                            <datalist id="history-villages-list">
-                                {availableVillages.map(v => <option key={v} value={v} />)}
-                            </datalist>
                         </div>
 
                         <div className="space-y-1.5">
                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">ID Number</label>
-                            <input
-                                list="history-id-numbers-list"
-                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                            <SearchableSelect
                                 placeholder="Search ID..."
+                                allOptionLabel="All ID Numbers"
+                                options={uniqueValues.idNumbers}
                                 value={filterInputs.idNumber}
-                                onChange={(e) => setFilterInputs({ ...filterInputs, idNumber: e.target.value })}
+                                onChange={(val) => setFilterInputs({ ...filterInputs, idNumber: val })}
                             />
-                            <datalist id="history-id-numbers-list">
-                                {uniqueValues.idNumbers.map(id => <option key={id} value={id} />)}
-                            </datalist>
                         </div>
 
                         <div className="space-y-1.5">
                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Beneficiary</label>
-                            <input
-                                list="history-beneficiaries-list"
-                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                            <SearchableSelect
                                 placeholder="Search Name..."
+                                allOptionLabel="All Beneficiaries"
+                                options={uniqueValues.beneficiaries}
                                 value={filterInputs.beneficiaryName}
-                                onChange={(e) => setFilterInputs({ ...filterInputs, beneficiaryName: e.target.value })}
+                                onChange={(val) => setFilterInputs({ ...filterInputs, beneficiaryName: val })}
                             />
-                            <datalist id="history-beneficiaries-list">
-                                {uniqueValues.beneficiaries.map(b => <option key={b} value={b} />)}
-                            </datalist>
                         </div>
                     </div>
                 </div>

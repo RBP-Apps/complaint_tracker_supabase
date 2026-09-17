@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import SearchableSelect from "./SearchableSelect"
 
 function ReportsTable() {
   const [reports, setReports] = useState([])
@@ -281,18 +282,15 @@ function ReportsTable() {
         </div>
 
         {/* Mode of Call Filter */}
-        <select
-          className="w-full sm:w-[180px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          value={modeOfCallFilter}
-          onChange={(e) => setModeOfCallFilter(e.target.value)}
-        >
-          <option value="">All Modes</option>
-          {getUniqueModeOfCalls().map((mode) => (
-            <option key={mode} value={mode}>
-              {mode}
-            </option>
-          ))}
-        </select>
+        <div className="w-full sm:w-[180px]">
+          <SearchableSelect
+            placeholder="All Modes"
+            allOptionLabel="All Modes"
+            options={getUniqueModeOfCalls()}
+            value={modeOfCallFilter}
+            onChange={(val) => setModeOfCallFilter(val)}
+          />
+        </div>
 
         {/* Status Filter */}
         {/* <select

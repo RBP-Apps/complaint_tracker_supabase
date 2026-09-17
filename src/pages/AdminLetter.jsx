@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, Plus, Save, FileText, Mail, Globe, Phone, Trash2, SquarePlus } from "lucide-react";
+import { ArrowLeft, Plus, Save, FileText, Mail, Globe, Phone, Trash2, SquarePlus, Download } from "lucide-react";
 import { pdf } from "@react-pdf/renderer";
 import DashboardLayout from "../components/DashboardLayout";
 import LetterPDFDocument from "../components/LetterPDFDocument";
@@ -16,6 +16,7 @@ const AdminLetter = () => {
     const [taskData, setTaskData] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [isSavingPDF, setIsSavingPDF] = useState(false);
+    const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
     const [companyOptions, setCompanyOptions] = useState([]);
     const [selectedEmail, setSelectedEmail] = useState("tanay.vidhyut@gmail.com");
 
@@ -575,6 +576,38 @@ const AdminLetter = () => {
         }
     };
 
+    const handleDownloadPDF = async () => {
+        setIsDownloadingPDF(true);
+
+        try {
+            const isColumnANTrue =
+                taskData?.columnAN === true ||
+                taskData?.columnAN === "true" ||
+                taskData?.columnAN === "TRUE";
+
+            const isRBP = headerInfo?.companyName?.toUpperCase().includes("RBP");
+
+            const PdfComponent = isColumnANTrue && isRBP
+                ? (<RBPLetterPDF headerInfo={headerInfo} letterInfo={letterInfo} tableColumns={tableColumns} tableData={tableData} />)
+                : (<LetterPDFDocument headerInfo={headerInfo} letterInfo={letterInfo} tableColumns={tableColumns} tableData={tableData} />);
+
+            const pdfBlob = await pdf(PdfComponent).toBlob();
+            const blobUrl = URL.createObjectURL(pdfBlob);
+            const link = document.createElement("a");
+            link.href = blobUrl;
+            link.download = `AdminLetter_${complaintId || "letter"}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(blobUrl);
+        } catch (error) {
+            console.error("Error downloading PDF:", error);
+            alert("Error downloading PDF: " + error.message);
+        } finally {
+            setIsDownloadingPDF(false);
+        }
+    };
+
 
 
     if (loading) {
@@ -600,11 +633,19 @@ const AdminLetter = () => {
                         Back
                     </button>
                     <div className="flex gap-3">
+                        <button
+                            onClick={handleDownloadPDF}
+                            className={`flex items-center gap-2 px-4 py-2 ${isDownloadingPDF ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'} text-white rounded-lg transition-colors shadow-md`}
+                            disabled={isSaving || isSavingPDF || isDownloadingPDF}
+                        >
+                            <Download size={18} />
+                            {isDownloadingPDF ? "Downloading..." : "Download"}
+                        </button>
 
                         <button
                             onClick={handleSavePDF}
-                            className={`flex items-center gap-2 px-4 py-2 ${isSavingPDF ? 'bg-gray-400' : 'bg-blue-600'} text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md`}
-                            disabled={isSaving || isSavingPDF}
+                            className={`flex items-center gap-2 px-4 py-2 ${isSavingPDF ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'} text-white rounded-lg transition-colors shadow-md`}
+                            disabled={isSaving || isSavingPDF || isDownloadingPDF}
                         >
                             <FileText size={18} />
                             {isSavingPDF ? "Saving..." : "Save Letter"}

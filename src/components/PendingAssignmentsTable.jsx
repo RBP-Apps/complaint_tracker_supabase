@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import AssignComplaintForm from "./AssignComplaintForm"
 import supabase from "../utils/supabase"
+import SearchableSelect from "./SearchableSelect"
 
 function PendingAssignmentsTable() {
   const [pendingComplaints, setPendingComplaints] = useState([])
@@ -333,32 +334,26 @@ function PendingAssignmentsTable() {
         </div>
 
         {/* Company Name Filter */}
-        <select
-          className="w-full sm:w-[180px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          value={companyFilter}
-          onChange={(e) => setCompanyFilter(e.target.value)}
-        >
-          <option value="">All Companies</option>
-          {getUniqueCompanyNames().map((company) => (
-            <option key={company} value={company}>
-              {company}
-            </option>
-          ))}
-        </select>
+        <div className="w-full sm:w-[180px]">
+          <SearchableSelect
+            placeholder="All Companies"
+            allOptionLabel="All Companies"
+            options={getUniqueCompanyNames()}
+            value={companyFilter}
+            onChange={(val) => setCompanyFilter(val)}
+          />
+        </div>
 
         {/* Mode of Call Filter */}
-        <select
-          className="w-full sm:w-[180px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          value={modeOfCallFilter}
-          onChange={(e) => setModeOfCallFilter(e.target.value)}
-        >
-          <option value="">All Modes</option>
-          {getUniqueModeOfCalls().map((mode) => (
-            <option key={mode} value={mode}>
-              {mode}
-            </option>
-          ))}
-        </select>
+        <div className="w-full sm:w-[180px]">
+          <SearchableSelect
+            placeholder="All Modes"
+            allOptionLabel="All Modes"
+            options={getUniqueModeOfCalls()}
+            value={modeOfCallFilter}
+            onChange={(val) => setModeOfCallFilter(val)}
+          />
+        </div>
       </div>
 
       <div className="overflow-x-auto -mx-4 sm:mx-0">

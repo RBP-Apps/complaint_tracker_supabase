@@ -22,6 +22,9 @@ function ComplaintTracker() {
   const [checked, setChecked] = useState("")
   const [remark, setRemark] = useState("")
   const [checkedOptions, setCheckedOptions] = useState([])
+  const [uploadedPhoto, setUploadedPhoto] = useState(null)
+  const [uploadedReport, setUploadedReport] = useState(null)
+  const [uploadStatus, setUploadStatus] = useState("")
 
 
   useEffect(() => {
@@ -111,6 +114,8 @@ function ComplaintTracker() {
           columnW: row.actual,
           checked: row.checked,
           remark: row.remark,
+          photoUpload: row.photo_upload || null,
+          reportUpload: row.report_upload || null,
         };
 
         const hasColumnV = row.planned !== null;
@@ -168,31 +173,107 @@ function ComplaintTracker() {
 
 
 
+  const uploadFileToStorage = async (file, fileType) => {
+    if (!file) return null;
+
+    try {
+      setUploadStatus(`Uploading ${fileType}...`);
+      const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+      const fileName = `${Date.now()}-${sanitizedName}`;
+
+      const { error } = await supabase.storage
+        .from("vendor_tracker")
+        .upload(fileName, file);
+
+      if (error) {
+        // Fallback to complaint_documents bucket
+        const fallbackRes = await supabase.storage
+          .from("complaint_documents")
+          .upload(fileName, file);
+        if (fallbackRes.error) throw error;
+        const { data } = supabase.storage
+          .from("complaint_documents")
+          .getPublicUrl(fileName);
+        return data.publicUrl;
+      }
+
+      const { data } = supabase.storage
+        .from("vendor_tracker")
+        .getPublicUrl(fileName);
+
+      return data.publicUrl;
+    } catch (err) {
+      console.error(`❌ Upload error for ${fileType}:`, err);
+      alert(`Failed to upload ${fileType}: ${err.message}`);
+      return null;
+    }
+  };
+
   const handleUpdateTask = async () => {
     setIsSubmitting(true);
+    setUploadStatus("");
 
     try {
       const task = pendingTasks.find(t => t.id === selectedTask);
       if (!task) throw new Error("Task not found");
 
+      let photoUrl = null;
+      let reportUrl = null;
+
+      if (uploadedPhoto) {
+        photoUrl = await uploadFileToStorage(uploadedPhoto, "photo");
+      }
+      if (uploadedReport) {
+        reportUrl = await uploadFileToStorage(uploadedReport, "report");
+      }
+
       const actualDate = new Date();
 
-      const { error } = await supabase
+      const updatePayload = {
+        checked: checked,
+        remark: remark || "",
+        actual: actualDate.toISOString(),
+      };
+
+      if (photoUrl) {
+        updatePayload.photo_upload = photoUrl;
+      }
+      if (reportUrl) {
+        updatePayload.report_upload = reportUrl;
+      }
+
+      let { error } = await supabase
         .from("Tracker")
-        .update({
-          checked: checked,
-          remark: remark || "",
-          actual: actualDate.toISOString(),
-        })
+        .update(updatePayload)
         .eq("serial_no", task.serialNo);
 
-      if (error) throw error;
+      // Graceful fallback in case photo_upload or report_upload columns do not exist yet
+      if (error && error.message && error.message.includes("does not exist")) {
+        console.warn("Retrying update without new upload columns...", error);
+        const fallbackPayload = {
+          checked: checked,
+          remark:
+            (remark || "") +
+            (photoUrl ? ` | Photo: ${photoUrl}` : "") +
+            (reportUrl ? ` | Report: ${reportUrl}` : ""),
+          actual: actualDate.toISOString(),
+        };
+        const fallbackRes = await supabase
+          .from("Tracker")
+          .update(fallbackPayload)
+          .eq("serial_no", task.serialNo);
+        if (fallbackRes.error) throw fallbackRes.error;
+      } else if (error) {
+        throw error;
+      }
 
       const updatedTask = {
         ...task,
         checked: checked,
         remark: remark,
-        actualDate: actualDate,
+        actualDate: actualDate.toISOString(),
+        photoUpload: photoUrl || task.photoUpload,
+        reportUpload: reportUrl || task.reportUpload,
       };
 
       setPendingTasks(prev => prev.filter(t => t.serialNo !== task.serialNo));
@@ -215,15 +296,19 @@ function ComplaintTracker() {
       alert("Failed: " + err.message);
     } finally {
       setIsSubmitting(false);
+      setUploadStatus("");
     }
   };
 
   const resetDialogState = () => {
-    setSelectedTask(null)
-    setSelectedTaskData(null)
-    setChecked("")
-    setRemark("")
-  }
+    setSelectedTask(null);
+    setSelectedTaskData(null);
+    setChecked("");
+    setRemark("");
+    setUploadedPhoto(null);
+    setUploadedReport(null);
+    setUploadStatus("");
+  };
 
   const getCurrentTasks = () => {
     return activeTab === "pending" ? pendingTasks : historyTasks
@@ -414,7 +499,7 @@ function ComplaintTracker() {
 
                         {/* History specific fields */}
                         {activeTab === "history" && (
-                          <div className="mt-2 pt-2 border-t border-gray-100">
+                          <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
                             <div className="flex justify-between text-xs items-center">
                               <span className="text-gray-500">Status</span>
                               <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${task.checked === 'Approved' ? 'bg-green-100 text-green-800' :
@@ -424,6 +509,22 @@ function ComplaintTracker() {
                                 {task.checked}
                               </span>
                             </div>
+                            {(task.photoUpload || task.reportUpload) && (
+                              <div className="flex gap-2 pt-1">
+                                {task.photoUpload && (
+                                  <a href={task.photoUpload} target="_blank" rel="noopener noreferrer"
+                                    className="flex-1 text-center bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded text-xs font-medium">
+                                    📷 Photo
+                                  </a>
+                                )}
+                                {task.reportUpload && (
+                                  <a href={task.reportUpload} target="_blank" rel="noopener noreferrer"
+                                    className="flex-1 text-center bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded text-xs font-medium">
+                                    📄 Report
+                                  </a>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -514,6 +615,9 @@ function ComplaintTracker() {
                               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                                 Remark
                               </th>
+                              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                Approval Attachments
+                              </th>
                             </>
                           )}
                         </tr>
@@ -567,6 +671,35 @@ function ComplaintTracker() {
                                 </td>
                                 <td className="px-3 py-4 whitespace-nowrap text-sm max-w-xs truncate" title={task.remark}>
                                   {task.remark}
+                                </td>
+                                <td className="px-3 py-4 whitespace-nowrap text-sm">
+                                  <div className="flex items-center gap-1.5">
+                                    {task.photoUpload && (
+                                      <a
+                                        href={task.photoUpload}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-2 py-1 rounded text-xs font-medium"
+                                        title="View Approved Photo"
+                                      >
+                                        📷 Photo
+                                      </a>
+                                    )}
+                                    {task.reportUpload && (
+                                      <a
+                                        href={task.reportUpload}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded text-xs font-medium"
+                                        title="View Approved Report"
+                                      >
+                                        📄 Report
+                                      </a>
+                                    )}
+                                    {!task.photoUpload && !task.reportUpload && (
+                                      <span className="text-gray-400 text-xs">-</span>
+                                    )}
+                                  </div>
                                 </td>
                               </>
                             )}
@@ -794,7 +927,117 @@ function ComplaintTracker() {
                               rows="3"
                             />
                           </div>
+
+                          {/* 1. Photo upload */}
+                          <div className="space-y-1.5 p-3 bg-emerald-50/60 border border-emerald-200 rounded-lg">
+                            <label htmlFor="approvedPhoto" className="block text-sm font-medium text-emerald-900">
+                              Photo upload (फ़ोटो अपलोड करें)
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                id="approvedPhoto"
+                                type="file"
+                                accept="image/*"
+                                className="flex-1 text-sm border border-emerald-300 rounded-md py-1.5 px-3 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    setUploadedPhoto(e.target.files[0]);
+                                  }
+                                }}
+                              />
+                              {uploadedPhoto && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setUploadedPhoto(null);
+                                    const el = document.getElementById("approvedPhoto");
+                                    if (el) el.value = "";
+                                  }}
+                                  className="p-1.5 text-gray-500 hover:text-red-500 border border-emerald-300 rounded-md bg-white hover:bg-red-50 transition-colors"
+                                  title="हटाएं"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
+                            {uploadedPhoto && (
+                              <div className="text-xs text-emerald-700 font-medium">
+                                ✓ चयनित फोटो: {uploadedPhoto.name}
+                              </div>
+                            )}
+                            {selectedTaskData?.photoUpload && !uploadedPhoto && (
+                              <div className="text-xs text-emerald-700">
+                                Current:{" "}
+                                <a
+                                  href={selectedTaskData.photoUpload}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="underline font-semibold"
+                                >
+                                  View Existing Photo
+                                </a>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* 2. Report Upload */}
+                          <div className="space-y-1.5 p-3 bg-blue-50/60 border border-blue-200 rounded-lg">
+                            <label htmlFor="approvedReport" className="block text-sm font-medium text-blue-900">
+                              Report Upload (रिपोर्ट अपलोड करें)
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                id="approvedReport"
+                                type="file"
+                                className="flex-1 text-sm border border-blue-300 rounded-md py-1.5 px-3 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    setUploadedReport(e.target.files[0]);
+                                  }
+                                }}
+                              />
+                              {uploadedReport && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setUploadedReport(null);
+                                    const el = document.getElementById("approvedReport");
+                                    if (el) el.value = "";
+                                  }}
+                                  className="p-1.5 text-gray-500 hover:text-red-500 border border-blue-300 rounded-md bg-white hover:bg-red-50 transition-colors"
+                                  title="हटाएं"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
+                            {uploadedReport && (
+                              <div className="text-xs text-blue-700 font-medium">
+                                ✓ चयनित रिपोर्ट: {uploadedReport.name}
+                              </div>
+                            )}
+                            {selectedTaskData?.reportUpload && !uploadedReport && (
+                              <div className="text-xs text-blue-700">
+                                Current:{" "}
+                                <a
+                                  href={selectedTaskData.reportUpload}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="underline font-semibold"
+                                >
+                                  View Existing Report
+                                </a>
+                              </div>
+                            )}
+                          </div>
                         </div>
+
+                        {uploadStatus && (
+                          <div className="mt-3 p-2 bg-blue-50 text-blue-700 rounded-md text-sm flex items-center gap-2">
+                            <Loader className="h-4 w-4 animate-spin" />
+                            <span>{uploadStatus}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="flex justify-end gap-2 mt-4">
                         <button

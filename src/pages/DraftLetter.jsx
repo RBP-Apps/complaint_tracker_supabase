@@ -6,8 +6,12 @@ import { useNavigate, useLocation } from "react-router-dom"
 import { Calendar, Upload, MapPin, Loader, Edit, Check, X, FileText, Mail, Trash2, Plus, Paperclip } from "react-feather"
 import DatePicker from "react-datepicker"
 import "react-datepicker/dist/react-datepicker.css"
+import * as XLSX from "xlsx"
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
 import DashboardLayout from "../components/DashboardLayout"
 import supabase from "../utils/supabase"
+import SearchableSelect from "../components/SearchableSelect"
 
 function DraftLetter() {
     const navigate = useNavigate()
@@ -416,6 +420,173 @@ function DraftLetter() {
         )
     })
 
+    // Export to Excel
+    const handleExportExcel = () => {
+        if (!filteredTasks || filteredTasks.length === 0) {
+            alert("No records to export.")
+            return
+        }
+
+        const exportData = filteredTasks.map((task, index) => {
+            const baseData = {
+                "S.No": index + 1,
+                "Complaint ID": task.complaintId || "-",
+                "ID Number": task.idNumber || "-",
+                "Technician Name": task.technicianName || "-",
+                "Technician Contact": task.technicianContact || "-",
+                "Beneficiary Name": task.beneficiaryName || "-",
+                "Contact Number": task.contactNumber || "-",
+                "Village": task.village || "-",
+                "Block": task.block || "-",
+                "District": task.district || "-",
+                "Product": task.product || "-",
+                "Make": task.make || "-",
+                "Nature of Complaint": task.natureOfComplaint || "-",
+                "Status": task.trackerStatus || task.status || "-",
+            }
+
+            if (activeTab === "history") {
+                return {
+                    ...baseData,
+                    "Actual Date": task.actualDate || "-",
+                    "Checked": task.checked || "-",
+                    "Remark": task.remark || "-",
+                    "Company": task.companyName || "-",
+                    "Email": task.email || "-",
+                    "PDF URL": task.pdfUrl || "-",
+                }
+            }
+
+            return baseData
+        })
+
+        const worksheet = XLSX.utils.json_to_sheet(exportData)
+        const workbook = XLSX.utils.book_new()
+        const tabTitle = activeTab === "pending" ? "Pending_Draft_Letters" : "History_Draft_Letters"
+        XLSX.utils.book_append_sheet(workbook, worksheet, tabTitle)
+        const dateStr = new Date().toISOString().split("T")[0]
+        XLSX.writeFile(workbook, `${tabTitle}_${dateStr}.xlsx`)
+    }
+
+    // Export to PDF
+    const handleExportPDF = () => {
+        if (!filteredTasks || filteredTasks.length === 0) {
+            alert("No records to export.")
+            return
+        }
+
+        const doc = new jsPDF({
+            orientation: "landscape",
+            unit: "pt",
+            format: "a4",
+        })
+
+        const dateStr = new Date().toLocaleDateString("en-GB")
+        const tabName = activeTab === "pending" ? "Pending Draft Letters" : "History Draft Letters"
+
+        doc.setFontSize(16)
+        doc.setTextColor(31, 41, 55)
+        doc.text(tabName, 40, 36)
+
+        doc.setFontSize(9)
+        doc.setTextColor(107, 114, 128)
+        doc.text(`Generated on: ${dateStr} | Total Records: ${filteredTasks.length}`, 40, 52)
+
+        let tableColumns = []
+        let tableRows = []
+
+        if (activeTab === "pending") {
+            tableColumns = [
+                "#",
+                "Complaint ID",
+                "ID Number",
+                "Beneficiary",
+                "Contact",
+                "District",
+                "Block",
+                "Product",
+                "Technician",
+                "Nature of Complaint",
+                "Status",
+            ]
+
+            tableRows = filteredTasks.map((task, index) => [
+                index + 1,
+                task.complaintId || "-",
+                task.idNumber || "-",
+                task.beneficiaryName || "-",
+                task.contactNumber || "-",
+                task.district || "-",
+                task.block || "-",
+                task.product || "-",
+                task.technicianName || "-",
+                (task.natureOfComplaint || "-").length > 40
+                    ? (task.natureOfComplaint || "-").substring(0, 40) + "..."
+                    : (task.natureOfComplaint || "-"),
+                task.trackerStatus || task.status || "APPROVED-CLOSE",
+            ])
+        } else {
+            tableColumns = [
+                "#",
+                "Complaint ID",
+                "ID Number",
+                "Beneficiary",
+                "Contact",
+                "District",
+                "Block",
+                "Product",
+                "Technician",
+                "Company",
+                "Actual Date",
+                "Status",
+            ]
+
+            tableRows = filteredTasks.map((task, index) => [
+                index + 1,
+                task.complaintId || "-",
+                task.idNumber || "-",
+                task.beneficiaryName || "-",
+                task.contactNumber || "-",
+                task.district || "-",
+                task.block || "-",
+                task.product || "-",
+                task.technicianName || "-",
+                task.companyName || "-",
+                task.actualDate || "-",
+                task.checked || task.trackerStatus || "-",
+            ])
+        }
+
+        autoTable(doc, {
+            head: [tableColumns],
+            body: tableRows,
+            startY: 64,
+            theme: "grid",
+            headStyles: {
+                fillColor: [59, 130, 246],
+                textColor: 255,
+                fontSize: 8,
+                fontStyle: "bold",
+                halign: "center",
+            },
+            bodyStyles: {
+                fontSize: 7.5,
+                textColor: 50,
+            },
+            alternateRowStyles: {
+                fillColor: [249, 250, 251],
+            },
+            margin: { left: 30, right: 30 },
+            styles: {
+                overflow: "linebreak",
+                cellPadding: 3,
+            },
+        })
+
+        const fileDate = new Date().toISOString().split("T")[0]
+        doc.save(`${activeTab === "pending" ? "Pending" : "History"}_Draft_Letters_${fileDate}.pdf`)
+    }
+
     if (isLoading) {
         return (
             <DashboardLayout>
@@ -442,8 +613,39 @@ function DraftLetter() {
 
     return (
         <DashboardLayout>
-            <div className="p-6">
-                <h1 className="text-2xl font-bold mb-6">Draft Letter</h1>
+            <div className="p-4 md:p-6">
+                {/* Header with Title and Top Right Export Buttons */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Draft Letter</h1>
+                        <p className="text-sm text-gray-500 mt-0.5">Manage pending and historical draft letter complaints</p>
+                    </div>
+
+                    {/* Top Right: Export to Excel & PDF */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleExportExcel}
+                            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs hover:shadow transition-all cursor-pointer"
+                            title="Export to Excel"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span>Export Excel</span>
+                        </button>
+
+                        <button
+                            onClick={handleExportPDF}
+                            className="flex items-center gap-1.5 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg shadow-xs hover:shadow transition-all cursor-pointer"
+                            title="Export to PDF"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                            </svg>
+                            <span>Export PDF</span>
+                        </button>
+                    </div>
+                </div>
 
                 {/* Tabs */}
                 <div className="mb-6 border-b border-gray-200">
@@ -481,63 +683,91 @@ function DraftLetter() {
                     </nav>
                 </div>
 
-                {/* Filters */}
-                <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {/* Search */}
-                    <div className="relative">
-                        <input
-                            type="search"
-                            placeholder="Search across all fields"
-                            className="pl-8 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                        <svg
-                            className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
+                {/* Filters with SearchableSelect Dropdowns & Global Search */}
+                <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Filters</span>
+                            {(filterDistrict || filterBlock || filterTechnician || searchTerm) && (
+                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Active</span>
+                            )}
+                        </div>
+                        {(filterDistrict || filterBlock || filterTechnician || searchTerm) && (
+                            <button
+                                onClick={() => {
+                                    setFilterDistrict("")
+                                    setFilterBlock("")
+                                    setFilterTechnician("")
+                                    setSearchTerm("")
+                                }}
+                                className="text-xs text-blue-600 hover:text-blue-800 font-medium underline flex items-center gap-1 cursor-pointer"
+                            >
+                                <X size={12} />
+                                Clear All
+                            </button>
+                        )}
                     </div>
 
-                    {/* District Filter */}
-                    <select
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        value={filterDistrict}
-                        onChange={(e) => setFilterDistrict(e.target.value)}
-                    >
-                        <option value="">All Districts</option>
-                        {[...new Set(getCurrentTasks().map(t => t.district))].filter(Boolean).sort().map(dist => (
-                            <option key={dist} value={dist}>{dist}</option>
-                        ))}
-                    </select>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        {/* Search Input */}
+                        <div className="relative flex items-center">
+                            <input
+                                type="search"
+                                placeholder="Search across all fields..."
+                                className="pl-8 pr-7 w-full py-1.5 text-xs sm:text-sm bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                            <svg
+                                className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none"
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            {searchTerm && (
+                                <button
+                                    onClick={() => setSearchTerm("")}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                                    title="Clear search"
+                                >
+                                    <X size={12} />
+                                </button>
+                            )}
+                        </div>
 
-                    {/* Block Filter */}
-                    <select
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        value={filterBlock}
-                        onChange={(e) => setFilterBlock(e.target.value)}
-                    >
-                        <option value="">All Blocks</option>
-                        {[...new Set(getCurrentTasks().map(t => t.block))].filter(Boolean).sort().map(block => (
-                            <option key={block} value={block}>{block}</option>
-                        ))}
-                    </select>
+                        {/* District Searchable Dropdown */}
+                        <SearchableSelect
+                            placeholder="All Districts"
+                            allOptionLabel="All Districts"
+                            options={[...new Set(getCurrentTasks().map(t => t.district))].filter(Boolean).sort()}
+                            value={filterDistrict}
+                            onChange={(val) => {
+                                setFilterDistrict(val)
+                                setFilterBlock("")
+                            }}
+                        />
 
-                    {/* Technician Filter */}
-                    <select
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        value={filterTechnician}
-                        onChange={(e) => setFilterTechnician(e.target.value)}
-                    >
-                        <option value="">All Technicians</option>
-                        {[...new Set(getCurrentTasks().map(t => t.technicianName))].filter(Boolean).sort().map(tech => (
-                            <option key={tech} value={tech}>{tech}</option>
-                        ))}
-                    </select>
+                        {/* Block Searchable Dropdown */}
+                        <SearchableSelect
+                            placeholder="All Blocks"
+                            allOptionLabel="All Blocks"
+                            options={[...new Set(getCurrentTasks().filter(t => !filterDistrict || t.district === filterDistrict).map(t => t.block))].filter(Boolean).sort()}
+                            value={filterBlock}
+                            onChange={(val) => setFilterBlock(val)}
+                        />
+
+                        {/* Technician Searchable Dropdown */}
+                        <SearchableSelect
+                            placeholder="All Technicians"
+                            allOptionLabel="All Technicians"
+                            options={[...new Set(getCurrentTasks().map(t => t.technicianName))].filter(Boolean).sort()}
+                            value={filterTechnician}
+                            onChange={(val) => setFilterTechnician(val)}
+                        />
+                    </div>
                 </div>
 
                 {/* Send Email button for History tab */}
@@ -577,14 +807,14 @@ function DraftLetter() {
                 {/* Table */}
                 <div className="overflow-x-auto -mx-4 sm:mx-0">
                     <div className="inline-block min-w-full align-middle">
-                        {/* Desktop Table View - Fixed Header & Scrollable Body */}
-                        <div className="hidden md:block overflow-x-auto -mx-4 sm:mx-0 max-h-[600px] overflow-y-auto border border-gray-200 rounded-lg">
+                        {/* Desktop Table View - Fixed Header & 400px Scrollable Body */}
+                        <div className="hidden md:block overflow-x-auto h-[400px] max-h-[400px] overflow-y-auto border border-gray-200 rounded-lg shadow-xs">
                             <div className="inline-block min-w-full align-middle">
                                 <table className="min-w-full divide-y divide-gray-200">
-                                    <thead className="bg-gray-100 sticky top-0 z-10">
+                                    <thead className="bg-gray-100 sticky top-0 z-20 shadow-xs border-b border-gray-200">
                                         <tr>
                                             {activeTab === "history" && (
-                                                <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                                <th className="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                                                     <input
                                                         type="checkbox"
                                                         className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
@@ -595,71 +825,71 @@ function DraftLetter() {
                                                 </th>
                                             )}
                                             {activeTab === "pending" && (
-                                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                                                     Actions
                                                 </th>
                                             )}
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                                                 Complaint Id
                                             </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                                                 ID Number
                                             </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 min-w-[130px]">
                                                 Technician Name
                                             </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                                                 Technician Contact
                                             </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 min-w-[140px]">
                                                 Beneficiary Name
                                             </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                                                 Contact Number
                                             </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 min-w-[110px]">
                                                 Village
                                             </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 min-w-[110px]">
                                                 Block
                                             </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 min-w-[110px]">
                                                 District
                                             </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 min-w-[120px]">
                                                 Product
                                             </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 min-w-[100px]">
                                                 Make
                                             </th>
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 min-w-[200px]">
                                                 Nature Of Complaint
                                             </th>
 
-                                            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                                                 Status
                                             </th>
                                             {activeTab === "history" && (
                                                 <>
-                                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                                                         Actual Date
                                                     </th>
-                                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                                                         Checked
                                                     </th>
-                                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 min-w-[150px]">
                                                         Remark
                                                     </th>
-                                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                                                         Letter PDF
                                                     </th>
-                                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 min-w-[130px]">
                                                         Company
                                                     </th>
-                                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-100 min-w-[140px]">
                                                         Email
                                                     </th>
-                                                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                                    <th className="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                                                         Actions
                                                     </th>
                                                 </>
@@ -669,7 +899,7 @@ function DraftLetter() {
                                     <tbody className="bg-white divide-y divide-gray-200">
                                         {filteredTasks.length === 0 ? (
                                             <tr>
-                                                <td colSpan={activeTab === "pending" ? 14 : 18} className="px-3 py-10 text-center text-gray-500 italic font-medium">
+                                                <td colSpan={activeTab === "pending" ? 14 : 21} className="px-3 py-10 text-center text-gray-500 italic font-medium">
                                                     {activeTab === "pending"
                                                         ? "No pending draft letter complaints found"
                                                         : "No draft letter complaint history found"
@@ -678,9 +908,9 @@ function DraftLetter() {
                                             </tr>
                                         ) : (
                                             filteredTasks.map((task, index) => (
-                                                <tr key={task.complaintId || index} className={`hover:bg-gray-50 ${activeTab === "history" && selectedHistoryIds.has(task.complaintId) ? "bg-blue-50" : ""}`}>
+                                                <tr key={task.complaintId || index} className={`hover:bg-blue-50/40 transition-colors ${activeTab === "history" && selectedHistoryIds.has(task.complaintId) ? "bg-blue-50" : ""}`}>
                                                     {activeTab === "history" && (
-                                                        <td className="px-3 py-4 whitespace-nowrap text-center">
+                                                        <td className="px-3 py-3 whitespace-nowrap text-center">
                                                             <input
                                                                 type="checkbox"
                                                                 className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
@@ -690,9 +920,9 @@ function DraftLetter() {
                                                         </td>
                                                     )}
                                                     {activeTab === "pending" && (
-                                                        <td className="px-3 py-4 whitespace-nowrap">
+                                                        <td className="px-3 py-3 whitespace-nowrap">
                                                             <button
-                                                                className="bg-gradient-to-r from-amber-400 to-orange-500 text-white hover:from-amber-500 hover:to-orange-600 border-0 py-1 px-3 rounded-md"
+                                                                className="bg-gradient-to-r from-amber-400 to-orange-500 text-white hover:from-amber-500 hover:to-orange-600 border-0 py-1 px-3 rounded-md text-xs font-medium cursor-pointer shadow-xs transition-all"
                                                                 onClick={() => {
                                                                     setSelectedTask(task.id)
                                                                     setSelectedTaskData(task)
@@ -705,34 +935,38 @@ function DraftLetter() {
                                                             </button>
                                                         </td>
                                                     )}
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">{task.complaintId}</td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{task.idNumber}</td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">{task.technicianName}</td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">{task.technicianContact}</td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">{task.beneficiaryName}</td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">{task.contactNumber}</td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">{task.village}</td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">{task.block}</td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">{task.district}</td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">{task.product}</td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">{task.make}</td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm max-w-xs truncate" title={task.natureOfComplaint}>
-                                                        {task.natureOfComplaint}
+                                                    <td className="px-3 py-3 text-xs font-mono font-semibold text-gray-900 whitespace-nowrap">{task.complaintId}</td>
+                                                    <td className="px-3 py-3 text-xs font-medium text-blue-600 whitespace-nowrap">{task.idNumber}</td>
+                                                    <td className="px-3 py-3 text-xs text-gray-800 whitespace-normal break-words min-w-[130px]">{task.technicianName || "-"}</td>
+                                                    <td className="px-3 py-3 text-xs text-gray-600 whitespace-nowrap font-mono">{task.technicianContact || "-"}</td>
+                                                    <td className="px-3 py-3 text-xs text-gray-900 font-medium whitespace-normal break-words min-w-[140px]">{task.beneficiaryName || "-"}</td>
+                                                    <td className="px-3 py-3 text-xs text-gray-600 whitespace-nowrap font-mono">{task.contactNumber || "-"}</td>
+                                                    <td className="px-3 py-3 text-xs text-gray-700 whitespace-normal break-words min-w-[110px]">{task.village || "-"}</td>
+                                                    <td className="px-3 py-3 text-xs text-gray-700 whitespace-normal break-words min-w-[110px]">{task.block || "-"}</td>
+                                                    <td className="px-3 py-3 text-xs text-gray-700 whitespace-normal break-words min-w-[110px]">{task.district || "-"}</td>
+                                                    <td className="px-3 py-3 text-xs text-gray-800 whitespace-normal break-words min-w-[120px]">{task.product || "-"}</td>
+                                                    <td className="px-3 py-3 text-xs text-gray-700 whitespace-normal break-words min-w-[100px]">{task.make || "-"}</td>
+                                                    <td className="px-3 py-3 text-xs text-gray-700 whitespace-normal break-words min-w-[200px] max-w-xs" title={task.natureOfComplaint}>
+                                                        {task.natureOfComplaint || "-"}
                                                     </td>
 
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">{task.trackerStatus}</td>
+                                                    <td className="px-3 py-3 whitespace-nowrap text-xs">
+                                                        <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+                                                            {task.trackerStatus || task.status}
+                                                        </span>
+                                                    </td>
                                                     {activeTab === "history" && (
                                                         <>
-                                                            <td className="px-3 py-4 whitespace-nowrap text-sm">{task.actualDate}</td>
-                                                            <td className="px-3 py-4 whitespace-nowrap text-sm">
-                                                                <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                                                                    {task.checked}
+                                                            <td className="px-3 py-3 whitespace-nowrap text-xs text-gray-600">{task.actualDate || "-"}</td>
+                                                            <td className="px-3 py-3 whitespace-nowrap text-xs">
+                                                                <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-green-100 text-green-800 border border-green-200">
+                                                                    {task.checked || "-"}
                                                                 </span>
                                                             </td>
-                                                            <td className="px-3 py-4 whitespace-nowrap text-sm max-w-xs truncate" title={task.remark}>
-                                                                {task.remark}
+                                                            <td className="px-3 py-3 text-xs whitespace-normal break-words min-w-[150px] max-w-xs text-gray-700" title={task.remark}>
+                                                                {task.remark || "-"}
                                                             </td>
-                                                            <td className="px-3 py-4 whitespace-nowrap text-sm">
+                                                            <td className="px-3 py-3 whitespace-nowrap text-xs">
                                                                 {task.pdfUrl ? (
                                                                     <a
                                                                         href={getViewerUrl(task.pdfUrl)}
@@ -747,12 +981,12 @@ function DraftLetter() {
                                                                     <span className="text-gray-400 italic text-xs">No PDF</span>
                                                                 )}
                                                             </td>
-                                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{task.companyName}</td>
-                                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{task.email}</td>
-                                                            <td className="px-3 py-4 whitespace-nowrap text-center">
+                                                            <td className="px-3 py-3 text-xs text-gray-900 whitespace-normal break-words min-w-[130px]">{task.companyName || "-"}</td>
+                                                            <td className="px-3 py-3 text-xs text-gray-600 whitespace-normal break-words min-w-[140px]">{task.email || "-"}</td>
+                                                            <td className="px-3 py-3 whitespace-nowrap text-center">
                                                                 <button
                                                                     onClick={() => openEmailModal(task)}
-                                                                    className="inline-flex items-center gap-1 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white py-1 px-3 rounded-md text-xs font-medium transition-all duration-200 shadow-sm hover:shadow-md"
+                                                                    className="inline-flex items-center gap-1 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white py-1 px-3 rounded-md text-xs font-medium transition-all duration-200 shadow-sm hover:shadow-md cursor-pointer"
                                                                 >
                                                                     <Mail size={12} />
                                                                     Email

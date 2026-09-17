@@ -141,7 +141,7 @@ function DashboardLayout({ children }) {
         <h1 className="text-xl font-bold">Complaints Tracker</h1>
       </div>
 
-      <div className="p-4 border-b border-gray-700">
+      {/* <div className="p-4 border-b border-gray-700">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 border-2 border-gray-700 rounded-full overflow-hidden flex items-center justify-center bg-gray-600 text-white">
             <span>{username ? username.substring(0, 2).toUpperCase() : "AU"}</span>
@@ -153,7 +153,7 @@ function DashboardLayout({ children }) {
             </p>
           </div>
         </div>
-      </div>
+      </div> */}
 
       <nav className="mt-5 px-3 flex-1 overflow-y-auto">
         <div className="space-y-1">
@@ -223,6 +223,21 @@ function DashboardLayout({ children }) {
           })}
         </div>
       </nav>
+
+
+         <div className="p-4 border-b border-gray-700">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 border-2 border-gray-700 rounded-full overflow-hidden flex items-center justify-center bg-gray-600 text-white">
+            <span>{username ? username.substring(0, 2).toUpperCase() : "AU"}</span>
+          </div>
+          <div>
+            <p className="font-medium">{username || "User"}</p>
+            <p className="text-xs text-gray-400">
+              {userRole || "User"}
+            </p>
+          </div>
+        </div>
+      </div>
 
       <div className="p-4 mt-auto">
         <button

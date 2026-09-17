@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import * as XLSX from 'xlsx';
 import supabase from "../utils/supabase";
+import SearchableSelect from "./SearchableSelect";
 
 
 
@@ -17,10 +18,6 @@ function ComplaintsTable() {
   const [isExporting, setIsExporting] = useState(false);
 
 
-
-
-  // Google Apps Script Web App URL
-  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwnIMOzsFbniWnPFhl3lzE-2W0l6lD23keuz57-ldS_umSXIJqpEK-qxLE6eM0s7drqrQ/exec"
 
 
   // Advanced Filter States
@@ -437,17 +434,20 @@ function ComplaintsTable() {
         </h2>
         <div className="flex flex-col sm:flex-row gap-4">
 
-          <select
-            className="w-full sm:w-[200px] px-2 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="All">All Statuses</option>
-            <option value="Open">OPEN</option>
-            <option value="APPROVED-CLOSE">APPROVED-CLOSE</option>
-            <option value="OK-OPEN">OK-OPEN</option>
-            <option value="Reject">REJECT</option>
-          </select>
+          <div className="w-full sm:w-[200px]">
+            <SearchableSelect
+              placeholder="All Statuses"
+              allOptionLabel="All Statuses"
+              options={[
+                { label: "OPEN", value: "Open" },
+                { label: "APPROVED-CLOSE", value: "APPROVED-CLOSE" },
+                { label: "OK-OPEN", value: "OK-OPEN" },
+                { label: "REJECT", value: "Reject" },
+              ]}
+              value={statusFilter === "All" ? "" : statusFilter}
+              onChange={(val) => setStatusFilter(val || "All")}
+            />
+          </div>
 
           <div className="relative flex items-center">
             <input
@@ -524,75 +524,64 @@ function ComplaintsTable() {
             />
           </div>
 
-          {/* District Dropdown */}
+          {/* District Searchable Dropdown */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-gray-500">District</label>
-            <select
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-white"
+            <SearchableSelect
+              placeholder="All Districts"
+              allOptionLabel="All Districts"
+              options={uniqueValues.districts}
               value={filterInputs.district}
-              onChange={(e) => setFilterInputs({ ...filterInputs, district: e.target.value })}
-            >
-              <option value="">All Districts</option>
-              {uniqueValues.districts.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
+              onChange={(val) => setFilterInputs({ ...filterInputs, district: val })}
+            />
           </div>
 
-          {/* Block Dropdown */}
+          {/* Block Searchable Dropdown */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-gray-500">Block</label>
-            <select
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-white"
+            <SearchableSelect
+              placeholder="All Blocks"
+              allOptionLabel="All Blocks"
+              options={uniqueValues.blocks}
               value={filterInputs.block}
-              onChange={(e) => setFilterInputs({ ...filterInputs, block: e.target.value, village: "" })} // Reset village when block changes
-            >
-              <option value="">All Blocks</option>
-              {uniqueValues.blocks.map(b => <option key={b} value={b}>{b}</option>)}
-            </select>
+              onChange={(val) => setFilterInputs({ ...filterInputs, block: val, village: "" })}
+            />
           </div>
 
-          {/* Village Searchable */}
+          {/* Village Searchable Dropdown */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-gray-500">Village</label>
-            <input
-              list="villages-list"
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+            <SearchableSelect
               placeholder="Search Village..."
+              allOptionLabel="All Villages"
+              options={availableVillages}
               value={filterInputs.village}
-              onChange={(e) => setFilterInputs({ ...filterInputs, village: e.target.value })}
+              onChange={(val) => setFilterInputs({ ...filterInputs, village: val })}
             />
-            <datalist id="villages-list">
-              {availableVillages.map(v => <option key={v} value={v} />)}
-            </datalist>
           </div>
 
-          {/* ID Number Searchable */}
+          {/* ID Number Searchable Dropdown */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-gray-500">ID Number</label>
-            <input
-              list="id-numbers-list"
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+            <SearchableSelect
               placeholder="Search ID..."
+              allOptionLabel="All ID Numbers"
+              options={uniqueValues.idNumbers}
               value={filterInputs.idNumber}
-              onChange={(e) => setFilterInputs({ ...filterInputs, idNumber: e.target.value })}
+              onChange={(val) => setFilterInputs({ ...filterInputs, idNumber: val })}
             />
-            <datalist id="id-numbers-list">
-              {uniqueValues.idNumbers.map(id => <option key={id} value={id} />)}
-            </datalist>
           </div>
 
-          {/* Beneficiary Name Searchable */}
+          {/* Beneficiary Name Searchable Dropdown */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-gray-500">Beneficiary</label>
-            <input
-              list="beneficiaries-list"
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+            <SearchableSelect
               placeholder="Search Name..."
+              allOptionLabel="All Beneficiaries"
+              options={uniqueValues.beneficiaries}
               value={filterInputs.beneficiaryName}
-              onChange={(e) => setFilterInputs({ ...filterInputs, beneficiaryName: e.target.value })}
+              onChange={(val) => setFilterInputs({ ...filterInputs, beneficiaryName: val })}
             />
-            <datalist id="beneficiaries-list">
-              {uniqueValues.beneficiaries.map(b => <option key={b} value={b} />)}
-            </datalist>
           </div>
 
         </div>

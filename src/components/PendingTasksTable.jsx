@@ -1,10 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Calendar, Upload, MapPin, Loader, Edit, Check, X } from "react-feather"
+import { useState, useEffect, useMemo } from "react"
+import { Calendar, Upload, MapPin, Loader, Edit, Check, X, Download, FileText } from "react-feather"
 import DatePicker from "react-datepicker"
 import "react-datepicker/dist/react-datepicker.css"
+import * as XLSX from "xlsx"
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
 import supabase from "../utils/supabase"
+import SearchableSelect from "./SearchableSelect"
 
 
 function TrackerPendingTable() {
@@ -18,7 +22,10 @@ function TrackerPendingTable() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
   const [searchTerm, setSearchTerm] = useState("")
-  const [uploadedDocument, setUploadedDocument] = useState(null)
+  const [uploadedDocument1, setUploadedDocument1] = useState(null)
+  const [uploadedDocument2, setUploadedDocument2] = useState(null)
+  const [uploadedDocument3, setUploadedDocument3] = useState(null)
+  const [uploadedReport, setUploadedReport] = useState(null)
   const [uploadedPhoto, setUploadedPhoto] = useState(null)
   const [uploadStatus, setUploadStatus] = useState("")
   const [companyFilter, setCompanyFilter] = useState("")
@@ -211,115 +218,120 @@ const generateNextRBPSTId = async () => {
     }
   }
 
-  useEffect(() => {
-    console.log('🚀 Component mounted - Starting data fetch...');
-
   const fetchTasks = async () => {
-  setIsLoading(true);
-  setError(null);
+    setIsLoading(true);
+    setError(null);
 
-  try {
-    // const { data, error } = await supabase
-    //   .from("FMS")
-    //   .select("*");
-    const { data, error } = await supabase
-  .from("FMS")
-  .select("*")
-  .eq("assign_to_vendor", false);  // Only fetch where assign_to_vendor is false
+    try {
+      const { data, error } = await supabase
+        .from("FMS")
+        .select("*")
+        .order("id", { ascending: false });
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const taskData = data
-      .filter((row) => row.complaint_id && row.status !== "APPROVED-CLOSE")
-      .map((row, index) => ({
-        rowIndex: index + 1,
-        complaintId: row.complaint_id,
-        idNumber: row.id_number,
-        technicianName: row.technician_name,
-        technicianNumber: row.technician_contact,
-        beneficiaryName: row.beneficiary_name,
-        contactNumber: row.contact_number,
-        village: row.village,
-        block: row.block,
-        district: row.district,
-        product: row.product,
-        make: row.make,
-        systemVoltage: row.system_voltage,
-        natureOfComplaint: row.nature_of_complaint,
-        ContollerRIDNo: row.controller_rid_no,
-        ProductSLNo: row.product_sl_no,
-        ChallanDate: row.challan_date,
-        CloseDate: row.close_date,
-        timestamp: row.timestamp,
-        date: row.complaint_date,
-        head: row.timestamp,
-        companyName: row.company_name,
-        modeOfCall: row.mode_of_call,
-        priority: row.rating,
-        id: row.complaint_id,
-        fullRowData: row,
+      const taskData = (data || [])
+        .filter(
+          (row) =>
+            row.complaint_id &&
+            row.status !== "APPROVED-CLOSE" &&
+            (row.assign_to_vendor === false ||
+              row.assign_to_vendor === null ||
+              row.assign_to_vendor === undefined)
+        )
+        .map((row, index) => ({
+          rowIndex: index + 1,
+          complaintId: row.complaint_id,
+          idNumber: row.id_number,
+          technicianName: row.technician_name,
+          technicianNumber: row.technician_contact,
+          beneficiaryName: row.beneficiary_name,
+          contactNumber: row.contact_number,
+          village: row.village,
+          block: row.block,
+          district: row.district,
+          product: row.product,
+          make: row.make,
+          systemVoltage: row.system_voltage || row.rating || "",
+          natureOfComplaint: row.nature_of_complaint,
+          ContollerRIDNo: row.controller_rid_no,
+          ProductSLNo: row.product_sl_no,
+          ChallanDate: row.challan_date,
+          CloseDate: row.close_date || row.resolved_date,
+          timestamp: row.timestamp,
+          date: row.complaint_date,
+          head: row.timestamp,
+          companyName: row.company_name,
+          modeOfCall: row.mode_of_call,
+          priority: row.rating,
+          id: row.complaint_id,
+        }));
+
+      setPendingTasks(taskData);
+    } catch (err) {
+      console.error("❌ Error fetching tasks:", err);
+      setError(err.message);
+      setPendingTasks([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchTechnicianOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("Master")
+        .select("technician_name")
+        .not("technician_name", "is", null);
+
+      if (error) throw error;
+
+      const options = (data || [])
+        .map((item) => item.technician_name)
+        .filter(Boolean);
+
+      setTechnicianOptions([...new Set(options)].sort());
+    } catch (err) {
+      console.error("❌ Error fetching technician options:", err);
+      setTechnicianOptions([]);
+    }
+  };
+
+  const fetchTrackerStatusOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("Master")
+        .select("tracker_status")
+        .not("tracker_status", "is", null);
+
+      if (error) throw error;
+
+      const statusOptions = (data || [])
+        .map((row) => row.tracker_status)
+        .filter(Boolean);
+
+      const uniqueOptions = [...new Set(statusOptions)];
+
+      const mappedOptions = uniqueOptions.map((status) => ({
+        label: status,
+        value: status.toLowerCase().replace(/[^a-z0-9]/g, ""),
       }));
 
-    setPendingTasks(taskData);
-  } catch (err) {
-    console.error("❌ Error fetching tasks:", err);
-    setError(err.message);
-    setPendingTasks([]);
-  } finally {
-    setIsLoading(false);
-  }
-};
+      setTrackerStatusOptions(mappedOptions);
+    } catch (err) {
+      console.error("❌ Error fetching tracker status:", err);
+    }
+  };
 
- const fetchTechnicianOptions = async () => {
-  try {
-    const { data, error } = await supabase
-      .from("Master")
-      .select("technician_name");
-
-    if (error) throw error;
-
-    const options = data
-      .map((item) => item.technician_name)
-      .filter(Boolean);
-
-    setTechnicianOptions([...new Set(options)].sort());
-  } catch (err) {
-    console.error("❌ Error fetching technician options:", err);
-    setTechnicianOptions([]);
-  }
-};
-
-    fetchTasks();
-    fetchTechnicianOptions();
-    fetchTrackerStatusOptions();
+  useEffect(() => {
+    console.log('🚀 Component mounted - Starting parallel data fetch for high performance...');
+    // ✅ Parallel execution of all 3 queries for maximum speed
+    Promise.all([
+      fetchTasks(),
+      fetchTechnicianOptions(),
+      fetchTrackerStatusOptions(),
+    ]);
   }, []);
-
-
-
- const fetchTrackerStatusOptions = async () => {
-  try {
-    const { data, error } = await supabase
-      .from("Master")
-      .select("tracker_status");
-
-    if (error) throw error;
-
-    const statusOptions = data
-      .map((row) => row.tracker_status)
-      .filter(Boolean);
-
-    const uniqueOptions = [...new Set(statusOptions)];
-
-    const mappedOptions = uniqueOptions.map((status) => ({
-      label: status,
-      value: status.toLowerCase().replace(/[^a-z0-9]/g, ""),
-    }));
-
-    setTrackerStatusOptions(mappedOptions);
-  } catch (err) {
-    console.error("❌ Error fetching tracker status:", err);
-  }
-};
 
 
 
@@ -456,21 +468,38 @@ const generateNextRBPSTId = async () => {
   }
 
   const handleUpdateTask = async () => {
-    // ✅ Geotag photo is now optional - no validation required
     setIsSubmitting(true);
 
     try {
-      const taskIndex = pendingTasks.findIndex(t => t.id === selectedTask);
+      const taskIndex = pendingTasks.findIndex((t) => t.id === selectedTask);
       if (taskIndex === -1) throw new Error("Task not found");
 
       const task = pendingTasks[taskIndex];
 
-      let documentUrl = null;
+      let docUrl1 = null;
+      let docUrl2 = null;
+      let docUrl3 = null;
+      let reportUrl = null;
       let photoUrl = null;
 
-      if (uploadedDocument) {
-        setUploadStatus("Uploading document...");
-        documentUrl = await uploadFileToDrive(uploadedDocument, "document");
+      if (uploadedDocument1) {
+        setUploadStatus("Uploading document 1...");
+        docUrl1 = await uploadFileToDrive(uploadedDocument1, "document 1");
+      }
+
+      if (uploadedDocument2) {
+        setUploadStatus("Uploading document 2...");
+        docUrl2 = await uploadFileToDrive(uploadedDocument2, "document 2");
+      }
+
+      if (uploadedDocument3) {
+        setUploadStatus("Uploading document 3...");
+        docUrl3 = await uploadFileToDrive(uploadedDocument3, "document 3");
+      }
+
+      if (uploadedReport) {
+        setUploadStatus("Uploading report...");
+        reportUrl = await uploadFileToDrive(uploadedReport, "report");
       }
 
       if (uploadedPhoto) {
@@ -482,19 +511,16 @@ const generateNextRBPSTId = async () => {
       const serialNo = await generateNextRBPSTId();
 
       // Submit to Tracker sheet
-      await submitToTrackerSheet(task, serialNo, documentUrl, photoUrl);
+      await submitToTrackerSheet(task, serialNo, docUrl1, docUrl2, docUrl3, reportUrl, photoUrl);
 
       // Remove from pending tasks if completed
       if (formData.trackerStatus === "completed") {
-        setPendingTasks(prev =>
-          prev.filter(task => task.id !== selectedTask)
-        );
+        setPendingTasks((prev) => prev.filter((task) => task.id !== selectedTask));
       }
 
       alert(`Task ${selectedTask} has been updated successfully to Tracker sheet.`);
       setIsDialogOpen(false);
       resetForm();
-
     } catch (err) {
       console.error("Error updating task:", err);
       alert("Failed to update task: " + err.message);
@@ -504,24 +530,26 @@ const generateNextRBPSTId = async () => {
     }
   };
 
- const submitToTrackerSheet = async (task, serialNo, documentUrl, photoUrl) => {
-  try {
-    const now = new Date();
+  const submitToTrackerSheet = async (task, serialNo, docUrl1, docUrl2, docUrl3, reportUrl, photoUrl) => {
+    try {
+      const now = new Date();
 
-    const latitude = photoLocation ? photoLocation.latitude : null;
-    const longitude = photoLocation ? photoLocation.longitude : null;
-    const address = photoLocation ? photoLocation.formattedAddress : "";
+      const latitude = photoLocation ? photoLocation.latitude : null;
+      const longitude = photoLocation ? photoLocation.longitude : null;
+      const address = photoLocation ? photoLocation.formattedAddress : "";
 
-    const selectedStatusOption = trackerStatusOptions.find(
-      (option) => option.value === formData.trackerStatus
-    );
+      const selectedStatusOption = trackerStatusOptions.find(
+        (option) => option.value === formData.trackerStatus
+      );
 
-    const trackerStatusValue = selectedStatusOption
-      ? selectedStatusOption.label
-      : formData.trackerStatus;
+      const trackerStatusValue = selectedStatusOption
+        ? selectedStatusOption.label
+        : formData.trackerStatus;
 
-    const { error } = await supabase.from("Tracker").insert([
-      {
+      const allDocs = [docUrl1, docUrl2, docUrl3].filter(Boolean);
+      const combinedDocs = allDocs.length > 0 ? allDocs.join(", ") : null;
+
+      const payload = {
         timestamp: now,
         serial_no: serialNo,
         complaint_id: task.complaintId,
@@ -536,29 +564,55 @@ const generateNextRBPSTId = async () => {
         make: task.make,
         system_voltage: formData.systemVoltage,
         nature_of_complaint: formData.natureOfComplaint,
-        upload_documents: documentUrl,
+        upload_documents: combinedDocs,
+        upload_documents_1: docUrl1 || null,
+        upload_documents_2: docUrl2 || null,
+        upload_documents_3: docUrl3 || null,
+        report_upload: reportUrl || null,
         geotag_photo: photoUrl,
         action_taken: formData.remarks,
         tracker_status: trackerStatusValue,
         latitude,
         longitude,
         address,
-      },
-    ]);
+      };
 
-    if (error) throw error;
+      let { error } = await supabase.from("Tracker").insert([payload]);
 
-    return true;
-  } catch (error) {
-    console.error("❌ Supabase insert error:", error);
-    throw error;
-  }
-};
+      if (error) {
+        console.warn("Tracker insert with specific columns failed, falling back:", error.message);
+        // Fallback for when specific columns are not yet added in Supabase
+        const fallbackPayload = {
+          timestamp: now,
+          serial_no: serialNo,
+          complaint_id: task.complaintId,
+          technician_name: task.technicianName,
+          technician_number: task.technicianNumber,
+          beneficiary_name: task.beneficiaryName,
+          contact_number: task.contactNumber,
+          village: task.village,
+          block: task.block,
+          district: task.district,
+          product: task.product,
+          make: task.make,
+          system_voltage: formData.systemVoltage,
+          nature_of_complaint: formData.natureOfComplaint,
+          upload_documents: combinedDocs,
+          geotag_photo: photoUrl,
+          action_taken: formData.remarks + (reportUrl ? ` | Report: ${reportUrl}` : ""),
+          tracker_status: trackerStatusValue,
+          latitude,
+          longitude,
+          address,
+        };
+        const fallbackRes = await supabase.from("Tracker").insert([fallbackPayload]);
+        if (fallbackRes.error) throw fallbackRes.error;
+      }
 
-
-  const handleDocumentChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setUploadedDocument(e.target.files[0]);
+      return true;
+    } catch (error) {
+      console.error("❌ Supabase insert error:", error);
+      throw error;
     }
   };
 
@@ -568,7 +622,7 @@ const generateNextRBPSTId = async () => {
 
       setIsCapturingLocation(true);
       setLocationError(null);
-      setUploadedPhoto(null); // ✅ Reset previous photo
+      setUploadedPhoto(null);
 
       try {
         console.log("📍 Starting location capture...");
@@ -586,38 +640,35 @@ const generateNextRBPSTId = async () => {
 
         setUploadedPhoto(processedPhoto);
         setIsCapturingLocation(false);
-
         console.log("✅ Image successfully processed with location");
-
       } catch (error) {
         console.error("❌ Location/Image error:", error);
         setLocationError(error.message);
         setIsCapturingLocation(false);
-
-        // ✅ Still allow photo upload without location
         setUploadedPhoto(file);
         setPhotoLocation(null);
-
         alert(`लोकेशन कैप्चर नहीं हो पाई: ${error.message}\n\nफोटो बिना लोकेशन के अपलोड होगी।`);
       }
     }
   };
 
   const handleFormChange = (field, value) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
   };
 
   const resetForm = () => {
     setFormData({
       systemVoltage: "",
-      // natureOfComplaint: "",
       remarks: "",
-      trackerStatus: "pending"
+      trackerStatus: "pending",
     });
-    setUploadedDocument(null);
+    setUploadedDocument1(null);
+    setUploadedDocument2(null);
+    setUploadedDocument3(null);
+    setUploadedReport(null);
     setUploadedPhoto(null);
     setDate(null);
     setPhotoLocation(null);
@@ -625,97 +676,215 @@ const generateNextRBPSTId = async () => {
     setIsCapturingLocation(false);
   };
 
-  // ✅ FIXED handleTaskSelection function
   const handleTaskSelection = (task) => {
-    console.log('Selected task data:', task);
-    console.log('natureOfComplaint from task:', task.natureOfComplaint);
-
     setSelectedTask(task.id);
     setSelectedTaskData(task);
     setIsDialogOpen(true);
 
-    // ✅ Pre-fill form with task data including natureOfComplaint
-    setFormData(prevData => ({
+    setFormData((prevData) => ({
       ...prevData,
       systemVoltage: task.systemVoltage || "",
-      natureOfComplaint: task.natureOfComplaint || "", // ✅ Set from task data
+      natureOfComplaint: task.natureOfComplaint || "",
       remarks: "",
-      trackerStatus: "pending"
+      trackerStatus: "pending",
     }));
-
-    console.log('FormData after setting:', {
-      systemVoltage: task.systemVoltage,
-      natureOfComplaint: task.natureOfComplaint
-    });
   };
 
-
-  const getUniqueCompanyNames = () => {
-    const companies = pendingTasks
-      .map(task => task.companyName)
-      .filter(name => name && name.trim() !== "")
-    return [...new Set(companies)].sort()
-  }
-
-  const getUniqueModeOfCalls = () => {
-    const modes = pendingTasks
-      .map(task => task.modeOfCall)
-      .filter(mode => mode && mode.trim() !== "")
-    return [...new Set(modes)].sort()
-  }
-
-  const getUniqueTechnicianNames = () => {
-    const technicians = pendingTasks
-      .map(task => task.technicianName)
-      .filter(name => name && name.trim() !== "")
-    return [...new Set(technicians)].sort()
-  }
-
-
-
-  // Role-based filtering function
-  const getFilteredTasksByRole = () => {
-    console.log('TrackerPendingTable - Filtering with user:', username, 'role:', userRole)
-
-    // If no role is set, show all tasks
-    if (!userRole) {
-      console.log('TrackerPendingTable - No role set, showing all tasks')
-      return pendingTasks;
+  // ✅ Export to Excel function
+  const exportToExcel = () => {
+    if (!filteredTasks || filteredTasks.length === 0) {
+      alert("No data available to export");
+      return;
     }
 
-    // If admin, show all tasks
-    const lowerRole = String(userRole || "").toLowerCase();
-    if (lowerRole === 'admin') {
-      console.log('TrackerPendingTable - Admin role, showing all tasks')
-      return pendingTasks;
+    try {
+      const exportData = filteredTasks.map((task, index) => ({
+        "S.No": index + 1,
+        "Complaint ID": task.complaintId || "",
+        "ID Number": task.idNumber || "",
+        "Date": formatDateString(task.date) || "",
+        "Company Name": task.companyName || "",
+        "Mode of Call": task.modeOfCall || "",
+        "Beneficiary Name": task.beneficiaryName || "",
+        "Contact Number": task.contactNumber || "",
+        "Village": task.village || "",
+        "Block": task.block || "",
+        "District": task.district || "",
+        "Product": task.product || "",
+        "Make": task.make || "",
+        "System Voltage": task.systemVoltage || "",
+        "Nature of Complaint": task.natureOfComplaint || "",
+        "Technician Name": task.technicianName || "",
+        "Technician Contact": task.technicianNumber || "",
+        "Priority": task.priority || "",
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Pending Tasks");
+
+      const colWidths = Object.keys(exportData[0] || {}).map((key) => ({
+        wch: Math.max(key.length, 12),
+      }));
+      worksheet["!cols"] = colWidths;
+
+      const dateStr = new Date().toISOString().split("T")[0];
+      XLSX.writeFile(workbook, `Tracker_Pending_Tasks_${dateStr}.xlsx`);
+    } catch (err) {
+      console.error("Export to Excel failed:", err);
+      alert("Failed to export Excel file: " + err.message);
+    }
+  };
+
+  // ✅ Export to PDF function
+  const exportToPDF = () => {
+    if (!filteredTasks || filteredTasks.length === 0) {
+      alert("No data available to export");
+      return;
     }
 
-    // If tech or user role and has username, filter by technician name
-    if ((lowerRole === 'tech' || lowerRole === 'user') && username) {
-      console.log(`TrackerPendingTable - ${lowerRole} role, filtering by technician name:`, username)
-      const filtered = pendingTasks.filter((task) => {
-        const match = String(task.technicianName || "").toLowerCase() === String(username || "").toLowerCase();
-        return match;
+    try {
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "a4",
       });
-      console.log('TrackerPendingTable - Filtered tasks count:', filtered.length)
-      return filtered;
+
+      const dateStr = new Date().toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+
+      doc.setFontSize(16);
+      doc.setTextColor(31, 41, 55);
+      doc.text("Tracker Pending Tasks", 40, 40);
+
+      doc.setFontSize(10);
+      doc.setTextColor(107, 114, 128);
+      doc.text(`Generated on: ${dateStr} | Total Records: ${filteredTasks.length}`, 40, 56);
+
+      const tableColumns = [
+        "#",
+        "Complaint ID",
+        "ID Number",
+        "Company",
+        "Beneficiary",
+        "Contact",
+        "District",
+        "Block",
+        "Product",
+        "Technician",
+        "Nature of Complaint",
+      ];
+
+      const tableRows = filteredTasks.map((task, index) => [
+        index + 1,
+        task.complaintId || "-",
+        task.idNumber || "-",
+        task.companyName || "-",
+        task.beneficiaryName || "-",
+        task.contactNumber || "-",
+        task.district || "-",
+        task.block || "-",
+        task.product || "-",
+        task.technicianName || "-",
+        (task.natureOfComplaint || "-").length > 35
+          ? (task.natureOfComplaint || "-").substring(0, 35) + "..."
+          : (task.natureOfComplaint || "-"),
+      ]);
+
+      autoTable(doc, {
+        head: [tableColumns],
+        body: tableRows,
+        startY: 70,
+        theme: "grid",
+        headStyles: {
+          fillColor: [59, 130, 246],
+          textColor: 255,
+          fontSize: 8,
+          fontStyle: "bold",
+          halign: "center",
+        },
+        bodyStyles: {
+          fontSize: 7.5,
+          textColor: 50,
+        },
+        columnStyles: {
+          0: { cellWidth: 24, halign: "center" },
+          1: { cellWidth: 65, fontStyle: "bold" },
+          2: { cellWidth: 60 },
+          3: { cellWidth: 70 },
+          4: { cellWidth: 80 },
+          5: { cellWidth: 65 },
+          6: { cellWidth: 60 },
+          7: { cellWidth: 55 },
+          8: { cellWidth: 65 },
+          9: { cellWidth: 70 },
+          10: { cellWidth: "auto" },
+        },
+        alternateRowStyles: {
+          fillColor: [249, 250, 251],
+        },
+        margin: { left: 40, right: 40 },
+        styles: {
+          overflow: "linebreak",
+          cellPadding: 4,
+        },
+      });
+
+      const fileDate = new Date().toISOString().split("T")[0];
+      doc.save(`Tracker_Pending_Tasks_${fileDate}.pdf`);
+    } catch (err) {
+      console.error("Export to PDF failed:", err);
+      alert("Failed to export PDF file: " + err.message);
+    }
+  };
+
+  // ✅ Memoized filter lists for high speed
+  const uniqueCompanies = useMemo(() => {
+    const companies = pendingTasks
+      .map((task) => task.companyName)
+      .filter((name) => name && name.trim() !== "");
+    return [...new Set(companies)].sort();
+  }, [pendingTasks]);
+
+  const uniqueModeOfCalls = useMemo(() => {
+    const modes = pendingTasks
+      .map((task) => task.modeOfCall)
+      .filter((mode) => mode && mode.trim() !== "");
+    return [...new Set(modes)].sort();
+  }, [pendingTasks]);
+
+  const uniqueTechnicians = useMemo(() => {
+    const technicians = pendingTasks
+      .map((task) => task.technicianName)
+      .filter((name) => name && name.trim() !== "");
+    return [...new Set(technicians)].sort();
+  }, [pendingTasks]);
+
+  // Role-based filtering
+  const tasksFilteredByRole = useMemo(() => {
+    if (!userRole) return pendingTasks;
+    const lowerRole = String(userRole || "").toLowerCase();
+    if (lowerRole === "admin") return pendingTasks;
+
+    if ((lowerRole === "tech" || lowerRole === "user") && username) {
+      return pendingTasks.filter(
+        (task) => String(task.technicianName || "").toLowerCase() === String(username || "").toLowerCase()
+      );
     }
 
-    // If tech/user role but no username, show empty
-    if ((lowerRole === 'tech' || lowerRole === 'user') && !username) {
-      console.log(`TrackerPendingTable - ${lowerRole} role but no username, showing empty`)
+    if ((lowerRole === "tech" || lowerRole === "user") && !username) {
       return [];
     }
 
-    // Default: show all tasks
-    console.log('TrackerPendingTable - Default, showing all tasks')
     return pendingTasks;
-  }
+  }, [pendingTasks, userRole, username]);
 
-
-
-  const filteredTasks = getFilteredTasksByRole().filter(
-    (task) => {
+  // Search & column filtering
+  const filteredTasks = useMemo(() => {
+    return tasksFilteredByRole.filter((task) => {
       const searchFields = [
         task.complaintId,
         task.technicianName,
@@ -727,42 +896,33 @@ const generateNextRBPSTId = async () => {
         task.product,
         task.make,
         task.companyName,
-        task.modeOfCall
-      ]
+        task.modeOfCall,
+      ];
 
-      const normalizeText = (text) => {
-        if (!text) return ""
-        return text.toString().toLowerCase().trim()
-      }
+      const normalizeText = (text) => (text ? text.toString().toLowerCase().trim() : "");
 
       const matchesSearch = () => {
-        if (!searchTerm || searchTerm.trim() === "") return true
-
-        const normalizedSearchTerm = normalizeText(searchTerm)
-        const searchWords = normalizedSearchTerm.split(/\s+/).filter(word => word.length > 0)
-
-        return searchWords.every(word =>
-          searchFields.some(field =>
-            normalizeText(field).includes(word)
-          )
+        if (!searchTerm || searchTerm.trim() === "") return true;
+        const searchWords = normalizeText(searchTerm).split(/\s+/).filter((w) => w.length > 0);
+        return searchWords.every((word) =>
+          searchFields.some((field) => normalizeText(field).includes(word))
         );
-      }
+      };
 
-      const matchesSearchTerm = matchesSearch()
-      const matchesCompany = companyFilter === "" || task.companyName === companyFilter
-      const matchesModeOfCall = modeOfCallFilter === "" || task.modeOfCall === modeOfCallFilter
-      const matchesTechnician = technicianFilter === "" || task.technicianName === technicianFilter
+      const matchesCompany = companyFilter === "" || task.companyName === companyFilter;
+      const matchesModeOfCall = modeOfCallFilter === "" || task.modeOfCall === modeOfCallFilter;
+      const matchesTechnician = technicianFilter === "" || task.technicianName === technicianFilter;
 
-      return matchesSearchTerm && matchesCompany && matchesModeOfCall && matchesTechnician
-    }
-  )
+      return matchesSearch() && matchesCompany && matchesModeOfCall && matchesTechnician;
+    });
+  }, [tasksFilteredByRole, searchTerm, companyFilter, modeOfCallFilter, technicianFilter]);
 
   if (isLoading) {
     return (
       <div className="p-4 flex justify-center items-center h-64">
         <div className="text-gray-500">Loading tasks data...</div>
       </div>
-    )
+    );
   }
 
   if (error) {
@@ -770,72 +930,89 @@ const generateNextRBPSTId = async () => {
       <div className="p-4 flex justify-center items-center h-64">
         <div className="text-red-500">Error loading data: {error}</div>
       </div>
-    )
+    );
   }
 
   return (
     <div className="p-4">
-      <div className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h1 className="text-sm font-bold">Tracker Pending Tasks</h1>
-
-
-        <div className="relative">
-          <input
-            type="search"
-            placeholder="Search across all fields..."
-            className="pl-8 w-full sm:w-[280px] lg:w-[320px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <svg
-            className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+      <div className="mb-4 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="text-base sm:text-lg font-bold text-gray-800">Tracker Pending Tasks</h1>
+          <span className="text-xs bg-blue-100 text-blue-800 font-semibold px-2.5 py-0.5 rounded-full">
+            {filteredTasks.length} {filteredTasks.length === 1 ? 'task' : 'tasks'}
+          </span>
         </div>
 
-        <select
-          className="w-full sm:w-[160px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          value={companyFilter}
-          onChange={(e) => setCompanyFilter(e.target.value)}
-        >
-          <option value="">All Companies</option>
-          {getUniqueCompanyNames().map((company) => (
-            <option key={company} value={company}>
-              {company}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+          {/* Export to Excel & PDF buttons */}
+          <button
+            type="button"
+            onClick={exportToExcel}
+            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-medium rounded-md shadow-sm transition-colors duration-150"
+            title="Export filtered data to Excel"
+          >
+            <Download className="h-4 w-4" />
+            <span>Excel Export</span>
+          </button>
+          <button
+            type="button"
+            onClick={exportToPDF}
+            className="flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-medium rounded-md shadow-sm transition-colors duration-150"
+            title="Export filtered data to PDF"
+          >
+            <FileText className="h-4 w-4" />
+            <span>PDF Export</span>
+          </button>
 
-        <select
-          className="w-full sm:w-[140px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          value={modeOfCallFilter}
-          onChange={(e) => setModeOfCallFilter(e.target.value)}
-        >
-          <option value="">All Modes</option>
-          {getUniqueModeOfCalls().map((mode) => (
-            <option key={mode} value={mode}>
-              {mode}
-            </option>
-          ))}
-        </select>
+          <div className="relative flex-1 sm:flex-initial">
+            <input
+              type="search"
+              placeholder="Search across all fields..."
+              className="pl-8 w-full sm:w-[220px] lg:w-[260px] px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <svg
+              className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
 
-        <select
-          className="w-full sm:w-[160px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          value={technicianFilter}
-          onChange={(e) => setTechnicianFilter(e.target.value)}
-        >
-          <option value="">All Technicians</option>
-          {getUniqueTechnicianNames().map((technician) => (
-            <option key={technician} value={technician}>
-              {technician}
-            </option>
-          ))}
-        </select>
+          <div className="w-full sm:w-[160px]">
+            <SearchableSelect
+              placeholder="All Companies"
+              allOptionLabel="All Companies"
+              options={uniqueCompanies}
+              value={companyFilter}
+              onChange={(val) => setCompanyFilter(val)}
+            />
+          </div>
+
+          <div className="w-full sm:w-[140px]">
+            <SearchableSelect
+              placeholder="All Modes"
+              allOptionLabel="All Modes"
+              options={uniqueModeOfCalls}
+              value={modeOfCallFilter}
+              onChange={(val) => setModeOfCallFilter(val)}
+            />
+          </div>
+
+          <div className="w-full sm:w-[160px]">
+            <SearchableSelect
+              placeholder="All Technicians"
+              allOptionLabel="All Technicians"
+              options={uniqueTechnicians}
+              value={technicianFilter}
+              onChange={(val) => setTechnicianFilter(val)}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="overflow-x-auto -mx-4 sm:mx-0">
@@ -1121,31 +1298,158 @@ const generateNextRBPSTId = async () => {
                         </div>
 
 
-                        <div className="space-y-2">
-                          <label htmlFor="documents" className="block text-sm font-medium text-gray-700">
-                            दस्तावेज़ अपलोड करें
+                        {/* दस्तावेज़ अपलोड करें 1 */}
+                        <div className="space-y-1.5 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                          <label htmlFor="documents1" className="block text-sm font-medium text-gray-700">
+                            दस्तावेज़ अपलोड करें 1
                           </label>
                           <div className="flex items-center gap-2">
                             <input
-                              id="documents"
+                              id="documents1"
                               type="file"
-                              className="flex-1 border border-gray-300 rounded-md py-2 px-3"
-                              onChange={handleDocumentChange}
+                              className="flex-1 text-sm border border-gray-300 rounded-md py-1.5 px-3 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) {
+                                  setUploadedDocument1(e.target.files[0]);
+                                }
+                              }}
                             />
-                            <button
-                              type="button"
-                              className="p-2 border border-gray-300 rounded-md"
-                              disabled={!uploadedDocument}
-                            >
-                              <Upload className="h-4 w-4" />
-                            </button>
+                            {uploadedDocument1 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setUploadedDocument1(null);
+                                  const el = document.getElementById("documents1");
+                                  if (el) el.value = "";
+                                }}
+                                className="p-1.5 text-gray-500 hover:text-red-500 border border-gray-300 rounded-md bg-white hover:bg-red-50 transition-colors"
+                                title="हटाएं"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
-                          {uploadedDocument && (
-                            <div className="text-sm text-green-600">
-                              चयनित: {uploadedDocument.name}
+                          {uploadedDocument1 && (
+                            <div className="text-xs text-green-600 font-medium">
+                              ✓ चयनित: {uploadedDocument1.name}
                             </div>
                           )}
                         </div>
+
+                        {/* दस्तावेज़ अपलोड करें 2 */}
+                        <div className="space-y-1.5 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                          <label htmlFor="documents2" className="block text-sm font-medium text-gray-700">
+                            दस्तावेज़ अपलोड करें 2
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              id="documents2"
+                              type="file"
+                              className="flex-1 text-sm border border-gray-300 rounded-md py-1.5 px-3 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) {
+                                  setUploadedDocument2(e.target.files[0]);
+                                }
+                              }}
+                            />
+                            {uploadedDocument2 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setUploadedDocument2(null);
+                                  const el = document.getElementById("documents2");
+                                  if (el) el.value = "";
+                                }}
+                                className="p-1.5 text-gray-500 hover:text-red-500 border border-gray-300 rounded-md bg-white hover:bg-red-50 transition-colors"
+                                title="हटाएं"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                          {uploadedDocument2 && (
+                            <div className="text-xs text-green-600 font-medium">
+                              ✓ चयनित: {uploadedDocument2.name}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* दस्तावेज़ अपलोड करें 3 */}
+                        <div className="space-y-1.5 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                          <label htmlFor="documents3" className="block text-sm font-medium text-gray-700">
+                            दस्तावेज़ अपलोड करें 3
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              id="documents3"
+                              type="file"
+                              className="flex-1 text-sm border border-gray-300 rounded-md py-1.5 px-3 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) {
+                                  setUploadedDocument3(e.target.files[0]);
+                                }
+                              }}
+                            />
+                            {uploadedDocument3 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setUploadedDocument3(null);
+                                  const el = document.getElementById("documents3");
+                                  if (el) el.value = "";
+                                }}
+                                className="p-1.5 text-gray-500 hover:text-red-500 border border-gray-300 rounded-md bg-white hover:bg-red-50 transition-colors"
+                                title="हटाएं"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                          {uploadedDocument3 && (
+                            <div className="text-xs text-green-600 font-medium">
+                              ✓ चयनित: {uploadedDocument3.name}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Report upload */}
+                        <div className="space-y-1.5 p-3 bg-blue-50/60 border border-blue-200 rounded-lg">
+                          <label htmlFor="reportUpload" className="block text-sm font-medium text-blue-900">
+                            Report upload (रिपोर्ट अपलोड करें)
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              id="reportUpload"
+                              type="file"
+                              className="flex-1 text-sm border border-blue-300 rounded-md py-1.5 px-3 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) {
+                                  setUploadedReport(e.target.files[0]);
+                                }
+                              }}
+                            />
+                            {uploadedReport && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setUploadedReport(null);
+                                  const el = document.getElementById("reportUpload");
+                                  if (el) el.value = "";
+                                }}
+                                className="p-1.5 text-gray-500 hover:text-red-500 border border-blue-300 rounded-md bg-white hover:bg-red-50 transition-colors"
+                                title="हटाएं"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                          {uploadedReport && (
+                            <div className="text-xs text-blue-700 font-medium">
+                              ✓ चयनित रिपोर्ट: {uploadedReport.name}
+                            </div>
+                          )}
+                        </div>
+                        
                         <div className="space-y-2">
                           <label htmlFor="geotagPhoto" className="block text-sm font-medium text-gray-700">
                             जियोटैग फोटो

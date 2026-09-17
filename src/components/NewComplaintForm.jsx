@@ -1,11 +1,158 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import DatePicker from "react-datepicker"
 import "react-datepicker/dist/react-datepicker.css"
 
 import supabase from "../utils/supabase";
+
+// ================= REUSABLE SEARCHABLE SELECT COMPONENT =================
+function SearchableSelect({
+  options = [],
+  value = "",
+  onChange,
+  placeholder = "Select...",
+  name = "",
+  required = false,
+  disabled = false,
+  className = "",
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const dropdownRef = useRef(null);
+
+  // Close when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredOptions = useMemo(() => {
+    if (!searchQuery.trim()) return options;
+    const q = searchQuery.toLowerCase();
+    return options.filter((opt) => opt && opt.toString().toLowerCase().includes(q));
+  }, [options, searchQuery]);
+
+  return (
+    <div className={`relative ${className}`} ref={dropdownRef}>
+      {/* Hidden real input for HTML form validation */}
+      <input
+        type="text"
+        name={name}
+        value={value || ""}
+        required={required}
+        onChange={() => {}}
+        className="opacity-0 absolute inset-0 pointer-events-none -z-10 h-full w-full"
+        tabIndex={-1}
+      />
+
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          if (!disabled) {
+            setIsOpen(!isOpen);
+            setSearchQuery("");
+          }
+        }}
+        className={`w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md text-left text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition ${
+          disabled ? "bg-gray-100 cursor-not-allowed text-gray-400" : "hover:border-gray-400"
+        } ${value ? "text-gray-900" : "text-gray-400"}`}
+      >
+        <span className="truncate">{value || placeholder}</span>
+        <div className="flex items-center gap-1 ml-1 text-gray-400">
+          {value && !disabled && (
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange("");
+              }}
+              className="hover:text-red-500 p-0.5 rounded cursor-pointer"
+              title="Clear"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </span>
+          )}
+          <svg
+            className={`w-4 h-4 transition-transform ${isOpen ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-full bg-white rounded-md shadow-xl border border-gray-200 py-1 text-sm max-h-60 overflow-hidden flex flex-col">
+          <div className="p-2 border-b border-gray-100 sticky top-0 bg-white">
+            <div className="relative">
+              <svg
+                className="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              <input
+                type="text"
+                autoFocus
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-y-auto max-h-48 py-1">
+            {filteredOptions.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-gray-400 text-center">
+                No matching options
+              </div>
+            ) : (
+              filteredOptions.map((opt, idx) => (
+                <button
+                  key={`${opt}-${idx}`}
+                  type="button"
+                  onClick={() => {
+                    onChange(opt);
+                    setIsOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition flex items-center justify-between ${
+                    value === opt ? "bg-blue-50 font-semibold text-blue-600" : "text-gray-700"
+                  }`}
+                >
+                  <span className="truncate">{opt}</span>
+                  {value === opt && (
+                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function NewComplaintForm() {
   const navigate = useNavigate()
@@ -32,6 +179,10 @@ function NewComplaintForm() {
   const [technicianNameOptions, setTechnicianNameOptions] = useState([])
   const [technicianContactOptions, setTechnicianContactOptions] = useState([])
   const [insuranceTypeOptions, setInsuranceTypeOptions] = useState([])
+  const [modeOfCallOptions, setModeOfCallOptions] = useState([])
+  const [modeOfLetterOptions, setModeOfLetterOptions] = useState([])
+  const [projectNameOptions, setProjectNameOptions] = useState([])
+
   const [isLoading, setIsLoading] = useState(true)
   const [technicianMapping, setTechnicianMapping] = useState([])
   const [filterCompanyName, setFilterCompanyName] = useState("")
@@ -44,7 +195,11 @@ function NewComplaintForm() {
   const [masterBeneficiaryOptions, setMasterBeneficiaryOptions] = useState([]) // For Create/Update Form (from Master)
   const [filterBeneficiaryOptions, setFilterBeneficiaryOptions] = useState([]) // For Table Filter (from FMS)
 
-
+  // Document upload states
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false)
+  const [documentUploadStatus, setDocumentUploadStatus] = useState("")
+  const [isUploadingUpdateDoc, setIsUploadingUpdateDoc] = useState(false)
+  const [updateDocStatus, setUpdateDocStatus] = useState("")
 
   // Auto-refresh states
   const [autoRefresh, setAutoRefresh] = useState(true)
@@ -53,11 +208,15 @@ function NewComplaintForm() {
   const [formData, setFormData] = useState({
     companyName: "",
     modeOfCall: "",
+    letterReferenceNumber: "",
+    modeOfLetter: "",
     idNumber: "",
     projectName: "",
     complaintNumber: "",
     beneficiaryName: "",
     contactNumber: "",
+    isReferenceName: false,
+    referenceName: "",
     village: "",
     block: "",
     district: "",
@@ -75,6 +234,7 @@ function NewComplaintForm() {
     challanNo: "",
     reporterName: "",
     assignToVendor: false,
+    documentUrl: "",
   })
 
 
@@ -155,11 +315,17 @@ function NewComplaintForm() {
       const districts = masterData.map(i => i.district).filter(Boolean)
       const insuranceTypes = masterData.map(i => i.insurance_type).filter(Boolean)
       const beneficiaryNames = masterData.map(i => i.company_name1).filter(Boolean)
+      const modeOfCalls = masterData.map(i => i.mode_of_call).filter(Boolean)
+      const projectNames = masterData.map(i => i.project_name).filter(Boolean)
+      const modeOfLetters = masterData.map(i => i.mode_of_letter).filter(Boolean)
 
       setCompanyNameOptions([...new Set(companyNames)])
       setDistrictOptions([...new Set(districts)])
       setInsuranceTypeOptions([...new Set(insuranceTypes)])
       setMasterBeneficiaryOptions([...new Set(beneficiaryNames)].sort())
+      setModeOfCallOptions([...new Set([...modeOfCalls, "Letter", "Phone Call", "WhatsApp", "Email", "Portal", "In-Person"])])
+      setProjectNameOptions([...new Set(projectNames)])
+      setModeOfLetterOptions([...new Set(modeOfLetters)])
 
       // LOGIN TABLE
       const { data: loginData, error: loginError } = await supabase
@@ -217,6 +383,69 @@ function NewComplaintForm() {
       setIsLoading(false)
     }
   }
+
+  // ================= DOCUMENT UPLOAD HELPERS =================
+  const uploadDocument = async (file) => {
+    if (!file) return;
+    try {
+      setIsUploadingDocument(true);
+      setDocumentUploadStatus("Uploading document...");
+      const fileExt = file.name.split('.').pop();
+      const fileName = `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+
+      let uploadRes = await supabase.storage.from("vendor_tracker").upload(fileName, file, { upsert: true });
+
+      if (uploadRes.error) {
+        uploadRes = await supabase.storage.from("complaint_documents").upload(fileName, file, { upsert: true });
+        if (uploadRes.error) throw uploadRes.error;
+        const { data } = supabase.storage.from("complaint_documents").getPublicUrl(fileName);
+        setFormData(prev => ({ ...prev, documentUrl: data.publicUrl }));
+        setDocumentUploadStatus(`✓ Uploaded: ${file.name}`);
+        return;
+      }
+
+      const { data } = supabase.storage.from("vendor_tracker").getPublicUrl(fileName);
+      setFormData(prev => ({ ...prev, documentUrl: data.publicUrl }));
+      setDocumentUploadStatus(`✓ Uploaded: ${file.name}`);
+    } catch (err) {
+      console.error("Document upload error:", err);
+      alert("Failed to upload document: " + err.message);
+      setDocumentUploadStatus("Upload failed");
+    } finally {
+      setIsUploadingDocument(false);
+    }
+  };
+
+  const uploadUpdateDocument = async (file) => {
+    if (!file) return;
+    try {
+      setIsUploadingUpdateDoc(true);
+      setUpdateDocStatus("Uploading document...");
+      const fileExt = file.name.split('.').pop();
+      const fileName = `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+
+      let uploadRes = await supabase.storage.from("vendor_tracker").upload(fileName, file, { upsert: true });
+
+      if (uploadRes.error) {
+        uploadRes = await supabase.storage.from("complaint_documents").upload(fileName, file, { upsert: true });
+        if (uploadRes.error) throw uploadRes.error;
+        const { data } = supabase.storage.from("complaint_documents").getPublicUrl(fileName);
+        setUpdateFormData(prev => ({ ...prev, documentUrl: data.publicUrl }));
+        setUpdateDocStatus(`✓ Uploaded: ${file.name}`);
+        return;
+      }
+
+      const { data } = supabase.storage.from("vendor_tracker").getPublicUrl(fileName);
+      setUpdateFormData(prev => ({ ...prev, documentUrl: data.publicUrl }));
+      setUpdateDocStatus(`✓ Uploaded: ${file.name}`);
+    } catch (err) {
+      console.error("Document upload error:", err);
+      alert("Failed to upload document: " + err.message);
+      setUpdateDocStatus("Upload failed");
+    } finally {
+      setIsUploadingUpdateDoc(false);
+    }
+  };
 
   const fetchTableData = useCallback(async () => {
     try {
@@ -379,6 +608,11 @@ function NewComplaintForm() {
       resolvedDate: currentRow.resolved_date ? new Date(currentRow.resolved_date) : null,
       reporterName: currentRow.reporter_name || "",
       challanNo: currentRow.challan_no || "",
+      letterReferenceNumber: currentRow.letter_reference_number || "",
+      modeOfLetter: currentRow.mode_of_letter || "",
+      isReferenceName: !currentRow.contact_number && !!currentRow.reference_name,
+      referenceName: currentRow.reference_name || "",
+      documentUrl: currentRow.document_url || "",
     })
 
     setCurrentUpdateRow(rowIndex)
@@ -447,7 +681,11 @@ function NewComplaintForm() {
           close_date: updateFormData.closeDate,
           resolved_date: updateFormData.resolvedDate,
           reporter_name: updateFormData.reporterName,
-          challan_no: updateFormData.challanNo
+          challan_no: updateFormData.challanNo,
+          letter_reference_number: updateFormData.letterReferenceNumber || null,
+          mode_of_letter: updateFormData.modeOfLetter || null,
+          reference_name: updateFormData.referenceName || null,
+          document_url: updateFormData.documentUrl || null,
         })
         .eq("complaint_id", updateFormData.complaintId)
 
@@ -514,6 +752,10 @@ function NewComplaintForm() {
         reporter_name: formData.reporterName,
         controller_rid_no: formData.controllerRidNo,
         product_sl_no: formData.productSlNo || "",
+        letter_reference_number: formData.letterReferenceNumber || null,
+        mode_of_letter: formData.modeOfLetter || null,
+        reference_name: formData.referenceName || null,
+        document_url: formData.documentUrl || null,
 
         assign_to_vendor: formData.assignToVendor,
       }])
@@ -553,11 +795,15 @@ function NewComplaintForm() {
       setFormData({
         companyName: "",
         modeOfCall: "",
+        letterReferenceNumber: "",
+        modeOfLetter: "",
         idNumber: "",
         projectName: "",
         complaintNumber: "",
         beneficiaryName: "",
         contactNumber: "",
+        isReferenceName: false,
+        referenceName: "",
         village: "",
         block: "",
         district: "",
@@ -575,7 +821,9 @@ function NewComplaintForm() {
         challanNo: "",
         reporterName: "",
         assignToVendor: false,
+        documentUrl: "",
       })
+      setDocumentUploadStatus("")
 
       setComplaintDate(null)
       setChallanDate(null)
@@ -672,24 +920,14 @@ function NewComplaintForm() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-
-                </label>
-                <select
+             
+                <SearchableSelect
+                  options={filterBeneficiaryOptions}
                   value={filterBeneficiaryName}
-                  onChange={(e) => setFilterBeneficiaryName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">All Beneficiaries</option>
-                  {filterBeneficiaryOptions.map((name, index) => (
-
-                    <option key={index} value={name}>
-                      {name}
-                    </option>
-                  ))
-                  }
-                </select >
-              </div >
+                  onChange={(val) => setFilterBeneficiaryName(val)}
+                  placeholder="All Beneficiaries"
+                />
+              </div>
 
               {/* Clear All Filters Button */}
               {
@@ -726,18 +964,14 @@ function NewComplaintForm() {
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Company Name *
                         </label>
-                        <select
+                        <SearchableSelect
                           name="companyName"
+                          options={companyNameOptions}
                           value={formData.companyName}
-                          onChange={handleChange}
+                          onChange={(val) => setFormData(prev => ({ ...prev, companyName: val }))}
+                          placeholder="Select Company"
                           required
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">Select Company</option>
-                          {companyNameOptions.map((option, index) => (
-                            <option key={index} value={option}>{option}</option>
-                          ))}
-                        </select>
+                        />
                       </div>
 
                       {/* Mode of Call */}
@@ -745,16 +979,49 @@ function NewComplaintForm() {
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Mode of Call *
                         </label>
-                        <input
-                          type="text"
+                        <SearchableSelect
                           name="modeOfCall"
+                          options={modeOfCallOptions}
                           value={formData.modeOfCall}
-                          onChange={handleChange}
+                          onChange={(val) => setFormData(prev => ({ ...prev, modeOfCall: val }))}
+                          placeholder="Select Mode of Call"
                           required
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Enter Mode of Call"
                         />
                       </div>
+
+                      {/* Conditional Letter Fields - Shown when Mode of Call is "Letter" */}
+                      {formData.modeOfCall?.toLowerCase() === "letter" && (
+                        <>
+                          <div>
+                            <label className="block text-sm font-medium text-purple-700 mb-2">
+                              Letter Reference Number *
+                            </label>
+                            <input
+                              type="text"
+                              name="letterReferenceNumber"
+                              value={formData.letterReferenceNumber || ""}
+                              onChange={handleChange}
+                              required
+                              className="w-full px-3 py-2 border border-purple-300 bg-purple-50/40 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              placeholder="Enter Letter Ref Number"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-purple-700 mb-2">
+                              Mode of Letter *
+                            </label>
+                            <SearchableSelect
+                              name="modeOfLetter"
+                              options={modeOfLetterOptions}
+                              value={formData.modeOfLetter || ""}
+                              onChange={(val) => setFormData(prev => ({ ...prev, modeOfLetter: val }))}
+                              placeholder="Select Mode of Letter"
+                              required
+                            />
+                          </div>
+                        </>
+                      )}
 
                       {/* ID Number */}
                       <div>
@@ -776,13 +1043,12 @@ function NewComplaintForm() {
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Project Name
                         </label>
-                        <input
-                          type="text"
+                        <SearchableSelect
                           name="projectName"
+                          options={projectNameOptions}
                           value={formData.projectName}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Enter Project Name"
+                          onChange={(val) => setFormData(prev => ({ ...prev, projectName: val }))}
+                          placeholder="Select Project Name"
                         />
                       </div>
 
@@ -834,20 +1100,60 @@ function NewComplaintForm() {
                       </div >
 
                       {/* Contact Number */}
-                      < div >
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Contact Number *
-                        </label>
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="block text-sm font-medium text-gray-700">
+                            Contact Number {!formData.isReferenceName && <span className="text-red-500">*</span>}
+                          </label>
+                          <label className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded cursor-pointer transition">
+                            <input
+                              type="checkbox"
+                              name="isReferenceName"
+                              checked={formData.isReferenceName || false}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setFormData(prev => ({
+                                  ...prev,
+                                  isReferenceName: checked,
+                                  contactNumber: checked ? "" : prev.contactNumber,
+                                }));
+                              }}
+                              className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                            />
+                            <span className="font-semibold">Reference name</span>
+                          </label>
+                        </div>
                         <input
                           type="tel"
                           name="contactNumber"
-                          value={formData.contactNumber}
-                          onChange={handleChange}
-                          required
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Enter Contact Number"
+                          value={formData.contactNumber || ""}
+                          maxLength={10}
+                          disabled={formData.isReferenceName}
+                          onChange={(e) => {
+                            const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                            setFormData(prev => ({ ...prev, contactNumber: digits }));
+                          }}
+                          required={!formData.isReferenceName}
+                          className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition ${
+                            formData.isReferenceName ? "bg-gray-100 cursor-not-allowed text-gray-400" : ""
+                          }`}
+                          placeholder={formData.isReferenceName ? "Disabled (Reference Selected)" : "Enter 10-digit Contact Number"}
                         />
-                      </div >
+
+                        {formData.isReferenceName && (
+                          <div className="mt-2">
+                            <input
+                              type="text"
+                              name="referenceName"
+                              value={formData.referenceName || ""}
+                              onChange={handleChange}
+                              required={formData.isReferenceName}
+                              className="w-full px-3 py-1.5 text-xs border border-blue-300 bg-blue-50/50 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="Enter Reference Person's Name *"
+                            />
+                          </div>
+                        )}
+                      </div>
 
                       {/* Village */}
                       < div >
@@ -880,23 +1186,19 @@ function NewComplaintForm() {
                       </div >
 
                       {/* District */}
-                      < div >
+                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           District *
                         </label>
-                        <select
+                        <SearchableSelect
                           name="district"
+                          options={districtOptions}
                           value={formData.district}
-                          onChange={handleChange}
+                          onChange={(val) => setFormData(prev => ({ ...prev, district: val }))}
+                          placeholder="Select District"
                           required
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">Select District</option>
-                          {districtOptions.map((option, index) => (
-                            <option key={index} value={option}>{option}</option>
-                          ))}
-                        </select>
-                      </div >
+                        />
+                      </div>
 
                       {/* Product */}
                       < div >
@@ -989,22 +1291,18 @@ function NewComplaintForm() {
                       </div >
 
                       {/* Insurance Type */}
-                      < div >
+                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Insurance Type
                         </label>
-                        <select
+                        <SearchableSelect
                           name="insuranceType"
+                          options={insuranceTypeOptions}
                           value={formData.insuranceType}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">Select Insurance Type</option>
-                          {insuranceTypeOptions.map((option, index) => (
-                            <option key={index} value={option}>{option}</option>
-                          ))}
-                        </select>
-                      </div >
+                          onChange={(val) => setFormData(prev => ({ ...prev, insuranceType: val }))}
+                          placeholder="Select Insurance Type"
+                        />
+                      </div>
 
                       {/* Resolved Date */}
                       <div>
@@ -1075,18 +1373,14 @@ function NewComplaintForm() {
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Technician Name
                         </label>
-                        <select
+                        <SearchableSelect
                           name="technicianName"
+                          options={technicianNameOptions}
                           value={formData.technicianName}
-                          onChange={(e) => handleSelectChange('technicianName', e.target.value)}
-                          disabled={formData.assignToVendor}  // Add this line
-                          className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${formData.assignToVendor ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                        >
-                          <option value="">Select Technician</option>
-                          {technicianNameOptions.map((option, index) => (
-                            <option key={index} value={option}>{option}</option>
-                          ))}
-                        </select>
+                          onChange={(val) => handleSelectChange('technicianName', val)}
+                          disabled={formData.assignToVendor}
+                          placeholder="Select Technician"
+                        />
                       </div>
 
                       {/* Technician Contact */}
@@ -1151,6 +1445,46 @@ function NewComplaintForm() {
                           className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${formData.assignToVendor ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                           placeholderText="Select challan date"
                         />
+                      </div>
+
+                      {/* Document Upload */}
+                      <div className="col-span-1 md:col-span-2 lg:col-span-3">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Document Upload (PDF, Images, Word Docs)
+                        </label>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) uploadDocument(file);
+                            }}
+                            disabled={isUploadingDocument}
+                            className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                          />
+                          {isUploadingDocument && (
+                            <span className="text-xs text-blue-600 font-medium flex items-center gap-1.5 animate-pulse">
+                              <span className="inline-block w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
+                              Uploading document...
+                            </span>
+                          )}
+                          {documentUploadStatus && !isUploadingDocument && (
+                            <span className={`text-xs font-medium ${formData.documentUrl ? "text-emerald-600" : "text-gray-500"}`}>
+                              {documentUploadStatus}
+                            </span>
+                          )}
+                          {formData.documentUrl && (
+                            <a
+                              href={formData.documentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 underline font-semibold hover:text-blue-800 ml-auto"
+                            >
+                              View Uploaded Document ↗
+                            </a>
+                          )}
+                        </div>
                       </div>
 
                     </div >
@@ -1221,18 +1555,14 @@ function NewComplaintForm() {
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Company Name *
                           </label>
-                          <select
+                          <SearchableSelect
                             name="companyName"
+                            options={companyNameOptions}
                             value={updateFormData.companyName}
-                            onChange={handleUpdateFormChange}
+                            onChange={(val) => handleUpdateSelectChange('companyName', val)}
+                            placeholder="Select Company"
                             required
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="">Select Company</option>
-                            {companyNameOptions.map((option, index) => (
-                              <option key={index} value={option}>{option}</option>
-                            ))}
-                          </select>
+                          />
                         </div>
 
                         {/* Mode of Call */}
@@ -1240,16 +1570,49 @@ function NewComplaintForm() {
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Mode of Call *
                           </label>
-                          <input
-                            type="text"
+                          <SearchableSelect
                             name="modeOfCall"
+                            options={modeOfCallOptions}
                             value={updateFormData.modeOfCall}
-                            onChange={handleUpdateFormChange}
+                            onChange={(val) => handleUpdateSelectChange('modeOfCall', val)}
+                            placeholder="Select Mode of Call"
                             required
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Enter Mode of Call"
                           />
                         </div>
+
+                        {/* Conditional Letter Fields - Shown when Mode of Call is "Letter" */}
+                        {updateFormData.modeOfCall?.toLowerCase() === "letter" && (
+                          <>
+                            <div>
+                              <label className="block text-sm font-medium text-purple-700 mb-2">
+                                Letter Reference Number *
+                              </label>
+                              <input
+                                type="text"
+                                name="letterReferenceNumber"
+                                value={updateFormData.letterReferenceNumber || ""}
+                                onChange={handleUpdateFormChange}
+                                required
+                                className="w-full px-3 py-2 border border-purple-300 bg-purple-50/40 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                placeholder="Enter Letter Ref Number"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-purple-700 mb-2">
+                                Mode of Letter *
+                              </label>
+                              <SearchableSelect
+                                name="modeOfLetter"
+                                options={modeOfLetterOptions}
+                                value={updateFormData.modeOfLetter || ""}
+                                onChange={(val) => handleUpdateSelectChange('modeOfLetter', val)}
+                                placeholder="Select Mode of Letter"
+                                required
+                              />
+                            </div>
+                          </>
+                        )}
 
                         {/* ID Number */}
                         <div>
@@ -1271,13 +1634,12 @@ function NewComplaintForm() {
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Project Name
                           </label>
-                          <input
-                            type="text"
+                          <SearchableSelect
                             name="projectName"
+                            options={projectNameOptions}
                             value={updateFormData.projectName}
-                            onChange={handleUpdateFormChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Enter Project Name"
+                            onChange={(val) => handleUpdateSelectChange('projectName', val)}
+                            placeholder="Select Project Name"
                           />
                         </div>
 
@@ -1329,18 +1691,58 @@ function NewComplaintForm() {
 
                         {/* Contact Number */}
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Contact Number *
-                          </label>
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="block text-sm font-medium text-gray-700">
+                              Contact Number {!updateFormData.isReferenceName && <span className="text-red-500">*</span>}
+                            </label>
+                            <label className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded cursor-pointer transition">
+                              <input
+                                type="checkbox"
+                                name="isReferenceName"
+                                checked={updateFormData.isReferenceName || false}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setUpdateFormData(prev => ({
+                                    ...prev,
+                                    isReferenceName: checked,
+                                    contactNumber: checked ? "" : prev.contactNumber,
+                                  }));
+                                }}
+                                className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                              />
+                              <span className="font-semibold">Reference name</span>
+                            </label>
+                          </div>
                           <input
                             type="tel"
                             name="contactNumber"
-                            value={updateFormData.contactNumber}
-                            onChange={handleUpdateFormChange}
-                            required
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Enter Contact Number"
+                            value={updateFormData.contactNumber || ""}
+                            maxLength={10}
+                            disabled={updateFormData.isReferenceName}
+                            onChange={(e) => {
+                              const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                              setUpdateFormData(prev => ({ ...prev, contactNumber: digits }));
+                            }}
+                            required={!updateFormData.isReferenceName}
+                            className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition ${
+                              updateFormData.isReferenceName ? "bg-gray-100 cursor-not-allowed text-gray-400" : ""
+                            }`}
+                            placeholder={updateFormData.isReferenceName ? "Disabled (Reference Selected)" : "Enter 10-digit Contact Number"}
                           />
+
+                          {updateFormData.isReferenceName && (
+                            <div className="mt-2">
+                              <input
+                                type="text"
+                                name="referenceName"
+                                value={updateFormData.referenceName || ""}
+                                onChange={handleUpdateFormChange}
+                                required={updateFormData.isReferenceName}
+                                className="w-full px-3 py-1.5 text-xs border border-blue-300 bg-blue-50/50 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Enter Reference Person's Name *"
+                              />
+                            </div>
+                          )}
                         </div>
 
                         {/* Village */}
@@ -1378,18 +1780,14 @@ function NewComplaintForm() {
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             District *
                           </label>
-                          <select
+                          <SearchableSelect
                             name="district"
+                            options={districtOptions}
                             value={updateFormData.district}
-                            onChange={handleUpdateFormChange}
+                            onChange={(val) => handleUpdateSelectChange('district', val)}
+                            placeholder="Select District"
                             required
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="">Select District</option>
-                            {districtOptions.map((option, index) => (
-                              <option key={index} value={option}>{option}</option>
-                            ))}
-                          </select>
+                          />
                         </div>
 
                         {/* Product */}
@@ -1487,17 +1885,13 @@ function NewComplaintForm() {
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Insurance Type
                           </label>
-                          <select
+                          <SearchableSelect
                             name="insuranceType"
+                            options={insuranceTypeOptions}
                             value={updateFormData.insuranceType}
-                            onChange={handleUpdateFormChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="">Select Insurance Type</option>
-                            {insuranceTypeOptions.map((option, index) => (
-                              <option key={index} value={option}>{option}</option>
-                            ))}
-                          </select>
+                            onChange={(val) => handleUpdateSelectChange('insuranceType', val)}
+                            placeholder="Select Insurance Type"
+                          />
                         </div>
 
                         {/* Resolved Date */}
@@ -1534,17 +1928,13 @@ function NewComplaintForm() {
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Technician Name
                           </label>
-                          <select
+                          <SearchableSelect
                             name="technicianName"
+                            options={technicianNameOptions}
                             value={updateFormData.technicianName}
-                            onChange={(e) => handleUpdateSelectChange('technicianName', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="">Select Technician</option>
-                            {technicianNameOptions.map((option, index) => (
-                              <option key={index} value={option}>{option}</option>
-                            ))}
-                          </select>
+                            onChange={(val) => handleUpdateSelectChange('technicianName', val)}
+                            placeholder="Select Technician"
+                          />
                         </div>
 
                         {/* Technician Contact */}
@@ -1605,6 +1995,46 @@ function NewComplaintForm() {
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholderText="Select challan date"
                           />
+                        </div>
+
+                        {/* Document Upload */}
+                        <div className="col-span-1 md:col-span-2 lg:col-span-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Document Upload (PDF, Images, Word Docs)
+                          </label>
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                            <input
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) uploadUpdateDocument(file);
+                              }}
+                              disabled={isUploadingUpdateDoc}
+                              className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                            />
+                            {isUploadingUpdateDoc && (
+                              <span className="text-xs text-blue-600 font-medium flex items-center gap-1.5 animate-pulse">
+                                <span className="inline-block w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
+                                Uploading document...
+                              </span>
+                            )}
+                            {updateDocStatus && !isUploadingUpdateDoc && (
+                              <span className={`text-xs font-medium ${updateFormData.documentUrl ? "text-emerald-600" : "text-gray-500"}`}>
+                                {updateDocStatus}
+                              </span>
+                            )}
+                            {updateFormData.documentUrl && (
+                              <a
+                                href={updateFormData.documentUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-600 underline font-semibold hover:text-blue-800 ml-auto"
+                              >
+                                View Current Document ↗
+                              </a>
+                            )}
+                          </div>
                         </div>
 
                       </div>
@@ -1700,6 +2130,9 @@ function NewComplaintForm() {
                               Mode Of Call
                             </th>
                             <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Document
+                            </th>
+                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Technician Name
                             </th>
                             <th className="px-3 py-3 text-xs font-medium text-gray-500 uppercase">
@@ -1778,7 +2211,27 @@ function NewComplaintForm() {
                               </td>
 
                               <td className="px-3 py-4 text-sm">
-                                {row.mode_of_call || "-"}
+                                <div>{row.mode_of_call || "-"}</div>
+                                {row.letter_reference_number && (
+                                  <div className="text-xs text-purple-600 font-medium">
+                                    Ref: {row.letter_reference_number}
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="px-3 py-4 text-sm whitespace-nowrap">
+                                {row.document_url ? (
+                                  <a
+                                    href={row.document_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 transition"
+                                  >
+                                    📄 View
+                                  </a>
+                                ) : (
+                                  <span className="text-gray-400 text-xs">-</span>
+                                )}
                               </td>
 
                               <td className="px-3 py-4 text-sm">
@@ -1810,7 +2263,11 @@ function NewComplaintForm() {
                               </td>
 
                               <td className="px-3 py-4 text-sm">
-                                {row.contact_number || "-"}
+                                {row.contact_number || (row.reference_name ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-amber-50 text-amber-800 border border-amber-200">
+                                    Ref: {row.reference_name}
+                                  </span>
+                                ) : "-")}
                               </td>
 
                               <td className="px-3 py-4 text-sm">
@@ -1872,11 +2329,34 @@ function NewComplaintForm() {
                           <div><b>Company:</b> {row.company_name || "-"}</div>
                           <div><b>Technician:</b> {row.technician_name || "-"}</div>
                           <div><b>Beneficiary:</b> {row.beneficiary_name || "-"}</div>
-                          <div><b>Contact:</b> {row.contact_number || "-"}</div>
+                          <div>
+                            <b>Contact:</b>{" "}
+                            {row.contact_number || (row.reference_name ? (
+                              <span className="text-amber-800 font-medium">Ref: {row.reference_name}</span>
+                            ) : "-")}
+                          </div>
                           <div><b>Village:</b> {row.village || "-"}</div>
                           <div><b>District:</b> {row.district || "-"}</div>
                           <div><b>Product:</b> {row.product || "-"}</div>
-                          <div><b>Mode:</b> {row.mode_of_call || "-"}</div>
+                          <div>
+                            <b>Mode:</b> {row.mode_of_call || "-"}
+                            {row.letter_reference_number && (
+                              <span className="ml-1 text-purple-600 font-medium">(Ref: {row.letter_reference_number})</span>
+                            )}
+                          </div>
+                          {row.document_url && (
+                            <div>
+                              <b>Document:</b>{" "}
+                              <a
+                                href={row.document_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 underline font-semibold"
+                              >
+                                📄 View Uploaded Document ↗
+                              </a>
+                            </div>
+                          )}
                           <div><b>Complaint:</b> {row.nature_of_complaint || "-"}</div>
 
                         </div>
