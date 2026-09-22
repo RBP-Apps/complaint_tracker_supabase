@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import { getUserRole, getUserPermissions, hasPageAccess } from '../utils/auth';
+import supabase from '../utils/supabase';
 
 const Dashboard = () => {
   const [userData, setUserData] = useState([]);
@@ -10,9 +11,6 @@ const Dashboard = () => {
   const [currentUser, setCurrentUser] = useState('');
   const [userPermissions, setUserPermissions] = useState([]);
   const [hasAccess, setHasAccess] = useState(false);
-
-  const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwnIMOzsFbniWnPFhl3lzE-2W0l6lD23keuz57-ldS_umSXIJqpEK-qxLE6eM0s7drqrQ/exec';
-
 
   useEffect(() => {
     const storedUsername = localStorage.getItem('username');
@@ -45,62 +43,28 @@ const Dashboard = () => {
     try {
       setLoading(true);
 
-      const sheetUrl = "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=FMS";
-      const response = await fetch(sheetUrl);
-      const text = await response.text();
+      const { data, error } = await supabase
+        .from('FMS')
+        .select('*')
+        .order('id', { ascending: false });
 
-      const jsonData = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
-      const rows = jsonData.table.rows;
-      const headers = jsonData.table.cols.map(col => col.label || '');
+      if (error) throw error;
 
-      // DEBUG: Pehli row ka pura data dekho
-      console.log('=== DEBUGGING COLUMNS ===');
-
-      console.log('=== END DEBUG ===');
-
-      const dataRows = rows.slice(1);
-
-      const processedData = dataRows
+      const processedData = (data || [])
         .map((row, index) => {
-          const cells = row.c || [];
-
-
-          if (index < 5) { // First 5 rows check karo
-            console.log(`=== ROW ${index} DATE DEBUG ===`);
-            console.log('Cell 33 raw object:', cells[33]);
-            console.log('Cell 33 value (.v):', cells[33]?.v);
-            console.log('Cell 33 formatted (.f):', cells[33]?.f);
-            console.log('Type of value:', typeof cells[33]?.v);
-            console.log('============================');
-          }
-
-          // Sabhi important columns log karo
-          const rowData = {
-            id: index,
-            technicianName: cells[27]?.v || '',
-            technicianContact: cells[28]?.v || '',
-            assigneeName: cells[29]?.v || '',
-            assigneeWhatsApp: cells[30]?.v || '',
-            location2: cells[31]?.v || '',
-            complaintDetails: cells[32]?.v || '',
-            expectedCompletionDate: cells[33]?.f || cells[33]?.v || '',
-            notesForTechnician: cells[34]?.v || '',
-
-            // YEH COLUMNS DHYAN SE DEKHO - console me kaunsa index me data hai
-            columnAJ: cells[35]?.v || null,
-            columnAK: cells[36]?.v || null,
-            column37: cells[37]?.v || null,
-            column38: cells[38]?.v || null,
-            column39: cells[39]?.v || null,
-            column40: cells[40]?.v || null,
+          return {
+            id: row.id || index,
+            technicianName: row.technician_name || '',
+            technicianContact: row.technician_contact || '',
+            assigneeName: row.assignee_name || '',
+            assigneeWhatsApp: row.assignee_whatsapp_number || row.assignee_whatsapp || '',
+            location2: row.location || row.village || '',
+            complaintDetails: row.complaint_details || row.nature_of_complaint || '',
+            expectedCompletionDate: row.expected_completion_date || '',
+            notesForTechnician: row.notes_for_technician || '',
+            columnAJ: row.planned1 || row.planned || null,
+            columnAK: row.actual1 || row.actual || null,
           };
-
-          // First 2 rows ka data console me print karo
-          if (index < 2) {
-            console.log(`Row ${index} data:`, rowData);
-          }
-
-          return rowData;
         })
         .filter(row => {
           const userRole = localStorage.getItem('userRole');
@@ -116,21 +80,16 @@ const Dashboard = () => {
 
           const currentUserTrimmed = currentUser.toString().trim().toLowerCase();
 
-          // Exact match ya partial match dono check karenge
-          // Example: "raju" technicianName me hai to "techRaju" ya "raju" dono match ho jayega
           return technicianName === currentUserTrimmed ||
             technicianName.includes(currentUserTrimmed) ||
             currentUserTrimmed.includes(technicianName);
         });
 
-      console.log('Total filtered data:', processedData.length);
-      console.log('Sample processed data:', processedData.slice(0, 2));
-
       setUserData(processedData);
       setFilteredData(processedData);
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('Error fetching data from Supabase:', error);
       alert('Error loading data. Please try again.');
       setLoading(false);
     }
@@ -366,35 +325,35 @@ const Dashboard = () => {
               </div>
 
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto overflow-y-auto max-h-[500px]">
                   <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50 sticky top-0 z-10">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                           Technician Name
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                           Technician Contact
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                           Assignee Name
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                           Assignee WhatsApp
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                           Location
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                           Complaint Details
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                           Expected Date
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                           Notes
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                           Status
                         </th>
                       </tr>

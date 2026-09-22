@@ -232,7 +232,7 @@ function NewComplaintForm() {
     technicianContact: "",
     assigneeWhatsapp: "",
     challanNo: "",
-    reporterName: "",
+    reporterName: localStorage.getItem('username') || localStorage.getItem('currentUser') || "",
     assignToVendor: false,
     documentUrl: "",
   })
@@ -340,6 +340,14 @@ function NewComplaintForm() {
 
       const currentUser = localStorage.getItem('currentUser')
       const userRole = localStorage.getItem('userRole')
+      const loggedInUsername = localStorage.getItem('username') || currentUser || ""
+
+      if (loggedInUsername) {
+        setFormData(prev => ({
+          ...prev,
+          reporterName: prev.reporterName || loggedInUsername
+        }))
+      }
 
       loginData.forEach(row => {
         if (row.username && row.contact_no) {
@@ -606,7 +614,7 @@ function NewComplaintForm() {
       challanDate: currentRow.challan_date ? new Date(currentRow.challan_date) : null,
       closeDate: currentRow.close_date ? new Date(currentRow.close_date) : null,
       resolvedDate: currentRow.resolved_date ? new Date(currentRow.resolved_date) : null,
-      reporterName: currentRow.reporter_name || "",
+      reporterName: currentRow.reporter_name || localStorage.getItem('username') || localStorage.getItem('currentUser') || "",
       challanNo: currentRow.challan_no || "",
       letterReferenceNumber: currentRow.letter_reference_number || "",
       modeOfLetter: currentRow.mode_of_letter || "",
@@ -792,6 +800,7 @@ function NewComplaintForm() {
       }
 
       // ✅ FORM RESET
+      const loggedInUsernameOnReset = localStorage.getItem('username') || localStorage.getItem('currentUser') || ""
       setFormData({
         companyName: "",
         modeOfCall: "",
@@ -819,7 +828,7 @@ function NewComplaintForm() {
         technicianContact: "",
         assigneeWhatsapp: "",
         challanNo: "",
-        reporterName: "",
+        reporterName: loggedInUsernameOnReset,
         assignToVendor: false,
         documentUrl: "",
       })
@@ -835,6 +844,9 @@ function NewComplaintForm() {
 
       // ✅ NEW SERIAL
       await generateSerialNumber()
+
+      // Close modal
+      setShowForm(false)
 
     } catch (err) {
       console.error(err)
@@ -881,13 +893,19 @@ function NewComplaintForm() {
               <h1 className="text-2xl font-bold text-gray-900">Complaint Management</h1>
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => setShowForm(!showForm)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md flex items-center"
+                  onClick={() => {
+                    const loggedInUser = localStorage.getItem('username') || localStorage.getItem('currentUser') || ""
+                    if (loggedInUser && !formData.reporterName) {
+                      setFormData(prev => ({ ...prev, reporterName: loggedInUser }))
+                    }
+                    setShowForm(true)
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md flex items-center shadow-sm hover:shadow cursor-pointer transition-all"
                 >
                   <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
                   </svg>
-                  {showForm ? 'Hide Form' : 'Add New Complaint'}
+                  Add New Complaint
                 </button>
               </div>
             </div>
@@ -949,12 +967,25 @@ function NewComplaintForm() {
             </div >
 
 
-            {/* Collapsible Form - WHITE BACKGROUND */}
+            {/* ✅ ADD COMPLAINT MODAL - POPUP FORM */}
             {
               showForm && (
-                <div className="mb-8 border border-gray-200 rounded-lg p-6 bg-white">
-                  <h2 className="text-lg font-semibold mb-4">New Complaint Form</h2>
-                  <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
+                  <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                    <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+                      <h2 className="text-xl font-semibold text-gray-900">New Complaint Form</h2>
+                      <button
+                        type="button"
+                        onClick={() => setShowForm(false)}
+                        className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                      >
+                        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleSubmit} className="p-6 space-y-6">
 
                     {/* Grid Layout */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1325,6 +1356,7 @@ function NewComplaintForm() {
                         </label>
                         <input
                           type="text"
+                          disabled
                           name="reporterName"
                           value={formData.reporterName}
                           onChange={handleChange}
@@ -1362,7 +1394,7 @@ function NewComplaintForm() {
                             className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                           />
                           <label htmlFor="assignToVendor" className="text-sm font-medium text-gray-700">
-                            Assign to Vendor (Disable technician fields)
+                            Assign to Technician  (Disable technician fields)
                           </label>
                         </div>
                       </div>
@@ -1506,26 +1538,26 @@ function NewComplaintForm() {
                     </div >
 
                     {/* Form Buttons */}
-                    < div className="flex justify-end space-x-3 pt-4" >
+                    <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
                       <button
                         type="button"
                         onClick={() => setShowForm(false)}
-                        className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
                         disabled={isSubmitting}
-                        className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm"
                       >
                         {isSubmitting ? 'Creating...' : 'Create Complaint'}
                       </button>
-                    </div >
-                  </form >
-                </div >
-              )
-            }
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
 
             {/* ✅ UPDATE MODAL - POPUP FORM WITH PRE-FILLED DATA */}
             {
@@ -2108,10 +2140,10 @@ function NewComplaintForm() {
                   {/* Desktop Table View - Hidden on mobile with FIXED HEADER */}
                   <div className="hidden lg:block border border-gray-200 rounded-lg overflow-hidden">
                     <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-                      <table className="min-w-full divide-y divide-gray-200 text-center text-nowrap">
-                        <thead className="bg-gray-100 sticky top-0 z-10 text-center">
+                      <table className="min-w-full divide-y divide-gray-200 text-center">
+                        <thead className="bg-gray-100 sticky top-0 z-20 text-center whitespace-nowrap">
                           <tr>
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="sticky left-0 top-0 z-30 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)] border-r border-gray-200">
                               Action
                             </th>
                             <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
@@ -2135,82 +2167,79 @@ function NewComplaintForm() {
                             <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Technician Name
                             </th>
-                            <th className="px-3 py-3 text-xs font-medium text-gray-500 uppercase">
+                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Challan No
                             </th>
-
-                            <th className="px-3 py-3 text-xs font-medium text-gray-500 uppercase">
+                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Challan Date
                             </th>
-
-                            <th className="px-3 py-3 text-xs font-medium text-gray-500 uppercase">
+                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Controller RID
                             </th>
-
-                            <th className="px-3 py-3 text-xs font-medium text-gray-500 uppercase">
+                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Product SL No
                             </th>
-                            <th className="px-3 py-3 text-xs font-medium text-gray-500 uppercase">
+                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Insurance Type
                             </th>
-                            <th scope="col" className="px-3 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Beneficiary Name
                             </th>
-                            <th scope="col" className="px-3 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Contact Number
                             </th>
-                            <th scope="col" className="px-3 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Village
                             </th>
-                            <th scope="col" className="px-3 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               District
                             </th>
-                            <th scope="col" className="px-3 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Product
                             </th>
-                            <th scope="col" className="px-3 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Nature Of Complaint
                             </th>
                           </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-gray-200 text-center">
+                        <tbody className="bg-white divide-y divide-gray-200 text-center whitespace-normal">
                           {tableData.map((row, rowIndex) => (
-                            <tr key={`complaint-${row.id}-${rowIndex}`} className="hover:bg-gray-50">
+                            <tr key={`complaint-${row.id}-${rowIndex}`} className="hover:bg-gray-50 group transition-colors">
 
-                              <td className="px-3 py-4 whitespace-nowrap">
+                              <td className="sticky left-0 z-10 px-3 py-4 whitespace-nowrap bg-white group-hover:bg-gray-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)] border-r border-gray-200">
                                 <button
                                   onClick={() => handleOpenUpdateModal(rowIndex)}
-                                  className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-sm"
+                                  className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-sm cursor-pointer"
                                 >
                                   Update
                                 </button>
                                 <button
                                   onClick={() => handleDelete(row.id)}
-                                  className="ml-2 px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded-md text-sm"
+                                  className="ml-2 px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded-md text-sm cursor-pointer"
                                 >
                                   Delete
                                 </button>
                               </td>
 
-                              <td className="px-3 py-4 text-sm text-blue-600 font-medium">
+                              <td className="px-3 py-4 text-sm text-blue-600 font-medium whitespace-nowrap">
                                 {row.complaint_id || "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm text-purple-600 font-medium">
+                              <td className="px-3 py-4 text-sm text-purple-600 font-medium whitespace-nowrap">
                                 {row.id_number || "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm">
+                              <td className="px-3 py-4 text-sm whitespace-nowrap">
                                 {row.complaint_date
                                   ? new Date(row.complaint_date).toLocaleDateString()
                                   : "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm">
+                              <td className="px-3 py-4 text-sm min-w-[140px] max-w-[200px] break-words">
                                 {row.company_name || "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm">
+                              <td className="px-3 py-4 text-sm min-w-[120px] break-words">
                                 <div>{row.mode_of_call || "-"}</div>
                                 {row.letter_reference_number && (
                                   <div className="text-xs text-purple-600 font-medium">
@@ -2234,35 +2263,35 @@ function NewComplaintForm() {
                                 )}
                               </td>
 
-                              <td className="px-3 py-4 text-sm">
+                              <td className="px-3 py-4 text-sm min-w-[130px] break-words">
                                 {row.technician_name || "-"}
                               </td>
-                              <td className="px-3 py-4 text-sm">
+                              <td className="px-3 py-4 text-sm min-w-[110px] break-words">
                                 {row.challan_no || "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm">
+                              <td className="px-3 py-4 text-sm whitespace-nowrap">
                                 {row.challan_date
                                   ? new Date(row.challan_date).toLocaleDateString()
                                   : "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm">
+                              <td className="px-3 py-4 text-sm min-w-[110px] break-words">
                                 {row.controller_rid_no || "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm">
+                              <td className="px-3 py-4 text-sm min-w-[110px] break-words">
                                 {row.product_sl_no || "-"}
                               </td>
-                              <td className="px-3 py-4 text-sm">
+                              <td className="px-3 py-4 text-sm min-w-[110px] break-words">
                                 {row.insurance_type || "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm">
+                              <td className="px-3 py-4 text-sm min-w-[140px] max-w-[200px] break-words">
                                 {row.beneficiary_name || "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm">
+                              <td className="px-3 py-4 text-sm min-w-[130px] break-words">
                                 {row.contact_number || (row.reference_name ? (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-amber-50 text-amber-800 border border-amber-200">
                                     Ref: {row.reference_name}
@@ -2270,30 +2299,26 @@ function NewComplaintForm() {
                                 ) : "-")}
                               </td>
 
-                              <td className="px-3 py-4 text-sm">
+                              <td className="px-3 py-4 text-sm min-w-[120px] break-words">
                                 {row.village || "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm">
+                              <td className="px-3 py-4 text-sm min-w-[120px] break-words">
                                 {row.district || "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm">
+                              <td className="px-3 py-4 text-sm min-w-[120px] break-words">
                                 {row.product || "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm">
-                                {row.nature_of_complaint
-                                  ? row.nature_of_complaint.length > 50
-                                    ? row.nature_of_complaint.substring(0, 50) + "..."
-                                    : row.nature_of_complaint
-                                  : "-"}
+                              <td className="px-3 py-4 text-sm min-w-[220px] max-w-[320px] break-words text-left">
+                                {row.nature_of_complaint || "-"}
                               </td>
 
                             </tr>
                           ))}
                         </tbody>
-                      </table >
+                      </table>
                     </div >
                   </div >
 

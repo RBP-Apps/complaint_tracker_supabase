@@ -59,9 +59,7 @@
 //   useEffect(() => {
 //     const fetchData = async () => {
 //       try {
-//         setIsLoading(true)
-//         const sheetUrl = "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=FMS"
-//         const response = await fetch(sheetUrl)
+//         // Data fetched from Supabase FMS table
 
 //         if (!response.ok) {
 //           throw new Error(`Failed to fetch sheet data: ${response.status} ${response.statusText}`)

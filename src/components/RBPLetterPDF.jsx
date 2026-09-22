@@ -207,7 +207,7 @@ const RBPLetterPDF = ({ letterInfo, headerInfo, tableData, taskData, tableColumn
 
                 {/* ===== HEADER ===== */}
                 <View style={styles.header}>
-                    <Image style={styles.logo} src="/RBP-Logo.jpg" />
+                    <Image style={styles.logo} src="/RBP-Logo.PNG" />
                     <Text style={styles.companyName}>RBP ENERGY (INDIA) PVT. LTD.</Text>
                     <Text style={styles.companyAddress}>
                         303 Guru Ghasidas Plaza, Amapara, G.E Road, Raipur (C.G) 492001

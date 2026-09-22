@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { MapPin, BarChart3, CheckCircle2, AlertCircle, Search } from "lucide-react"
 import supabase from "../utils/supabase";
 
 
@@ -251,113 +252,148 @@ useEffect(() => {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
+    <div className="bg-white rounded-2xl shadow-xs border border-slate-200/80 p-5 sm:p-6 transition-all">
       {/* HEADER */}
-      <div className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h2 className="text-xl font-bold">
-          Complaint Tracker
-          <span className="ml-2 text-sm font-normal text-gray-500">
-            ({filteredComplaints.length} records)
-          </span>
-          {userRole && (
-            <span className="ml-2 text-sm font-normal text-blue-600">
-              Role: {userRole}
-            </span>
-          )}
-        </h2>
+      <div className="mb-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+              <MapPin className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                <span>District Performance & Regional Breakdown</span>
+                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                  {districtSummary.length} Districts
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Distribution of total, resolved, and pending complaints across districts
+              </p>
+            </div>
+          </div>
+        </div>
 
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex items-center">
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               type="search"
-              placeholder="Search complaints..."
-              className="pl-8 w-[200px] md:w-[300px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Filter district..."
+              className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50/80 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            <svg
-              className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
           </div>
         </div>
       </div>
 
-      {/* DISTRICT DASHBOARD - STICKY HEADER */}
-      <div className="mb-2 max-h-[300px] overflow-y-auto border border-gray-200 rounded-lg">
-        <div className="flex items-center bg-blue-50 px-4 py-2 text-xs font-semibold text-gray-600 sticky top-0 z-10">
-          <div className="w-6 text-center">✓</div>
-          <div className="flex-1">District</div>
-          <div className="w-24 text-center">Total Complaint</div>
-          <div className="w-24 text-center">Resolved</div>
-          <div className="w-24 text-center">Pending</div>
-        </div>
+      {/* DISTRICT DASHBOARD - STICKY TABLE */}
+      <div className="mb-4 max-h-[340px] overflow-y-auto border border-slate-200/90 rounded-xl overflow-hidden shadow-2xs">
+        <table className="min-w-full divide-y divide-slate-200 text-left">
+          <thead className="bg-slate-50/90 sticky top-0 z-10 text-xs font-bold text-slate-600 uppercase tracking-wider backdrop-blur-xs border-b border-slate-200">
+            <tr>
+              <th className="px-4 py-3 whitespace-nowrap">District</th>
+              <th className="px-4 py-3 whitespace-nowrap text-center">Total Complaints</th>
+              <th className="px-4 py-3 whitespace-nowrap text-center">Resolved</th>
+              <th className="px-4 py-3 whitespace-nowrap text-center">Pending</th>
+              <th className="px-4 py-3 whitespace-nowrap text-center">Resolution Rate</th>
+            </tr>
+          </thead>
 
-        <div className="divide-y divide-gray-100">
-          {districtSummary.map((d) => (
-            <div
-              key={d.district}
-              className="flex items-center px-4 py-2 hover:bg-gray-50 text-sm"
-            >
-              <div className="w-6 text-center">
-                <input type="checkbox" className="h-4 w-4" checked readOnly />
-              </div>
-              <div className="flex-1 font-semibold text-gray-700">
-                {d.district}
-              </div>
-              <div className="w-24 text-center">
-                <span className="inline-flex items-center justify-center min-w-[32px] rounded-full bg-gray-200 text-xs font-bold text-gray-700 px-2 py-0.5">
-                  {d.total}
-                </span>
-              </div>
-              <div className="w-24 text-center">
-                <span className="inline-flex items-center justify-center min-w-[32px] rounded-full bg-green-500 text-xs font-bold text-white px-2 py-0.5">
-                  {d.resolved}
-                </span>
-              </div>
-              <div className="w-24 text-center">
-                <span className="inline-flex items-center justify-center min-w-[32px] rounded-full bg-orange-400 text-xs font-bold text-white px-2 py-0.5">
-                  {d.pending}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+          <tbody className="divide-y divide-slate-100 bg-white text-xs sm:text-sm">
+            {districtSummary.length === 0 ? (
+              <tr>
+                <td colSpan="5" className="p-8 text-center text-slate-400">
+                  No district records found matching "{searchTerm}"
+                </td>
+              </tr>
+            ) : (
+              districtSummary.map((d) => {
+                const resolutionRate = d.total > 0 ? Math.round((d.resolved / d.total) * 100) : 0
+                return (
+                  <tr
+                    key={d.district}
+                    className="hover:bg-blue-50/40 transition-colors"
+                  >
+                    <td className="px-4 py-3 font-semibold text-slate-800 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      <span>{d.district}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="inline-flex items-center justify-center min-w-[32px] rounded-lg bg-slate-100 text-xs font-bold text-slate-800 px-2.5 py-1 font-mono">
+                        {d.total}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="inline-flex items-center justify-center min-w-[32px] rounded-lg bg-emerald-50 text-xs font-bold text-emerald-700 border border-emerald-200 px-2.5 py-1 font-mono">
+                        {d.resolved}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="inline-flex items-center justify-center min-w-[32px] rounded-lg bg-amber-50 text-xs font-bold text-amber-700 border border-amber-200 px-2.5 py-1 font-mono">
+                        {d.pending}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-16 bg-slate-100 h-2 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              resolutionRate >= 80
+                                ? "bg-emerald-500"
+                                : resolutionRate >= 50
+                                ? "bg-blue-500"
+                                : "bg-amber-500"
+                            }`}
+                            style={{ width: `${resolutionRate}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-bold text-slate-700 font-mono w-8 text-right">
+                          {resolutionRate}%
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })
+            )}
+          </tbody>
+        </table>
       </div>
 
-      {/* TOTAL BAR */}
-      <div className="mt-2 flex items-center border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 overflow-hidden">
-        <div className="flex-1 px-4 py-2 flex items-center gap-2">
-          <span>Total Complaint</span>
-          <span className="inline-flex items-center justify-center min-w-[40px] rounded-full bg-red-500 text-white px-2 py-0.5">
+      {/* EXECUTIVE TOTALS KPI BAR */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 border border-slate-200/90 rounded-xl text-xs sm:text-sm font-semibold">
+        <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200/70 shadow-2xs">
+          <div className="flex items-center gap-2 text-slate-600">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+            <span>Total Registered</span>
+          </div>
+          <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-bold font-mono">
             {grandTotals.total}
           </span>
         </div>
-        <div className="flex-1 px-4 py-2 flex items-center gap-2 justify-center border-l border-gray-200">
-          <span>Closed Complaint</span>
-          <span className="inline-flex items-center justify-center min-w-[40px] rounded-full bg-green-500 text-white px-2 py-0.5">
+
+        <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200/70 shadow-2xs">
+          <div className="flex items-center gap-2 text-slate-600">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
+            <span>Closed / Resolved</span>
+          </div>
+          <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold font-mono">
             {grandTotals.resolved}
           </span>
         </div>
-        <div className="flex-1 px-4 py-2 flex items-center gap-2 justify-end border-l border-gray-200">
-          <span>Pending Complaint</span>
-          <span className="inline-flex items-center justify-center min-w-[40px] rounded-full bg-yellow-400 text-white px-2 py-0.5">
+
+        <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200/70 shadow-2xs">
+          <div className="flex items-center gap-2 text-slate-600">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-600" />
+            <span>Pending Resolution</span>
+          </div>
+          <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-bold font-mono">
             {grandTotals.pending}
           </span>
         </div>
       </div>
-
-    
     </div>
   )
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import supabase from "../utils/supabase"
 
 function VerifiedTasksTable() {
   const [verifiedTasks, setVerifiedTasks] = useState([])
@@ -9,52 +10,25 @@ function VerifiedTasksTable() {
   const [searchTerm, setSearchTerm] = useState("")
 
   // Function to format date string to dd/mm/yyyy
-  // Function to format date string to dd/mm/yyyy
   const formatDateString = (dateValue) => {
     if (!dateValue) return "";
 
     let date;
 
-    // Handle ISO string format (2025-05-22T07:38:28.052Z)
     if (typeof dateValue === 'string' && dateValue.includes('T')) {
       date = new Date(dateValue);
-    }
-    // Handle date format (2025-05-21)
-    else if (typeof dateValue === 'string' && dateValue.includes('-')) {
+    } else if (typeof dateValue === 'string' && dateValue.includes('-')) {
       date = new Date(dateValue);
-    }
-    // Handle Google Sheets format like "5/22/2025, 2:32:51 PM"
-    else if (typeof dateValue === 'string' && dateValue.includes('/') && dateValue.includes(',')) {
+    } else if (typeof dateValue === 'string' && dateValue.includes('/') && dateValue.includes(',')) {
       date = new Date(dateValue);
-    }
-    // Handle Google Sheets Date constructor format like "Date(2025,4,21)" or "Date(2025,4,22,14,32,51)"
-    else if (typeof dateValue === 'string' && dateValue.startsWith('Date(')) {
-      // Extract the date parts from "Date(2025,4,21)" or "Date(2025,4,22,14,32,51)" format
-      const match = dateValue.match(/Date\((\d+),(\d+),(\d+)(?:,(\d+),(\d+),(\d+))?\)/);
-      if (match) {
-        const year = parseInt(match[1]);
-        const month = parseInt(match[2]); // Month is 0-indexed in this format
-        const day = parseInt(match[3]);
-        // Optional time components
-        const hours = match[4] ? parseInt(match[4]) : 0;
-        const minutes = match[5] ? parseInt(match[5]) : 0;
-        const seconds = match[6] ? parseInt(match[6]) : 0;
-        date = new Date(year, month, day, hours, minutes, seconds);
-      } else {
-        return dateValue;
-      }
-    }
-    // Handle if it's already a Date object
-    else if (typeof dateValue === 'object' && dateValue.getDate) {
+    } else if (typeof dateValue === 'object' && dateValue.getDate) {
       date = dateValue;
-    }
-    else {
-      return dateValue; // Return as is if not a recognizable date format
+    } else {
+      return String(dateValue);
     }
 
-    // Check if date is valid
     if (isNaN(date.getTime())) {
-      return dateValue; // Return original value if invalid date
+      return String(dateValue);
     }
 
     const day = String(date.getDate()).padStart(2, '0');
@@ -63,59 +37,61 @@ function VerifiedTasksTable() {
     return `${day}/${month}/${year}`;
   };
 
-  // Function to fetch data from Google Sheets
+  // Function to fetch data from Supabase
   useEffect(() => {
     const fetchVerifiedTasks = async () => {
       setIsLoading(true)
       setError(null)
 
       try {
-        // Fetch the entire sheet using Google Sheets API directly
-        const sheetUrl = "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=Verifications"
-        const response = await fetch(sheetUrl)
-        const text = await response.text()
+        let { data, error: vErr } = await supabase
+          .from("Verifications")
+          .select("*")
+          .order("id", { ascending: false });
 
-        // Extract the JSON part from the response
-        const jsonStart = text.indexOf('{')
-        const jsonEnd = text.lastIndexOf('}') + 1
-        const jsonData = text.substring(jsonStart, jsonEnd)
-
-        const data = JSON.parse(jsonData)
-
-        // Process the verified tasks data
-        if (data && data.table && data.table.rows) {
-          const tasksData = []
-
-          // Skip the header row and process the data rows
-          data.table.rows.slice(0).forEach((row, index) => {
-            console.log(row.c)
-            if (row.c) {
-              // Format dates if they exist
-              let timestampValue = row.c[0] ? row.c[0].v : "";
-              timestampValue = formatDateString(timestampValue);
-
-              let verificationDateValue = row.c[3] ? row.c[3].v : "";
-              verificationDateValue = formatDateString(verificationDateValue);
-
-              const task = {
-                rowIndex: index + 2, // Actual row index in the sheet (1-indexed, +1 for header row, +1 for 1-indexing)
-                timestamp: timestampValue, // Column A - Timestamp (formatted)
-                complaintId: row.c[1] ? row.c[1].v : "", // Column B - Complaint ID
-                status: row.c[2] ? row.c[2].v : "", // Column C - Status
-                verificationDate: verificationDateValue, // Column D - Verification Date (formatted)
-                password: row.c[4] ? row.c[4].v : "", // Column E - Password
-              }
-
-              tasksData.push(task)
-            }
-          })
-
-          setVerifiedTasks(tasksData)
+        if (vErr) {
+          const fallback = await supabase
+            .from("verifications")
+            .select("*")
+            .order("id", { ascending: false });
+          if (!fallback.error) {
+            data = fallback.data;
+            vErr = null;
+          }
         }
+
+        // If no records in Verifications table, also check FMS for verified tasks
+        if (!data || data.length === 0) {
+          const { data: fmsData } = await supabase
+            .from("FMS")
+            .select("*")
+            .or("status.eq.VERIFIED,verification_date.not.is.null")
+            .order("id", { ascending: false });
+
+          if (fmsData && fmsData.length > 0) {
+            data = fmsData.map((r) => ({
+              timestamp: r.timestamp || r.created_at,
+              complaint_id: r.complaint_id,
+              status: "VERIFIED",
+              verification_date: r.verification_date,
+              password: "—",
+            }));
+          }
+        }
+
+        const tasksData = (data || []).map((row, index) => ({
+          rowIndex: index + 1,
+          timestamp: formatDateString(row.timestamp || row.created_at),
+          complaintId: row.complaint_id || row.complaintId || "",
+          status: row.status || "Verified",
+          verificationDate: formatDateString(row.verification_date || row.verificationDate),
+          password: row.password || "—",
+        }));
+
+        setVerifiedTasks(tasksData);
       } catch (err) {
-        console.error("Error fetching verified tasks data:", err)
+        console.error("Error fetching verified tasks from Supabase:", err)
         setError(err.message)
-        // On error, set to empty array
         setVerifiedTasks([])
       } finally {
         setIsLoading(false)
@@ -144,7 +120,7 @@ function VerifiedTasksTable() {
   if (error) {
     return (
       <div className="p-4 flex justify-center items-center h-64">
-        <div className="text-red-500">Error loading data: {error}</div>
+        <div className="text-red-500">Error loading verified tasks: {error}</div>
       </div>
     )
   }
@@ -174,7 +150,7 @@ function VerifiedTasksTable() {
         </div>
       </div>
 
-      <div className="overflow-x-auto -mx-4 sm:mx-0">
+      <div className="overflow-x-auto overflow-y-auto max-h-[500px] -mx-4 sm:mx-0">
         <div className="inline-block min-w-full align-middle">
           {filteredTasks.length === 0 ? (
             <div className="text-center p-6 bg-gray-50 rounded-lg border border-gray-200">
@@ -182,7 +158,7 @@ function VerifiedTasksTable() {
             </div>
           ) : (
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-100">
+              <thead className="bg-gray-100 sticky top-0 z-10">
                 <tr>
                   <th
                     scope="col"

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import DatePicker from "react-datepicker"
 import "react-datepicker/dist/react-datepicker.css"
+import supabase from "../utils/supabase"
 
 function PendingVerificationTable() {
   const [pendingTasks, setPendingTasks] = useState([])
@@ -21,38 +22,20 @@ function PendingVerificationTable() {
 
     let date;
 
-    // Handle ISO string format (2025-05-22T07:38:28.052Z)
     if (typeof dateValue === 'string' && dateValue.includes('T')) {
       date = new Date(dateValue);
-    }
-    // Handle date format (2025-05-21)
-    else if (typeof dateValue === 'string' && dateValue.includes('-')) {
+    } else if (typeof dateValue === 'string' && dateValue.includes('-')) {
       date = new Date(dateValue);
-    }
-    // Handle Google Sheets Date constructor format like "Date(2025,4,21)"
-    else if (typeof dateValue === 'string' && dateValue.startsWith('Date(')) {
-      // Extract the date parts from "Date(2025,4,21)" format
-      const match = dateValue.match(/Date\((\d+),(\d+),(\d+)\)/);
-      if (match) {
-        const year = parseInt(match[1]);
-        const month = parseInt(match[2]); // Month is 0-indexed in this format
-        const day = parseInt(match[3]);
-        date = new Date(year, month, day);
-      } else {
-        return dateValue;
-      }
-    }
-    // Handle if it's already a Date object
-    else if (typeof dateValue === 'object' && dateValue.getDate) {
+    } else if (typeof dateValue === 'string' && dateValue.includes('/') && dateValue.includes(',')) {
+      date = new Date(dateValue);
+    } else if (typeof dateValue === 'object' && dateValue.getDate) {
       date = dateValue;
-    }
-    else {
-      return dateValue; // Return as is if not a recognizable date format
+    } else {
+      return String(dateValue);
     }
 
-    // Check if date is valid
     if (isNaN(date.getTime())) {
-      return dateValue; // Return original value if invalid date
+      return String(dateValue);
     }
 
     const day = String(date.getDate()).padStart(2, '0');
@@ -61,63 +44,50 @@ function PendingVerificationTable() {
     return `${day}/${month}/${year}`;
   };
 
-  // Function to fetch data from Google Sheets
+  // Function to fetch data from Supabase
   useEffect(() => {
     const fetchPendingTasks = async () => {
       setIsLoading(true)
       setError(null)
 
       try {
-        // Fetch the entire sheet using Google Sheets API directly
-        const sheetUrl = "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=FMS"
-        const response = await fetch(sheetUrl)
-        const text = await response.text()
+        const [{ data: fmsData, error: fmsErr }, { data: trackerData }] = await Promise.all([
+          supabase.from("FMS").select("*").order("id", { ascending: false }),
+          supabase.from("Tracker").select("*").order("id", { ascending: false })
+        ]);
 
-        // Extract the JSON part from the response
-        const jsonStart = text.indexOf('{')
-        const jsonEnd = text.lastIndexOf('}') + 1
-        const jsonData = text.substring(jsonStart, jsonEnd)
+        if (fmsErr) throw fmsErr;
 
-        const data = JSON.parse(jsonData)
+        const trackerMap = new Map();
+        (trackerData || []).forEach((t) => {
+          if (t.complaint_id && !trackerMap.has(t.complaint_id)) {
+            trackerMap.set(t.complaint_id, t);
+          }
+        });
 
-        // Process the pending verification tasks data
-        if (data && data.table && data.table.rows) {
-          const tasksData = []
-
-          // Skip the header row and process the data rows
-          data.table.rows.slice(3).forEach((row, index) => {
-            if (row.c) {
-              // Check if column AO (index 41) is not null and column AP (index 42) is null
-              const hasColumnAO = row.c[43] && row.c[43].v !== null && row.c[43].v !== "";
-              const isColumnAPEmpty = !row.c[44] || row.c[44].v === null || row.c[44].v === "";
-
-              // Only include rows where column AO has data and column AP is null/empty
-              if (hasColumnAO && isColumnAPEmpty) {
-                // Format the date value
-                let dateValue = row.c[38] ? row.c[38].v : "";
-                dateValue = formatDateString(dateValue);
-
-                const task = {
-                  rowIndex: index + 6, // Actual row index in the sheet (1-indexed, +5 for header rows, +1 for 1-indexing)
-                  id: row.c[1] ? row.c[1].v : `COMP-${index + 1}`, // Column B - Complaint No.
-                  date: dateValue, // Column C - Date (formatted)
-                  name: row.c[39] ? row.c[39].v : "", // Column D - Name
-                  phone: row.c[4] ? row.c[4].v : "", // Column E - Phone
-                  email: row.c[41] ? row.c[41].v : "", // Column F - Email
-                  address: row.c[42] ? row.c[42].v : "", // Column G - Address
-                }
-
-                tasksData.push(task)
-              }
-            }
+        const tasksData = (fmsData || [])
+          .filter((row) => {
+            const isNotVerified = row.status !== "VERIFIED" && !row.verification_date;
+            const hasWorkDone = row.actual1 || row.actual || row.planned1 || row.planned;
+            return row.complaint_id && isNotVerified && hasWorkDone;
           })
+          .map((row, index) => {
+            const t = trackerMap.get(row.complaint_id) || {};
+            return {
+              rowIndex: index + 1,
+              id: row.complaint_id,
+              date: formatDateString(row.actual1 || row.actual || row.close_date || t.actual || t.timestamp),
+              name: t.tracker_status || row.status || "Completed",
+              phone: row.company_name || "",
+              email: t.upload_documents || "",
+              address: t.geotag_photo || "",
+            };
+          });
 
-          setPendingTasks(tasksData)
-        }
+        setPendingTasks(tasksData);
       } catch (err) {
-        console.error("Error fetching pending tasks data:", err)
+        console.error("Error fetching pending tasks from Supabase:", err)
         setError(err.message)
-        // On error, set to empty array
         setPendingTasks([])
       } finally {
         setIsLoading(false)
@@ -130,93 +100,76 @@ function PendingVerificationTable() {
   // Filter tasks based on search term
   const filteredTasks = pendingTasks.filter(
     (task) =>
-      task.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       task.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      task.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      task.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      task.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       task.address?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // Handle verification form submission
+  // Handle task verification
   const handleVerifyTask = async () => {
-    if (!verificationDate || !verificationPassword) {
-      alert("Please fill in all required fields")
+    if (!verificationDate) {
+      alert("Please select a verification date")
       return
     }
 
-    const taskToVerify = pendingTasks.find(task => task.id === selectedTask)
-    if (!taskToVerify) {
-      alert("Task not found")
+    if (!verificationPassword) {
+      alert("Please enter a verification password")
       return
     }
 
     try {
-      // Format the verification date
       const formattedDate = verificationDate instanceof Date ?
-        `${verificationDate.getMonth() + 1}/${verificationDate.getDate()}/${verificationDate.getFullYear()}` :
-        ""
+        verificationDate.toISOString() :
+        new Date().toISOString();
 
-      // Prepare form data for the update
-      const formData = new FormData()
-      formData.append('sheetName', 'Verifications')
-      formData.append('action', 'insert') // Changed from 'update' to 'insert' to add to a new row
+      // 1. Update FMS status and verification date
+      const { error: fmsUpdateErr } = await supabase
+        .from("FMS")
+        .update({
+          status: "VERIFIED",
+          verification_date: formattedDate,
+        })
+        .eq("complaint_id", selectedTask);
 
-      // Get current timestamp for the first column
-      // const currentTimestamp = new Date().toLocaleString()
-      const currentTimestamp = new Date().toLocaleString('en-US')
-
-      // Create an array with columns we want to update
-      // [timestamp, complaint_id, status, verification_date, verification_password]
-      const rowDataArray = [
-        currentTimestamp,         // First column - Timestamp
-        selectedTask,             // Second column - Complaint ID
-        verificationStatus,       // Third column - Verification Status
-        formattedDate,            // Fourth column - Verification Date
-        verificationPassword      // Fifth column - Verification Password
-      ]
-
-      // Add the JSON string of row data to the form
-      formData.append('rowData', JSON.stringify(rowDataArray))
-
-      console.log("Submitting verification data")
-      console.log("Row data:", rowDataArray)
-
-      // Google Apps Script Web App URL
-      const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwnIMOzsFbniWnPFhl3lzE-2W0l6lD23keuz57-ldS_umSXIJqpEK-qxLE6eM0s7drqrQ/exec"
-
-
-      // Post the update
-      const response = await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        body: formData
-      })
-
-      // Log the response for debugging
-      console.log("Verification response:", response)
-
-      // Try to parse the JSON response if available
-      try {
-        const result = await response.json()
-        console.log("Response JSON:", result)
-
-        if (result.error) {
-          throw new Error(result.error)
-        }
-      } catch (jsonError) {
-        console.log("Could not parse JSON response (likely due to CORS). This is expected.")
+      if (fmsUpdateErr) {
+        console.warn("Could not update FMS verification:", fmsUpdateErr);
       }
 
-      // Update the local state to remove this task from the list
-      setPendingTasks(pendingTasks.filter(task => task.id !== selectedTask))
+      // 2. Insert into Verifications table
+      const verificationRecord = {
+        timestamp: new Date().toISOString(),
+        complaint_id: selectedTask,
+        status: verificationStatus,
+        verification_date: formattedDate,
+        password: verificationPassword,
+      };
 
-      // Close the dialog and reset form
-      setIsDialogOpen(false)
-      setVerificationDate(null)
-      setVerificationStatus("verified")
-      setVerificationPassword("")
+      let { error: vErr } = await supabase
+        .from("Verifications")
+        .insert([verificationRecord]);
 
-      alert(`Task ${selectedTask} has been verified successfully!`)
+      if (vErr) {
+        const fallback = await supabase
+          .from("verifications")
+          .insert([verificationRecord]);
+        if (fallback.error) {
+          console.warn("Verifications table fallback error:", fallback.error);
+        }
+      }
+
+      // Update local state
+      setPendingTasks(pendingTasks.filter((task) => task.id !== selectedTask));
+      setIsDialogOpen(false);
+      setVerificationDate(null);
+      setVerificationStatus("verified");
+      setVerificationPassword("");
+
+      alert(`Task ${selectedTask} has been verified successfully!`);
     } catch (err) {
-      console.error("Error verifying task:", err)
-      alert(`Error verifying task: ${err.message}`)
+      console.error("Error verifying task in Supabase:", err);
+      alert(`Error verifying task: ${err.message}`);
     }
   }
 
@@ -261,7 +214,7 @@ function PendingVerificationTable() {
         </div>
       </div>
 
-      <div className="overflow-x-auto -mx-4 sm:mx-0">
+      <div className="overflow-x-auto overflow-y-auto max-h-[500px] -mx-4 sm:mx-0">
         <div className="inline-block min-w-full align-middle">
           {filteredTasks.length === 0 ? (
             <div className="text-center p-6 bg-gray-50 rounded-lg border border-gray-200">
@@ -269,7 +222,7 @@ function PendingVerificationTable() {
             </div>
           ) : (
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-100">
+              <thead className="bg-gray-100 sticky top-0 z-10">
                 <tr>
                   <th
                     scope="col"

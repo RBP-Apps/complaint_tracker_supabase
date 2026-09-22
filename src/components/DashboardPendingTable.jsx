@@ -1,6 +1,24 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import {
+  ClipboardList,
+  Search,
+  FileSpreadsheet,
+  RotateCcw,
+  Calendar,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
+  SlidersHorizontal,
+  ChevronDown,
+  ChevronUp,
+  Trash2,
+  ShieldCheck,
+  MapPin,
+  User,
+  Phone
+} from "lucide-react"
 import * as XLSX from 'xlsx';
 import supabase from "../utils/supabase";
 import SearchableSelect from "./SearchableSelect";
@@ -23,25 +41,76 @@ function ComplaintsTable() {
   // Advanced Filter States
   const [filterInputs, setFilterInputs] = useState({
     complaintDate: "",
+    resolvedDate: "",
     idNumber: "",
     beneficiaryName: "",
     village: "",
     block: "",
-    district: ""
+    district: "",
+    timelineFilter: "All"
   })
 
   // Clear all filters
   const clearFilters = () => {
     setFilterInputs({
       complaintDate: "",
+      resolvedDate: "",
       idNumber: "",
       beneficiaryName: "",
       village: "",
       block: "",
-      district: ""
+      district: "",
+      timelineFilter: "All"
     })
     setSearchTerm("")
     setStatusFilter("All")
+  }
+
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
+
+  // Active filters counter
+  const activeFiltersCount = useMemo(() => {
+    let count = 0
+    if (filterInputs.complaintDate) count++
+    if (filterInputs.resolvedDate) count++
+    if (filterInputs.district) count++
+    if (filterInputs.block) count++
+    if (filterInputs.village) count++
+    if (filterInputs.idNumber) count++
+    if (filterInputs.beneficiaryName) count++
+    if (filterInputs.timelineFilter && filterInputs.timelineFilter !== "All") count++
+    return count
+  }, [filterInputs])
+
+  // Status Badge Helper
+  const renderStatusBadge = (status) => {
+    const s = String(status || "").toUpperCase()
+    if (s === "APPROVED-CLOSE") {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          APPROVED-CLOSE
+        </span>
+      )
+    }
+    if (s === "OK-OPEN") {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+          OK-OPEN
+        </span>
+      )
+    }
+    if (s === "REJECT") {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+          REJECT
+        </span>
+      )
+    }
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+        {status || "OPEN"}
+      </span>
+    )
   }
 
   // localStorage useEffect - ADD THIS
@@ -86,6 +155,11 @@ function ComplaintsTable() {
             complaintDate: row.complaint_date
               ? formatDateString(row.complaint_date)
               : "",
+            rawComplaintDate: row.complaint_date || null,
+            resolvedDate: row.resolved_date
+              ? formatDateString(row.resolved_date)
+              : "",
+            rawResolvedDate: row.resolved_date || null,
             beneficiaryName: row.beneficiary_name || "",
             contactNumber: row.contact_number || "",
             village: row.village || "",
@@ -101,6 +175,7 @@ function ComplaintsTable() {
             technicianContact: row.technician_contact || "",
             assigneeWhatsApp: row.assignee_whatsapp_number || "",
             status: row.status || "Open",
+            rawCloseDate: row.close_date || null,
             closeDate:
               row.status === "APPROVED-CLOSE" && row.close_date
                 ? formatDateString(row.close_date)
@@ -145,41 +220,130 @@ function ComplaintsTable() {
     return "In Progress";
   };
 
-  const formatDateString = (dateValue) => {
-    if (!dateValue) return "";
-
-    let date;
-
-    if (typeof dateValue === 'number' && dateValue > 40000) {
-      const googleEpoch = new Date(1899, 11, 30);
-      date = new Date(googleEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
+  const parseToDate = (dateVal) => {
+    if (!dateVal) return null;
+    if (dateVal instanceof Date && !isNaN(dateVal.getTime())) return dateVal;
+    if (typeof dateVal === 'number') {
+      if (dateVal > 40000 && dateVal < 60000) {
+        const googleEpoch = new Date(1899, 11, 30);
+        return new Date(googleEpoch.getTime() + dateVal * 24 * 60 * 60 * 1000);
+      }
+      return new Date(dateVal);
     }
-    else if (typeof dateValue === 'string' && dateValue.startsWith('Date(')) {
-      const match = dateValue.match(/Date\((\d+),(\d+),(\d+)(?:,(\d+),(\d+),(\d+))?\)/);
-      if (match) {
-        const year = parseInt(match[1]);
-        const month = parseInt(match[2]);
-        const day = parseInt(match[3]);
-        date = new Date(year, month, day);
-      } else {
-        return dateValue;
+    if (typeof dateVal === 'string') {
+      const trimmed = dateVal.trim();
+      if (!trimmed) return null;
+      const ddmmyyyy = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+      if (ddmmyyyy) {
+        return new Date(parseInt(ddmmyyyy[3], 10), parseInt(ddmmyyyy[2], 10) - 1, parseInt(ddmmyyyy[1], 10));
+      }
+      if (trimmed.startsWith('Date(')) {
+        const match = trimmed.match(/Date\((\d+),(\d+),(\d+)/);
+        if (match) {
+          return new Date(parseInt(match[1], 10), parseInt(match[2], 10), parseInt(match[3], 10));
+        }
+      }
+      const d = new Date(trimmed);
+      if (!isNaN(d.getTime())) return d;
+    }
+    return null;
+  };
+
+  const formatDateString = (dateValue) => {
+    const d = parseToDate(dateValue);
+    if (!d) return dateValue ? String(dateValue) : "";
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  // Helper to calculate timeline and days late
+  const getTimelineInfo = (complaint) => {
+    const rawResolved = complaint.rawResolvedDate || complaint.resolvedDate;
+    const resolvedDate = parseToDate(rawResolved);
+    if (!resolvedDate) {
+      return {
+        status: "no_date",
+        isLate: false,
+        days: 0,
+        badgeText: "Not Set",
+        formattedDate: "-",
+        badgeClass: "bg-gray-100 text-gray-500 border-gray-200"
+      };
+    }
+
+    const day = String(resolvedDate.getDate()).padStart(2, '0');
+    const month = String(resolvedDate.getMonth() + 1).padStart(2, '0');
+    const year = resolvedDate.getFullYear();
+    const formattedDate = `${day}/${month}/${year}`;
+
+    const resolvedMidnight = new Date(year, resolvedDate.getMonth(), resolvedDate.getDate()).getTime();
+
+    // If complaint is closed
+    const isClosed = String(complaint.status || "").toUpperCase() === "APPROVED-CLOSE" || !!complaint.closeDate;
+    if (isClosed && (complaint.rawCloseDate || complaint.closeDate)) {
+      const closeDate = parseToDate(complaint.rawCloseDate || complaint.closeDate);
+      if (closeDate) {
+        const closeMidnight = new Date(closeDate.getFullYear(), closeDate.getMonth(), closeDate.getDate()).getTime();
+        const diffDays = Math.round((closeMidnight - resolvedMidnight) / (1000 * 60 * 60 * 24));
+
+        if (diffDays > 0) {
+          return {
+            status: "closed_late",
+            isLate: true,
+            days: diffDays,
+            badgeText: `${diffDays}d late (Closed)`,
+            formattedDate,
+            badgeClass: "bg-purple-50 text-purple-700 border-purple-300"
+          };
+        } else {
+          return {
+            status: "closed_on_time",
+            isLate: false,
+            days: Math.abs(diffDays),
+            badgeText: "Closed On Time",
+            formattedDate,
+            badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-300"
+          };
+        }
       }
     }
-    else if (typeof dateValue === 'object' && dateValue.getDate) {
-      date = dateValue;
-    }
-    else {
-      return dateValue;
-    }
 
-    if (isNaN(date.getTime())) {
-      return dateValue;
-    }
+    // If complaint is still pending / open
+    const now = new Date();
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const diffDays = Math.round((todayMidnight - resolvedMidnight) / (1000 * 60 * 60 * 24));
 
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
+    if (diffDays > 0) {
+      return {
+        status: "overdue",
+        isLate: true,
+        days: diffDays,
+        badgeText: `${diffDays} ${diffDays === 1 ? 'day' : 'days'} late`,
+        formattedDate,
+        badgeClass: "bg-rose-100 text-rose-700 border-rose-300 font-bold"
+      };
+    } else if (diffDays === 0) {
+      return {
+        status: "due_today",
+        isLate: false,
+        days: 0,
+        badgeText: "Due Today",
+        formattedDate,
+        badgeClass: "bg-amber-100 text-amber-800 border-amber-300 font-semibold"
+      };
+    } else {
+      const daysLeft = Math.abs(diffDays);
+      return {
+        status: "on_track",
+        isLate: false,
+        days: daysLeft,
+        badgeText: `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left`,
+        formattedDate,
+        badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-300"
+      };
+    }
   };
 
   const getPriorityColor = (priority) => {
@@ -306,8 +470,16 @@ function ComplaintsTable() {
     return null;
   };
 
+  const overdueCount = useMemo(() => {
+    return complaints.filter(c => {
+      const t = getTimelineInfo(c);
+      return t.isLate && String(c.status || "").toUpperCase() !== "APPROVED-CLOSE";
+    }).length;
+  }, [complaints]);
+
   const filteredComplaints = getFilteredComplaintsByRole().filter((complaint) => {
     const search = searchTerm.toLowerCase();
+    const timeline = getTimelineInfo(complaint);
 
     // 1. Text Search Filter
     const matchesSearch =
@@ -318,7 +490,9 @@ function ComplaintsTable() {
       String(complaint.projectName || "").toLowerCase().includes(search) ||
       String(complaint.natureOfComplaint || "").toLowerCase().includes(search) ||
       String(complaint.complaintNumber || "").toLowerCase().includes(search) ||
-      String(complaint.technicianName || "").toLowerCase().includes(search);
+      String(complaint.technicianName || "").toLowerCase().includes(search) ||
+      timeline.badgeText.toLowerCase().includes(search) ||
+      timeline.formattedDate.toLowerCase().includes(search);
 
     // 2. Status Filter
     const matchesStatus =
@@ -329,11 +503,9 @@ function ComplaintsTable() {
 
     const matchesBeneficiary = !filterInputs.beneficiaryName || String(complaint.beneficiaryName).toLowerCase().includes(filterInputs.beneficiaryName.toLowerCase());
 
-
     const matchesBlock = !filterInputs.block || complaint.block === filterInputs.block;
 
     const matchesDistrict = !filterInputs.district || complaint.district === filterInputs.district;
-
 
     const matchesVillage = !filterInputs.village || String(complaint.village).toLowerCase().includes(filterInputs.village.toLowerCase());
 
@@ -351,12 +523,42 @@ function ComplaintsTable() {
           matchesDate = false;
         }
       } else {
-        // If date is invalid but filter is set, it shouldn't match
         matchesDate = false;
       }
     }
 
-    return matchesSearch && matchesStatus && matchesId && matchesBeneficiary && matchesBlock && matchesDistrict && matchesVillage && matchesDate;
+    // 5. Resolved Date Filter
+    let matchesResolvedDate = true;
+    if (filterInputs.resolvedDate) {
+      const resolvedDateObj = parseDateFromDDMMYYYY(timeline.formattedDate);
+      if (resolvedDateObj) {
+        resolvedDateObj.setHours(0, 0, 0, 0);
+        const filterDateObj = new Date(filterInputs.resolvedDate);
+        filterDateObj.setHours(0, 0, 0, 0);
+
+        if (resolvedDateObj.getTime() !== filterDateObj.getTime()) {
+          matchesResolvedDate = false;
+        }
+      } else {
+        matchesResolvedDate = false;
+      }
+    }
+
+    // 6. Timeline Filter
+    let matchesTimeline = true;
+    if (filterInputs.timelineFilter && filterInputs.timelineFilter !== "All") {
+      if (filterInputs.timelineFilter === "overdue") {
+        matchesTimeline = timeline.isLate && String(complaint.status || "").toUpperCase() !== "APPROVED-CLOSE";
+      } else if (filterInputs.timelineFilter === "due_today") {
+        matchesTimeline = timeline.status === "due_today";
+      } else if (filterInputs.timelineFilter === "on_track") {
+        matchesTimeline = timeline.status === "on_track";
+      } else if (filterInputs.timelineFilter === "closed") {
+        matchesTimeline = String(complaint.status || "").toUpperCase() === "APPROVED-CLOSE";
+      }
+    }
+
+    return matchesSearch && matchesStatus && matchesId && matchesBeneficiary && matchesBlock && matchesDistrict && matchesVillage && matchesDate && matchesResolvedDate && matchesTimeline;
   });
 
   // Export to Excel Function
@@ -365,21 +567,27 @@ function ComplaintsTable() {
       setIsExporting(true);
 
       // Prepare data for export
-      const exportData = filteredComplaints.map(item => ({
-        "Complaint ID": item.complaintId,
-        "Complaint Date": item.complaintDate,
-        "ID Number": item.idNumber,
-        "Beneficiary Name": item.beneficiaryName,
-        "Contact Number": item.contactNumber,
-        "Village": item.village,
-        "Block": item.block,
-        "District": item.district,
-        "Project Name": item.projectName,
-        "Nature of Complaint": item.natureOfComplaint,
-        "Technician Name": item.technicianName,
-        "Status": item.status,
-        "Close Date": item.closeDate
-      }));
+      const exportData = filteredComplaints.map(item => {
+        const timeline = getTimelineInfo(item);
+        return {
+          "Complaint ID": item.complaintId,
+          "Complaint Date": item.complaintDate,
+          "Resolved Date": timeline.formattedDate,
+          "Timeline / Delay": timeline.badgeText,
+          "Days Late": timeline.isLate ? timeline.days : 0,
+          "ID Number": item.idNumber,
+          "Beneficiary Name": item.beneficiaryName,
+          "Contact Number": item.contactNumber,
+          "Village": item.village,
+          "Block": item.block,
+          "District": item.district,
+          "Project Name": item.projectName,
+          "Nature of Complaint": item.natureOfComplaint,
+          "Technician Name": item.technicianName,
+          "Status": item.status,
+          "Close Date": item.closeDate
+        };
+      });
 
       // Create Worksheet
       const worksheet = XLSX.utils.json_to_sheet(exportData);
@@ -404,37 +612,62 @@ function ComplaintsTable() {
 
   if (isLoading) {
     return (
-      <div className="p-4 flex justify-center items-center h-64">
-        <div className="text-gray-500">Loading complaints data...</div>
+      <div className="p-12 flex flex-col justify-center items-center h-64 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-3"></div>
+        <div className="text-slate-500 font-medium text-sm">Loading complaints data...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="p-4 flex justify-center items-center h-64">
-        <div className="text-red-500">Error loading data: {error}</div>
+      <div className="p-8 flex justify-center items-center h-64 bg-white rounded-2xl border border-rose-200 shadow-xs">
+        <div className="text-rose-600 text-sm font-semibold">Error loading data: {error}</div>
       </div>
     )
   }
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <div className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h2 className="text-xl font-bold">
-          Complaint Tracker
-          <span className="ml-2 text-sm font-normal text-gray-500">
-            ({filteredComplaints.length} records)
-          </span>
-          {userRole && (
-            <span className="ml-2 text-sm font-normal text-blue-600">
-              Role: {userRole}
-            </span>
-          )}
-        </h2>
-        <div className="flex flex-col sm:flex-row gap-4">
+    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 sm:p-6 transition-all">
+      {/* Header Section */}
+      <div className="mb-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 shadow-2xs">
+            <ClipboardList className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                Complaint Tracker
+              </h2>
+              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 font-mono">
+                {filteredComplaints.length} records
+              </span>
+              {overdueCount > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200/90 shadow-2xs">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
+                  </span>
+                  {overdueCount} Overdue (Late)
+                </span>
+              )}
+              {userRole && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 uppercase">
+                  {userRole}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Live tracking of all filed complaints, timelines, technician assignments, and SLA delays
+            </p>
+          </div>
+        </div>
 
-          <div className="w-full sm:w-[200px]">
+        {/* Action Controls */}
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+          {/* Status Filter */}
+          <div className="w-full sm:w-[160px]">
             <SearchableSelect
               placeholder="All Statuses"
               allOptionLabel="All Statuses"
@@ -449,47 +682,59 @@ function ComplaintsTable() {
             />
           </div>
 
-          <div className="relative flex items-center">
+          {/* Search Input */}
+          <div className="relative flex-1 sm:w-[220px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
             <input
               type="search"
               placeholder="Search complaints..."
-              className="pl-8 w-[200px] md:w-[300px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50/80 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            <svg
-              className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
           </div>
+
+          {/* Toggle Advanced Filters Button */}
+          <button
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+              showAdvancedFilters || activeFiltersCount > 0
+                ? "bg-blue-50 text-blue-700 border-blue-200 shadow-2xs"
+                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+            }`}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            <span>Filters</span>
+            {activeFiltersCount > 0 && (
+              <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold">
+                {activeFiltersCount}
+              </span>
+            )}
+            {showAdvancedFilters ? (
+              <ChevronUp className="h-3.5 w-3.5 ml-0.5 text-slate-400" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5 ml-0.5 text-slate-400" />
+            )}
+          </button>
 
           {/* Export Button - Admin Only */}
           {userRole && userRole.toLowerCase() === 'admin' && (
             <button
               onClick={handleExportToExcel}
               disabled={isExporting}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-white font-medium transition-colors ${isExporting ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
-                }`}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-xs font-semibold shadow-xs hover:shadow-md transition-all cursor-pointer whitespace-nowrap ${
+                isExporting ? 'bg-emerald-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 active:scale-98'
+              }`}
             >
               {isExporting ? (
                 <>
-                  <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Exporting...
+                  <span className="animate-spin h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full" />
+                  <span>Exporting...</span>
                 </>
               ) : (
                 <>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Export Excel
+                  <FileSpreadsheet className="h-4 w-4" />
+                  <span>Export Excel</span>
                 </>
               )}
             </button>
@@ -498,211 +743,363 @@ function ComplaintsTable() {
       </div>
 
       {/* Advanced Filters Section */}
-      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-6">
-        <div className="flex justify-between items-center mb-3">
-          <h3 className="text-sm font-semibold text-gray-700">Advanced Filters</h3>
-          <button
-            onClick={clearFilters}
-            className="text-xs text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-            Clear Filters
-          </button>
+      {showAdvancedFilters && (
+        <div className="bg-slate-50/90 p-4 rounded-xl border border-slate-200 mb-5 shadow-2xs">
+          <div className="flex justify-between items-center mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                <SlidersHorizontal className="h-3.5 w-3.5 text-blue-600" />
+                Advanced Filters
+              </span>
+              {activeFiltersCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-700">
+                  {activeFiltersCount} applied
+                </span>
+              )}
+            </div>
+            <button
+              onClick={clearFilters}
+              className="text-xs text-rose-600 hover:text-rose-700 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
+            >
+              <RotateCcw className="h-3 w-3" />
+              <span>Reset Filters</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+            {/* Complaint Date - Single Date Picker */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500">Complaint Date</label>
+              <input
+                type="date"
+                className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                value={filterInputs.complaintDate}
+                onChange={(e) => setFilterInputs({ ...filterInputs, complaintDate: e.target.value })}
+              />
+            </div>
+
+            {/* Resolved Date - Single Date Picker */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-blue-700">Resolved Date</label>
+              <input
+                type="date"
+                className="w-full px-2.5 py-1.5 text-xs bg-blue-50/50 border border-blue-200 text-blue-900 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium"
+                value={filterInputs.resolvedDate}
+                onChange={(e) => setFilterInputs({ ...filterInputs, resolvedDate: e.target.value })}
+              />
+            </div>
+
+            {/* District Searchable Dropdown */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500">District</label>
+              <SearchableSelect
+                placeholder="All Districts"
+                allOptionLabel="All Districts"
+                options={uniqueValues.districts}
+                value={filterInputs.district}
+                onChange={(val) => setFilterInputs({ ...filterInputs, district: val })}
+              />
+            </div>
+
+            {/* Block Searchable Dropdown */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500">Block</label>
+              <SearchableSelect
+                placeholder="All Blocks"
+                allOptionLabel="All Blocks"
+                options={uniqueValues.blocks}
+                value={filterInputs.block}
+                onChange={(val) => setFilterInputs({ ...filterInputs, block: val, village: "" })}
+              />
+            </div>
+
+            {/* Village Searchable Dropdown */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500">Village</label>
+              <SearchableSelect
+                placeholder="Search Village..."
+                allOptionLabel="All Villages"
+                options={availableVillages}
+                value={filterInputs.village}
+                onChange={(val) => setFilterInputs({ ...filterInputs, village: val })}
+              />
+            </div>
+
+            {/* ID Number Searchable Dropdown */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500">ID Number</label>
+              <SearchableSelect
+                placeholder="Search ID..."
+                allOptionLabel="All ID Numbers"
+                options={uniqueValues.idNumbers}
+                value={filterInputs.idNumber}
+                onChange={(val) => setFilterInputs({ ...filterInputs, idNumber: val })}
+              />
+            </div>
+
+            {/* Beneficiary Name Searchable Dropdown */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500">Beneficiary</label>
+              <SearchableSelect
+                placeholder="Search Name..."
+                allOptionLabel="All Beneficiaries"
+                options={uniqueValues.beneficiaries}
+                value={filterInputs.beneficiaryName}
+                onChange={(val) => setFilterInputs({ ...filterInputs, beneficiaryName: val })}
+              />
+            </div>
+
+            {/* Timeline / Delay Filter */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500">Timeline / Delay</label>
+              <select
+                className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-medium text-slate-700"
+                value={filterInputs.timelineFilter || "All"}
+                onChange={(e) => setFilterInputs({ ...filterInputs, timelineFilter: e.target.value })}
+              >
+                <option value="All">All Timelines</option>
+                <option value="overdue">⚠️ Overdue (Late Only)</option>
+                <option value="due_today">⏳ Due Today</option>
+                <option value="on_track">✓ On Track (Time Left)</option>
+                <option value="closed">✓ Closed Complaints</option>
+              </select>
+            </div>
+          </div>
         </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-          {/* Complaint Date - Single Date Picker */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500">Complaint Date</label>
-            <input
-              type="date"
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
-              value={filterInputs.complaintDate}
-              onChange={(e) => setFilterInputs({ ...filterInputs, complaintDate: e.target.value })}
-            />
-          </div>
-
-          {/* District Searchable Dropdown */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500">District</label>
-            <SearchableSelect
-              placeholder="All Districts"
-              allOptionLabel="All Districts"
-              options={uniqueValues.districts}
-              value={filterInputs.district}
-              onChange={(val) => setFilterInputs({ ...filterInputs, district: val })}
-            />
-          </div>
-
-          {/* Block Searchable Dropdown */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500">Block</label>
-            <SearchableSelect
-              placeholder="All Blocks"
-              allOptionLabel="All Blocks"
-              options={uniqueValues.blocks}
-              value={filterInputs.block}
-              onChange={(val) => setFilterInputs({ ...filterInputs, block: val, village: "" })}
-            />
-          </div>
-
-          {/* Village Searchable Dropdown */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500">Village</label>
-            <SearchableSelect
-              placeholder="Search Village..."
-              allOptionLabel="All Villages"
-              options={availableVillages}
-              value={filterInputs.village}
-              onChange={(val) => setFilterInputs({ ...filterInputs, village: val })}
-            />
-          </div>
-
-          {/* ID Number Searchable Dropdown */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500">ID Number</label>
-            <SearchableSelect
-              placeholder="Search ID..."
-              allOptionLabel="All ID Numbers"
-              options={uniqueValues.idNumbers}
-              value={filterInputs.idNumber}
-              onChange={(val) => setFilterInputs({ ...filterInputs, idNumber: val })}
-            />
-          </div>
-
-          {/* Beneficiary Name Searchable Dropdown */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500">Beneficiary</label>
-            <SearchableSelect
-              placeholder="Search Name..."
-              allOptionLabel="All Beneficiaries"
-              options={uniqueValues.beneficiaries}
-              value={filterInputs.beneficiaryName}
-              onChange={(val) => setFilterInputs({ ...filterInputs, beneficiaryName: val })}
-            />
-          </div>
-
-        </div>
-      </div>
+      )}
 
       <div className="overflow-x-auto -mx-4 sm:mx-0">
         <div className="inline-block min-w-full align-middle">
           {filteredComplaints.length === 0 ? (
-            <div className="text-center p-6 bg-gray-50 rounded-lg border border-gray-200">
-              <p className="text-gray-500">No complaints found matching your criteria</p>
+            <div className="text-center p-12 bg-slate-50 rounded-xl border border-slate-200">
+              <div className="inline-flex p-3 rounded-full bg-slate-100 text-slate-400 mb-3">
+                <Search className="h-6 w-6" />
+              </div>
+              <p className="text-sm font-semibold text-slate-700">No complaints found</p>
+              <p className="text-xs text-slate-400 mt-1">Try adjusting your search criteria or resetting filters</p>
             </div>
           ) : (
             <>
               {/* Mobile Card View */}
               <div className="block md:hidden space-y-3">
                 {filteredComplaints.map((complaint, index) => (
-                  <div key={`complaint-${complaint.complaintId}-${index}`} className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-center mb-2 pb-2 border-b border-gray-200">
-                      <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">{complaint.complaintId}</span>
-                      <span className="text-xs px-2 py-1 rounded">{complaint.status}</span>
+                  <div
+                    key={`complaint-${complaint.complaintId}-${index}`}
+                    className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-2xs hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex justify-between items-center mb-2.5 pb-2 border-b border-slate-100">
+                      <span className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200/80 px-2.5 py-0.5 rounded-lg font-mono">
+                        {complaint.complaintId}
+                      </span>
+                      {renderStatusBadge(complaint.status)}
                     </div>
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-500">Company</span>
-                        <span className="text-gray-900 font-medium">{complaint.companyName}</span>
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Complaint Date</span>
+                        <span className="text-slate-900 font-medium">{complaint.complaintDate || "-"}</span>
                       </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-500">Complaint No</span>
-                        <span className="text-gray-900">{complaint.complaintNumber}</span>
+                      {/* Resolved Date Separately */}
+                      {(() => {
+                        const timeline = getTimelineInfo(complaint);
+                        return (
+                          <>
+                            <div className="flex justify-between items-center py-1">
+                              <span className="text-blue-700 font-semibold flex items-center gap-1">
+                                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                                Resolved Date
+                              </span>
+                              {timeline.formattedDate !== "-" ? (
+                                <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 font-mono">
+                                  {timeline.formattedDate}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 italic">Not Set</span>
+                              )}
+                            </div>
+
+                            {/* Timeline / Delay Separately */}
+                            <div className="flex justify-between items-center py-1 border-b border-dashed border-slate-100 pb-1 mb-1">
+                              <span className="text-slate-500 font-medium">Timeline / Delay</span>
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border shadow-2xs ${timeline.badgeClass}`}>
+                                {timeline.isLate && (
+                                  <span className="relative flex h-1.5 w-1.5">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-rose-600"></span>
+                                  </span>
+                                )}
+                                {timeline.badgeText}
+                              </span>
+                            </div>
+                          </>
+                        );
+                      })()}
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Beneficiary</span>
+                        <span className="text-slate-900 font-medium">{complaint.beneficiaryName}</span>
                       </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-500">Date</span>
-                        <span className="text-gray-900">{complaint.complaintDate}</span>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Contact</span>
+                        <span className="text-slate-700 font-mono">{complaint.contactNumber}</span>
                       </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-500">Beneficiary</span>
-                        <span className="text-gray-900 font-medium">{complaint.beneficiaryName}</span>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Location</span>
+                        <span className="text-slate-700 max-w-[200px] truncate text-right">
+                          {[complaint.village, complaint.block, complaint.district].filter(Boolean).join(", ")}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Product</span>
+                        <span className="text-slate-800">{complaint.product || "-"}</span>
                       </div>
                       {complaint.closeDate && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-gray-500">Close Date</span>
-                          <span className="text-gray-900">{complaint.closeDate}</span>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Close Date</span>
+                          <span className="text-slate-900">{complaint.closeDate}</span>
                         </div>
                       )}
-                      <div className="mt-2 pt-2 border-t border-gray-100">
-                        <div className="flex items-center justify-between text-xs">
-                          <div className="flex-1">
-                            <div className="text-gray-500 mb-0.5">Technician</div>
-                            <div className="text-gray-900 font-medium">{complaint.technicianName}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-gray-500 mb-0.5">Contact</div>
-                            <div className="text-gray-900">{complaint.technicianContact}</div>
-                          </div>
+                      <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
+                        <div>
+                          <div className="text-slate-400 text-[10px] uppercase font-semibold">Technician</div>
+                          <div className="text-slate-800 font-medium">{complaint.technicianName}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-slate-400 text-[10px] uppercase font-semibold">Tech Contact</div>
+                          <div className="text-slate-700 font-mono">{complaint.technicianContact}</div>
                         </div>
                       </div>
+
+                      {userRole && userRole.toLowerCase() === 'admin' && (
+                        <button
+                          onClick={() => handleDelete(complaint.complaintId)}
+                          className="mt-3 w-full inline-flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span>Delete Complaint</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
 
               {/* Desktop Table View */}
-              <div className="hidden md:block overflow-x-auto max-h-[300px] overflow-y-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-100 sticky top-0 z-10">
+              <div className="hidden md:block overflow-x-auto max-h-[500px] overflow-y-auto border border-slate-200/90 rounded-xl shadow-2xs">
+                <table className="min-w-full divide-y divide-slate-200 text-left">
+                  <thead className="bg-slate-50 sticky top-0 z-10 text-xs font-bold text-slate-600 uppercase tracking-wider backdrop-blur-xs border-b border-slate-200">
                     <tr>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Auto Complaint ID</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Complaint Date</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">ID Number</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Beneficiary Name</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Contact Number</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Village</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Block</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">District</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Project Name</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Nature of Complaint</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Technician Name</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Close Date</th>
+                      <th className="px-3.5 py-3 whitespace-nowrap">Auto Complaint ID</th>
+                      <th className="px-3.5 py-3 whitespace-nowrap">Complaint Date</th>
+                      <th className="px-3.5 py-3 whitespace-nowrap bg-blue-50/90 text-blue-700 font-bold border-b-2 border-blue-400">
+                        Resolved Date
+                      </th>
+                      <th className="px-3.5 py-3 whitespace-nowrap bg-rose-50/90 text-rose-700 font-bold border-b-2 border-rose-300">
+                        Timeline / Delay
+                      </th>
+                      <th className="px-3.5 py-3 whitespace-nowrap">ID Number</th>
+                      <th className="px-3.5 py-3 whitespace-nowrap">Beneficiary Name</th>
+                      <th className="px-3.5 py-3 whitespace-nowrap">Contact Number</th>
+                      <th className="px-3.5 py-3 whitespace-nowrap">Village</th>
+                      <th className="px-3.5 py-3 whitespace-nowrap">Block</th>
+                      <th className="px-3.5 py-3 whitespace-nowrap">District</th>
+                      <th className="px-3.5 py-3 whitespace-nowrap">Project Name</th>
+                      <th className="px-3.5 py-3 whitespace-nowrap">Nature of Complaint</th>
+                      <th className="px-3.5 py-3 whitespace-nowrap">Technician Name</th>
+                      <th className="px-3.5 py-3 whitespace-nowrap">Status</th>
+                      <th className="px-3.5 py-3 whitespace-nowrap">Close Date</th>
                       {userRole && userRole.toLowerCase() === 'admin' && (
-                        <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Action</th>
+                        <th className="px-3.5 py-3 whitespace-nowrap text-right">Action</th>
                       )}
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredComplaints.map((complaint, index) => (
-                      <tr key={`complaint-${complaint.complaintId}-${index}`} className="hover:bg-gray-50">
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">{complaint.complaintId}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{complaint.complaintDate}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{complaint.idNumber}</td>
-
-
-                        <td className="px-3 py-4  text-sm text-gray-500">{complaint.beneficiaryName}</td>
-                        <td className="px-3 py-4  text-sm text-gray-500">{complaint.contactNumber}</td>
-                        <td className="px-3 py-4 text-sm text-gray-500">{complaint.village}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{complaint.block}</td>
-                        <td className="px-3 py-4  text-sm text-gray-500">{complaint.district}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{complaint.projectName}</td>
-                        <td className="px-3 py-4  text-sm text-gray-500">{complaint.natureOfComplaint}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{complaint.technicianName}</td>
-
-                        <td className="px-3 py-4 whitespace-nowrap">{complaint.status}</td>
-                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {complaint.closeDate || "-"}
-                        </td>
-                        {userRole && userRole.toLowerCase() === 'admin' && (
-                          <td className="px-3 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <button
-                              onClick={() => handleDelete(complaint.complaintId)}
-                              className="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 px-3 py-1 rounded-md transition-colors duration-150 flex items-center gap-1 ml-auto"
-                              title="Delete Record"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                              Delete
-                            </button>
+                  <tbody className="bg-white divide-y divide-slate-100 text-xs text-slate-700">
+                    {filteredComplaints.map((complaint, index) => {
+                      const timeline = getTimelineInfo(complaint);
+                      return (
+                        <tr key={`complaint-${complaint.complaintId}-${index}`} className="hover:bg-blue-50/30 transition-colors">
+                          <td className="px-3.5 py-3.5 whitespace-nowrap font-bold text-blue-600 font-mono">
+                            {complaint.complaintId}
                           </td>
-                        )}
-                      </tr>
-                    ))}
+                          <td className="px-3.5 py-3.5 whitespace-nowrap text-slate-600">
+                            {complaint.complaintDate}
+                          </td>
+
+                          {/* SEPARATE COLUMN 1: Resolved Date */}
+                          <td className="px-3.5 py-3.5 whitespace-nowrap">
+                            {timeline.formattedDate !== "-" ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-800 border border-blue-200/90 shadow-2xs font-mono">
+                                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                                {timeline.formattedDate}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-xs italic bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                                Not Set
+                              </span>
+                            )}
+                          </td>
+
+                          {/* SEPARATE COLUMN 2: Timeline / Delay */}
+                          <td className="px-3.5 py-3.5 whitespace-nowrap">
+                            {timeline.formattedDate !== "-" ? (
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border tracking-wide shadow-2xs ${timeline.badgeClass}`}>
+                                {timeline.isLate ? (
+                                  <>
+                                    <span className="relative flex h-2 w-2">
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                      <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
+                                    </span>
+                                    <span>⚠️ {timeline.badgeText}</span>
+                                  </>
+                                ) : timeline.status === 'due_today' ? (
+                                  <>
+                                    <span>⏳</span>
+                                    <span>{timeline.badgeText}</span>
+                                  </>
+                                ) : timeline.status === 'on_track' ? (
+                                  <>
+                                    <span className="text-emerald-600 font-bold">✓</span>
+                                    <span>{timeline.badgeText}</span>
+                                  </>
+                                ) : (
+                                  <span>{timeline.badgeText}</span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-xs italic">-</span>
+                            )}
+                          </td>
+
+                          <td className="px-3.5 py-3.5 whitespace-nowrap text-slate-600">{complaint.idNumber}</td>
+                          <td className="px-3.5 py-3.5 min-w-[130px] max-w-[200px] whitespace-normal break-words font-medium text-slate-900">{complaint.beneficiaryName}</td>
+                          <td className="px-3.5 py-3.5 whitespace-nowrap font-mono text-slate-600">{complaint.contactNumber}</td>
+                          <td className="px-3.5 py-3.5 min-w-[100px] max-w-[150px] whitespace-normal break-words text-slate-600">{complaint.village}</td>
+                          <td className="px-3.5 py-3.5 min-w-[100px] max-w-[150px] whitespace-normal break-words text-slate-600">{complaint.block}</td>
+                          <td className="px-3.5 py-3.5 min-w-[100px] max-w-[150px] whitespace-normal break-words text-slate-600">{complaint.district}</td>
+                          <td className="px-3.5 py-3.5 min-w-[120px] max-w-[180px] whitespace-normal break-words text-slate-600">{complaint.projectName}</td>
+                          <td className="px-3.5 py-3.5 min-w-[200px] max-w-[320px] whitespace-normal break-words text-slate-700" title={complaint.natureOfComplaint}>
+                            {complaint.natureOfComplaint}
+                          </td>
+                          <td className="px-3.5 py-3.5 min-w-[120px] max-w-[160px] whitespace-normal break-words text-slate-800">{complaint.technicianName}</td>
+                          <td className="px-3.5 py-3.5 whitespace-nowrap">
+                            {renderStatusBadge(complaint.status)}
+                          </td>
+                          <td className="px-3.5 py-3.5 whitespace-nowrap text-slate-600">
+                            {complaint.closeDate || "-"}
+                          </td>
+                          {userRole && userRole.toLowerCase() === 'admin' && (
+                            <td className="px-3.5 py-3.5 whitespace-nowrap text-right">
+                              <button
+                                onClick={() => handleDelete(complaint.complaintId)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer ml-auto"
+                                title="Delete Record"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                <span>Delete</span>
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -710,8 +1107,6 @@ function ComplaintsTable() {
           )}
         </div>
       </div>
-
-
     </div>
   )
 }

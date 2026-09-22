@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import DatePicker from "react-datepicker"
 import "react-datepicker/dist/react-datepicker.css"
+import supabase from "../utils/supabase"
 
 function AssignComplaintForm({ complaintId, onClose, onSubmit }) {
   const [expectedCompletionDate, setExpectedCompletionDate] = useState(null)
@@ -31,43 +32,27 @@ function AssignComplaintForm({ complaintId, onClose, onSubmit }) {
       setIsLoadingTechnicians(true)
 
       try {
-        // Fetch the Master sheet using Google Sheets API
-        const sheetUrl = "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=Master"
-        const response = await fetch(sheetUrl)
-        const text = await response.text()
+        const { data, error } = await supabase
+          .from("Master")
+          .select("technician_name")
+          .not("technician_name", "is", null);
 
-        // Extract the JSON part from the response
-        const jsonStart = text.indexOf('{')
-        const jsonEnd = text.lastIndexOf('}') + 1
-        const jsonData = text.substring(jsonStart, jsonEnd)
+        if (error) throw error;
 
-        const data = JSON.parse(jsonData)
+        const technicianNames = (data || [])
+          .map((row) => row.technician_name?.toString().trim())
+          .filter(Boolean);
 
-        // Process the technicians data from column F (index 5)
-        if (data && data.table && data.table.rows) {
-          const technicianNames = []
-
-          // Skip header rows and process data rows
-          data.table.rows.slice(1).forEach((row, index) => {
-            if (row.c && row.c[5] && row.c[5].v) { // Column F is index 5
-              const techName = row.c[5].v.toString().trim()
-              if (techName && !technicianNames.includes(techName)) {
-                technicianNames.push(techName)
-              }
-            }
-          })
-
-          setTechnicians(technicianNames.sort()) // Sort alphabetically
-        }
+        setTechnicians([...new Set(technicianNames)].sort());
       } catch (err) {
-        console.error("Error fetching technicians:", err)
-        setTechnicians([]) // Set empty array on error
+        console.error("Error fetching technicians from Supabase:", err);
+        setTechnicians([]);
       } finally {
-        setIsLoadingTechnicians(false)
+        setIsLoadingTechnicians(false);
       }
-    }
+    };
 
-    fetchTechnicians()
+    fetchTechnicians();
   }, [])
 
   const handleSubmit = async (e) => {

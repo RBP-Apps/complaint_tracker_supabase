@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import DashboardLayout from "../components/DashboardLayout";
+import supabase from "../utils/supabase";
 import {
   Plus,
   X,
@@ -24,24 +25,20 @@ function PetrolExpensesPage() {
     openingKm: "",
     closingKm: "",
     totalKm: 0,
-    fromLocation: "", // Add this
-    toLocation: "", // Add this
+    fromLocation: "",
+    toLocation: "",
   });
+  const [technicians, setTechnicians] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [isTechniciansLoading, setIsTechniciansLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [technicians, setTechnicians] = useState([]); // Changed from static array to state
-  const [isTechniciansLoading, setIsTechniciansLoading] = useState(false); // Loading state for technicians
+  const [error, setError] = useState(null);
   const [username, setUsername] = useState("");
 
   // Derive technician display name from username when it starts with "Tech"
   const techDisplayName = (username || "").toLowerCase().startsWith("tech")
     ? (username || "").substring(4).trim()
     : "";
-
-  // Google Apps Script Web App URL - Replace with your actual deployed script URL
-  const GOOGLE_SCRIPT_URL =
-    "https://script.google.com/macros/s/AKfycbwnIMOzsFbniWnPFhl3lzE-2W0l6lD23keuz57-ldS_umSXIJqpEK-qxLE6eM0s7drqrQ/exec";
 
   // Function to format date string to dd/mm/yyyy
   const formatDateString = (dateValue) => {
@@ -102,114 +99,76 @@ function PetrolExpensesPage() {
     return `${day}/${month}/${year}`;
   };
 
-  // Function to fetch technicians from Master sheet column F
+  // Function to fetch technicians from Supabase Master table
   const fetchTechnicians = async () => {
     setIsTechniciansLoading(true);
 
     try {
-      // Fetch the Master sheet using Google Sheets API directly
-      const sheetUrl =
-        "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=Master";
-      const response = await fetch(sheetUrl);
-      const text = await response.text();
+      const { data, error } = await supabase
+        .from("Master")
+        .select("technician_name");
 
-      // Extract the JSON part from the response
-      const jsonStart = text.indexOf("{");
-      const jsonEnd = text.lastIndexOf("}") + 1;
-      const jsonData = text.substring(jsonStart, jsonEnd);
+      if (error) throw error;
 
-      const data = JSON.parse(jsonData);
+      if (data && data.length > 0) {
+        const techniciansData = data
+          .map((row) => row.technician_name?.trim())
+          .filter((name, idx, arr) => name && arr.indexOf(name) === idx);
 
-      // Process the technicians data from column F
-      if (data && data.table && data.table.rows) {
-        const techniciansData = [];
-
-        // Process all rows and extract column F (index 5)
-        data.table.rows.slice(1).forEach((row) => {
-          if (row.c && row.c[5] && row.c[5].v) {
-            // Column F is index 5 (0-based)
-            const technicianName = row.c[5].v.toString().trim();
-            // Only add non-empty, unique technician names
-            if (technicianName && !techniciansData.includes(technicianName)) {
-              techniciansData.push(technicianName);
-            }
-          }
-        });
-
-        // Sort technicians alphabetically
         setTechnicians(techniciansData.sort());
       } else {
         setTechnicians([]);
       }
     } catch (err) {
-      console.error("Error fetching technicians:", err);
-      // Fallback to empty array if fetch fails
+      console.error("Error fetching technicians from Supabase:", err);
       setTechnicians([]);
     } finally {
       setIsTechniciansLoading(false);
     }
   };
 
-  // Load expenses from Google Sheets on component mount
+  // Load expenses from Supabase on component mount
   useEffect(() => {
     const fetchExpenses = async () => {
       setIsLoading(true);
       setError(null);
 
       try {
-        // Fetch the Petrol Expenses sheet using Google Sheets API directly
-        const sheetUrl =
-          "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=Petrol%20Expenses";
-        const response = await fetch(sheetUrl);
-        const text = await response.text();
+        let { data, error } = await supabase
+          .from("Petrol Expenses")
+          .select("*")
+          .order("id", { ascending: false });
 
-        // Extract the JSON part from the response
-        const jsonStart = text.indexOf("{");
-        const jsonEnd = text.lastIndexOf("}") + 1;
-        const jsonData = text.substring(jsonStart, jsonEnd);
-
-        const data = JSON.parse(jsonData);
-
-        // Process the expenses data
-        if (data && data.table && data.table.rows) {
-          const expensesData = [];
-
-          // Skip the header row and process the data rows
-          data.table.rows.slice(0).forEach((row, index) => {
-            if (row.c && row.c[1]) {
-              // Check if row has data (at least date column)
-              // Format timestamp (Column A) - ISO format to dd/mm/yyyy
-              let timestampValue = row.c[0] ? row.c[0].v : "";
-
-              // Format expense date (Column B) - date format to dd/mm/yyyy
-              let expenseDateValue = row.c[1] ? row.c[1].v : "";
-              expenseDateValue = formatDateString(expenseDateValue);
-
-              const expense = {
-                id: index + 1,
-                createdAt: timestampValue,
-                date: expenseDateValue,
-                technicianName: row.c[2] ? row.c[2].v : "",
-                fromLocation: row.c[3] ? row.c[3].v : "", // Add this
-                toLocation: row.c[4] ? row.c[4].v : "", // Add this
-                openingKm: row.c[5] ? parseFloat(row.c[5].v) || 0 : 0,
-                closingKm: row.c[6] ? parseFloat(row.c[6].v) || 0 : 0,
-                totalKm: row.c[7] ? parseFloat(row.c[7].v) || 0 : 0,
-              };
-
-              expensesData.push(expense);
-            }
-          });
-
-          // Reverse to show newest first
-          setExpenses(expensesData.reverse());
-          setFilteredExpenses(expensesData); // Initialize filtered expenses
-        } else {
-          setExpenses([]);
-          setFilteredExpenses([]);
+        if (error) {
+          // Try fallback table name
+          const fallback = await supabase
+            .from("petrol_expenses")
+            .select("*")
+            .order("id", { ascending: false });
+          if (!fallback.error) {
+            data = fallback.data;
+            error = null;
+          }
         }
+
+        if (error) throw error;
+
+        const expensesData = (data || []).map((row, index) => ({
+          id: row.id || index + 1,
+          createdAt: row.created_at || row.timestamp || "",
+          date: formatDateString(row.date || row.expense_date),
+          technicianName: row.technician_name || row.technicianName || "",
+          fromLocation: row.from_location || row.fromLocation || "",
+          toLocation: row.to_location || row.toLocation || "",
+          openingKm: parseFloat(row.opening_km || row.openingKm) || 0,
+          closingKm: parseFloat(row.closing_km || row.closingKm) || 0,
+          totalKm: parseFloat(row.total_km || row.totalKm) || 0,
+        }));
+
+        setExpenses(expensesData);
+        setFilteredExpenses(expensesData);
       } catch (err) {
-        console.error("Error fetching expenses:", err);
+        console.error("Error fetching expenses from Supabase:", err);
         setError(err.message);
         setExpenses([]);
         setFilteredExpenses([]);
@@ -218,7 +177,6 @@ function PetrolExpensesPage() {
       }
     };
 
-    // Fetch both expenses and technicians
     fetchExpenses();
     fetchTechnicians();
   }, []);
@@ -332,41 +290,35 @@ function PetrolExpensesPage() {
         totalKm: formData.totalKm,
       };
 
-      // Create row data for Google Sheets
-      const timestamp = new Date().toISOString();
-      const rowData = [
-        timestamp,
-        expenseData.date,
-        expenseData.technicianName,
-        expenseData.fromLocation,
-        expenseData.toLocation,
-        expenseData.openingKm,
-        expenseData.closingKm,
-        expenseData.totalKm,
-      ];
+      const newExpenseRow = {
+        date: expenseData.date,
+        technician_name: expenseData.technicianName,
+        from_location: expenseData.fromLocation,
+        to_location: expenseData.toLocation,
+        opening_km: parseFloat(expenseData.openingKm) || 0,
+        closing_km: parseFloat(expenseData.closingKm) || 0,
+        total_km: parseFloat(expenseData.totalKm) || 0,
+      };
 
-      // Submit to Google Sheets
-      const submitFormData = new FormData();
-      submitFormData.append("action", "insert");
-      submitFormData.append("sheetName", "Petrol Expenses");
-      submitFormData.append("rowData", JSON.stringify(rowData));
+      let { data: inserted, error: insertError } = await supabase
+        .from("Petrol Expenses")
+        .insert([newExpenseRow])
+        .select();
 
-      const response = await fetch(GOOGLE_SCRIPT_URL, {
-        method: "POST",
-        body: submitFormData,
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || "Failed to add expense");
+      if (insertError) {
+        // Fallback table name
+        const fallback = await supabase
+          .from("petrol_expenses")
+          .insert([newExpenseRow])
+          .select();
+        if (fallback.error) throw insertError;
       }
 
       // Add the new expense to local state - include locations
       const newExpense = {
-        id: Date.now(),
+        id: (inserted && inserted[0]?.id) || Date.now(),
         ...expenseData,
-        createdAt: timestamp,
+        createdAt: new Date().toISOString(),
       };
 
       const updatedExpenses = [newExpense, ...expenses];
@@ -786,32 +738,32 @@ function PetrolExpensesPage() {
                 </button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto overflow-y-auto max-h-[500px]">
                 <table className="w-full">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
-                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">
                         Date
                       </th>
-                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">
                         Technician
                       </th>
-                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">
                         From
                       </th>
-                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">
                         To
                       </th>
-                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">
                         Opening KM
                       </th>
-                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">
                         Closing KM
                       </th>
-                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">
                         Total KM
                       </th>
-                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
+                      <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">
                         Created
                       </th>
                     </tr>

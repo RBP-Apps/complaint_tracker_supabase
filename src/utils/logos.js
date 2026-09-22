@@ -39,7 +39,7 @@ export const loadLogoAsBase64 = async (logoPath, logoKey) => {
 // Preload all logos
 export const preloadLogos = async () => {
     const logoPaths = {
-        rbp: '/RBP-Logo.jpg',
+        rbp: '/RBP-Logo.PNG',
         rotomag: '/rotomag.png?v=3',
         solex: '/solex.png',
         premier: '/premier.png',

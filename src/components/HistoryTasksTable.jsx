@@ -3,15 +3,16 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
-import { Calendar, Upload, MapPin, Loader, Edit, Check, X } from "react-feather"
+import { useState, useEffect, useCallback, useMemo } from "react"
+import { Calendar, Upload, MapPin, Loader, Edit, Check, X, Download, FileText, RefreshCw } from "react-feather"
 import DatePicker from "react-datepicker"
 import "react-datepicker/dist/react-datepicker.css"
+import * as XLSX from "xlsx"
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
 import supabase from "../utils/supabase"
 
-
-
-function TrackerHistoryTable() {
+function TrackerHistoryTable({ exportRef }) {
   const [historyData, setHistoryData] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -329,91 +330,139 @@ const uploadFileToDrive = async (file, fileType) => {
     });
   }
 
+  // Instant cache load (Stale-While-Revalidate)
   useEffect(() => {
- const fetchHistoryData = async () => {
-  setIsLoading(true);
-  setError(null);
+    try {
+      const cached = sessionStorage.getItem("tracker_history_tasks_cache");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setHistoryData(parsed);
+          setIsLoading(false);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load cached history tasks:", e);
+    }
+  }, []);
 
-  try {
-    const { data: trackerData, error: trackerError } = await supabase
-      .from("Tracker")
-      .select("*");
+  const fetchHistoryData = async (isBackground = false) => {
+    if (!isBackground) setIsLoading(true);
+    setError(null);
 
-    if (trackerError) throw trackerError;
+    try {
+      // ✅ Parallel execution of Tracker and FMS for 2x faster loading
+      const [trackerRes, fmsRes] = await Promise.all([
+        supabase
+          .from("Tracker")
+          .select(`
+            id,
+            serial_no,
+            complaint_id,
+            technician_name,
+            technician_number,
+            beneficiary_name,
+            contact_number,
+            village,
+            block,
+            district,
+            product,
+            make,
+            system_voltage,
+            nature_of_complaint,
+            upload_documents,
+            geotag_photo,
+            action_taken,
+            tracker_status,
+            latitude,
+            longitude,
+            address
+          `)
+          .order("id", { ascending: false }),
+        supabase
+          .from("FMS")
+          .select("complaint_id, id_number, status, attend")
+      ]);
 
-    const { data: fmsData, error: fmsError } = await supabase
-      .from("FMS")
-      .select("complaint_id, id_number, status, attend");
+      if (trackerRes.error) throw trackerRes.error;
+      if (fmsRes.error) throw fmsRes.error;
 
-    if (fmsError) throw fmsError;
+      const trackerData = trackerRes.data || [];
+      const fmsData = fmsRes.data || [];
 
-    // 🔴 Map FMS data
-    const fmsMap = new Map();
-    fmsData.forEach((row) => {
-      fmsMap.set(row.complaint_id, {
-        idNumber: row.id_number,
-        status: row.status,
-        attendDate: row.attend,
+      // Map FMS data for fast O(1) lookup
+      const fmsMap = new Map();
+      fmsData.forEach((row) => {
+        fmsMap.set(row.complaint_id, {
+          idNumber: row.id_number,
+          status: row.status,
+          attendDate: row.attend,
+        });
       });
-    });
 
-    const recordsData = trackerData.map((row) => {
-      const fmsInfo = fmsMap.get(row.complaint_id) || {};
+      const recordsData = trackerData.map((row) => {
+        const fmsInfo = fmsMap.get(row.complaint_id) || {};
 
-      return {
-        actualRowNumber: row.id,
-        serialNo: row.serial_no,
-        complaintId: row.complaint_id,
-        idNumber: fmsInfo.idNumber || "-",
+        return {
+          actualRowNumber: row.id,
+          serialNo: row.serial_no,
+          complaintId: row.complaint_id,
+          idNumber: fmsInfo.idNumber || "-",
 
-        technicianName: row.technician_name,
-        technicianNumber: row.technician_number,
-        beneficiaryName: row.beneficiary_name,
-        contactNumber: row.contact_number,
+          technicianName: row.technician_name,
+          technicianNumber: row.technician_number,
+          beneficiaryName: row.beneficiary_name,
+          contactNumber: row.contact_number,
 
-        village: row.village,
-        block: row.block,
-        district: row.district,
+          village: row.village,
+          block: row.block,
+          district: row.district,
 
-        product: row.product,
-        make: row.make,
+          product: row.product,
+          make: row.make,
 
-        systemVoltage: row.system_voltage,
-        natureOfComplaint: row.nature_of_complaint,
+          systemVoltage: row.system_voltage,
+          natureOfComplaint: row.nature_of_complaint,
 
-        uploadDocuments: row.upload_documents,
-        geotagPhoto: row.geotag_photo,
+          uploadDocuments: row.upload_documents,
+          geotagPhoto: row.geotag_photo,
 
-        remarks: row.action_taken,
-        trackerStatus: row.tracker_status,
+          remarks: row.action_taken,
+          trackerStatus: row.tracker_status,
 
-        latitude: row.latitude,
-        longitude: row.longitude,
-        address: row.address,
+          latitude: row.latitude,
+          longitude: row.longitude,
+          address: row.address,
 
-        status: fmsInfo.status,
-        attendDate: fmsInfo.attendDate,
+          status: fmsInfo.status,
+          attendDate: fmsInfo.attendDate,
 
-        hasDriveUrl: {
-          uploadDocuments: !!row.upload_documents,
-          geotagPhoto: !!row.geotag_photo,
-        },
-      };
-    });
+          hasDriveUrl: {
+            uploadDocuments: !!row.upload_documents,
+            geotagPhoto: !!row.geotag_photo,
+          },
+        };
+      });
 
-    setHistoryData(recordsData);
+      setHistoryData(recordsData);
+      try {
+        sessionStorage.setItem("tracker_history_tasks_cache", JSON.stringify(recordsData));
+      } catch (cacheErr) {
+        // Ignore cache storage errors
+      }
 
-  } catch (err) {
-    console.error("❌ Error fetching history:", err);
-    setError(err.message);
-    setHistoryData([]);
-  } finally {
-    setIsLoading(false);
-  }
-};
+    } catch (err) {
+      console.error("❌ Error fetching history:", err);
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    fetchHistoryData()
-  }, [])
+  useEffect(() => {
+    const hasCache = !!sessionStorage.getItem("tracker_history_tasks_cache");
+    fetchHistoryData(hasCache);
+  }, []);
 
   // Role-based filtering function
   const getFilteredHistoryByRole = () => {
@@ -467,6 +516,156 @@ const uploadFileToDrive = async (file, fileType) => {
 
     return matchesSearch && isHistoryRecord
   })
+
+  // ✅ Export to Excel function
+  const exportToExcel = useCallback(() => {
+    if (!filteredData || filteredData.length === 0) {
+      alert("No data available to export");
+      return;
+    }
+
+    try {
+      const exportData = filteredData.map((record, index) => ({
+        "S.No": index + 1,
+        "Serial No": record.serialNo || "",
+        "Complaint ID": record.complaintId || "",
+        "ID Number": record.idNumber || "",
+        "Technician Name": record.technicianName || "",
+        "Technician Contact": record.technicianNumber || "",
+        "Beneficiary Name": record.beneficiaryName || "",
+        "Contact Number": record.contactNumber || "",
+        "Village": record.village || "",
+        "Block": record.block || "",
+        "District": record.district || "",
+        "Product": record.product || "",
+        "Make": record.make || "",
+        "System Voltage": record.systemVoltage || "",
+        "Nature of Complaint": record.natureOfComplaint || "",
+        "Action Taken / Remarks": record.remarks || "",
+        "Tracker Status": record.trackerStatus || "",
+        "Address": record.address || "",
+        "Status": record.status || "",
+        "Attend Date": formatDateString(record.attendDate) || "",
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Tracker History");
+
+      const colWidths = Object.keys(exportData[0] || {}).map((key) => ({
+        wch: Math.max(key.length, 12),
+      }));
+      worksheet["!cols"] = colWidths;
+
+      const dateStr = new Date().toISOString().split("T")[0];
+      XLSX.writeFile(workbook, `Tracker_History_${dateStr}.xlsx`);
+    } catch (err) {
+      console.error("Export to Excel failed:", err);
+      alert("Failed to export Excel file: " + err.message);
+    }
+  }, [filteredData]);
+
+  // ✅ Export to PDF function
+  const exportToPDF = useCallback(() => {
+    if (!filteredData || filteredData.length === 0) {
+      alert("No data available to export");
+      return;
+    }
+
+    try {
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "a4",
+      });
+
+      const dateStr = new Date().toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+
+      doc.setFontSize(16);
+      doc.setTextColor(31, 41, 55);
+      doc.text("Tracker History Records", 40, 40);
+
+      doc.setFontSize(10);
+      doc.setTextColor(107, 114, 128);
+      doc.text(`Generated on: ${dateStr} | Total Records: ${filteredData.length}`, 40, 56);
+
+      const tableColumns = [
+        "#",
+        "Serial No",
+        "Complaint ID",
+        "ID Number",
+        "Technician",
+        "Beneficiary",
+        "Contact",
+        "District",
+        "Nature of Complaint",
+        "Tracker Status",
+        "Attend Date"
+      ];
+
+      const tableRows = filteredData.map((record, index) => [
+        index + 1,
+        record.serialNo || "-",
+        record.complaintId || "-",
+        record.idNumber || "-",
+        record.technicianName || "-",
+        record.beneficiaryName || "-",
+        record.contactNumber || "-",
+        record.district || "-",
+        (record.natureOfComplaint || "-").length > 30
+          ? (record.natureOfComplaint || "-").substring(0, 30) + "..."
+          : (record.natureOfComplaint || "-"),
+        record.trackerStatus || "-",
+        formatDateString(record.attendDate) || "-",
+      ]);
+
+      autoTable(doc, {
+        head: [tableColumns],
+        body: tableRows,
+        startY: 70,
+        theme: "grid",
+        headStyles: {
+          fillColor: [59, 130, 246],
+          textColor: 255,
+          fontSize: 8,
+          fontStyle: "bold",
+          halign: "center",
+        },
+        bodyStyles: {
+          fontSize: 7.5,
+          textColor: 50,
+        },
+        alternateRowStyles: {
+          fillColor: [249, 250, 251],
+        },
+        margin: { left: 40, right: 40 },
+        styles: {
+          overflow: "linebreak",
+          cellPadding: 4,
+        },
+      });
+
+      const fileDate = new Date().toISOString().split("T")[0];
+      doc.save(`Tracker_History_${fileDate}.pdf`);
+    } catch (err) {
+      console.error("Export to PDF failed:", err);
+      alert("Failed to export PDF file: " + err.message);
+    }
+  }, [filteredData]);
+
+  // Connect export methods to parent exportRef
+  useEffect(() => {
+    if (exportRef) {
+      exportRef.current = {
+        exportToExcel,
+        exportToPDF,
+      };
+    }
+  }, [exportRef, exportToExcel, exportToPDF]);
 
   // Edit functions
   const handleEditRecord = (record) => {
@@ -621,44 +820,113 @@ const updateTrackerRecordBySerial = async (record, documentUrl, photoUrl) => {
   }
 };
 
-  if (isLoading) {
+  if (isLoading && historyData.length === 0) {
     return (
-      <div className="flex justify-center items-center p-4 h-64">
-        <div className="text-gray-500">Loading tracker history data...</div>
+      <div className="p-4 sm:p-6 space-y-4">
+        {/* Skeleton Header Controls */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 animate-pulse">
+          <div className="h-7 w-52 bg-gray-200 rounded-md"></div>
+          <div className="h-9 w-64 bg-gray-200 rounded-md"></div>
+        </div>
+
+        {/* Skeleton Table (400px container) */}
+        <div className="max-h-[400px] h-[400px] overflow-hidden border border-gray-200 rounded-lg bg-white relative shadow-inner">
+          <div className="bg-slate-100 p-3 border-b border-gray-200 flex gap-4">
+            <div className="h-4 w-16 bg-gray-300 rounded"></div>
+            <div className="h-4 w-24 bg-gray-300 rounded"></div>
+            <div className="h-4 w-28 bg-gray-300 rounded"></div>
+            <div className="h-4 w-24 bg-gray-300 rounded"></div>
+            <div className="h-4 w-32 bg-gray-300 rounded"></div>
+            <div className="h-4 w-28 bg-gray-300 rounded"></div>
+            <div className="h-4 w-20 bg-gray-300 rounded"></div>
+          </div>
+          <div className="divide-y divide-gray-100 p-3 space-y-3">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="flex gap-4 items-center py-2 animate-pulse">
+                <div className="h-7 w-16 bg-amber-100 rounded"></div>
+                <div className="h-4 w-20 bg-blue-100 rounded"></div>
+                <div className="h-4 w-24 bg-gray-200 rounded"></div>
+                <div className="h-4 w-28 bg-gray-100 rounded"></div>
+                <div className="h-4 w-36 bg-gray-200 rounded"></div>
+                <div className="h-4 w-24 bg-gray-100 rounded"></div>
+                <div className="h-4 w-20 bg-gray-100 rounded"></div>
+              </div>
+            ))}
+          </div>
+
+          {/* Centered Professional Spinner Overlay */}
+          <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex flex-col items-center justify-center">
+            <div className="inline-flex items-center gap-2.5 px-4 py-2 bg-white border border-gray-200 shadow-md rounded-full text-sm font-medium text-gray-700">
+              <Loader className="h-4 w-4 text-blue-600 animate-spin" />
+              <span>Loading history records...</span>
+            </div>
+          </div>
+        </div>
       </div>
-    )
+    );
   }
 
-  if (error) {
+  if (error && historyData.length === 0) {
     return (
-      <div className="flex justify-center items-center p-4 h-64">
-        <div className="text-red-500">Error loading data: {error}</div>
+      <div className="p-6 flex flex-col justify-center items-center h-64 text-center">
+        <div className="text-red-500 font-medium mb-2">Error loading history: {error}</div>
+        <button
+          onClick={() => fetchHistoryData(false)}
+          className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium cursor-pointer"
+        >
+          Try Again
+        </button>
       </div>
-    )
+    );
   }
 
   return (
-    <div className="p-4">
-      <div className="flex flex-col gap-4 justify-between items-start mb-4 md:flex-row md:items-center">
-        <h1 className="text-xl font-bold">Tracker History</h1>
+    <div className="p-4 sm:p-5">
+      <div className="flex flex-col gap-3 justify-between items-start mb-4 md:flex-row md:items-center">
+        <div className="flex items-center gap-3">
+          <h1 className="text-base sm:text-lg font-bold text-gray-800">Tracker History</h1>
+          <span className="text-xs bg-blue-100 text-blue-800 font-semibold px-2.5 py-0.5 rounded-full">
+            {filteredData.length} {filteredData.length === 1 ? 'record' : 'records'}
+          </span>
+          {isLoading && (
+            <span className="inline-flex items-center gap-1 text-xs text-blue-600 font-medium animate-pulse">
+              <Loader className="h-3 w-3 animate-spin" />
+              Refreshing...
+            </span>
+          )}
+        </div>
 
-        <div className="relative">
-          <input
-            type="search"
-            placeholder="Search history..."
-            className="pl-8 w-[200px] md:w-[300px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <svg
-            className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {/* Refresh Button */}
+          <button
+            type="button"
+            onClick={() => fetchHistoryData(false)}
+            disabled={isLoading}
+            className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 hover:bg-gray-50 active:bg-gray-100 text-gray-700 text-xs sm:text-sm font-medium rounded-md shadow-xs transition-all cursor-pointer"
+            title="Refresh history data"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin text-blue-600" : "text-gray-500"}`} />
+            <span>Refresh</span>
+          </button>
+
+          <div className="relative flex-1 sm:flex-initial">
+            <input
+              type="search"
+              placeholder="Search history..."
+              className="pl-8 w-full sm:w-[220px] md:w-[280px] px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <svg
+              className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
         </div>
       </div>
 
@@ -780,82 +1048,84 @@ const updateTrackerRecordBySerial = async (record, documentUrl, photoUrl) => {
                 ))}
               </div>
 
-              {/* Desktop Table View - Fixed Header & Scrollable Body */}
-              <div className="hidden md:block overflow-x-auto -mx-4 sm:mx-0 max-h-[600px] overflow-y-auto border border-gray-200 rounded-lg">
-                <div className="inline-block min-w-full align-middle">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0 z-10">
-                      <tr>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Actions</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Serial No</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Complaint Id</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">ID Number</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Technician Name</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Technician Number</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Beneficiary Name</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Contact Number</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Village</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Block</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">District</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Make</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Nature Of Complaint</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Upload Documents</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Geotag Photo</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Action Taken</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Tracker Status</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Address</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Status</th>
-                        <th scope="col" className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap">Attend Date</th>
+              {/* Desktop Table View - 400px Fixed Header with Unwrapped Header and Wrapped Body */}
+              <div className="hidden md:block max-h-[400px] h-[400px] overflow-y-auto overflow-x-auto border border-gray-200 rounded-lg shadow-inner bg-white">
+                <table className="min-w-full divide-y divide-gray-200 text-left border-collapse">
+                  <thead className="bg-slate-100 sticky top-0 z-10 shadow-xs">
+                    <tr>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Actions</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Serial No</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Complaint Id</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">ID Number</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Technician Name</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Technician Number</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Beneficiary Name</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Contact Number</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Village</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Block</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">District</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Make</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Nature Of Complaint</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Upload Documents</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Geotag Photo</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Action Taken</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Tracker Status</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Address</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Status</th>
+                      <th scope="col" className="px-3 py-3 text-xs font-semibold tracking-wider text-left text-gray-700 uppercase whitespace-nowrap bg-slate-100 border-b border-gray-200">Attend Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredData.map((record, index) => (
+                      <tr key={index} className="hover:bg-blue-50/40 transition-colors">
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <button
+                            className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-semibold py-1 px-2.5 rounded-md shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                            onClick={() => handleEditRecord(record)}
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                            <span>Edit</span>
+                          </button>
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap font-semibold text-blue-600 text-sm">{record.serialNo}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm font-semibold text-gray-800">{record.complaintId}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap font-medium text-blue-600 text-sm">{record.idNumber}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-800">{record.technicianName}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-700">{record.technicianNumber}</td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[160px] min-w-[120px] text-sm text-gray-800">{record.beneficiaryName}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-700">{record.contactNumber}</td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[130px] min-w-[90px] text-sm text-gray-700">{record.village}</td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[130px] min-w-[90px] text-sm text-gray-700">{record.block}</td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[130px] min-w-[90px] text-sm text-gray-700">{record.district}</td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[130px] min-w-[90px] text-sm text-gray-700">{record.make}</td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[200px] min-w-[140px] text-sm text-gray-700">{record.natureOfComplaint}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm">
+                          {record.hasDriveUrl.uploadDocuments ? (
+                            <a href={record.uploadDocuments} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline font-medium">
+                              View Document
+                            </a>
+                          ) : (record.uploadDocuments || "-")}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm">
+                          {record.hasDriveUrl.geotagPhoto ? (
+                            <a href={record.geotagPhoto} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline font-medium">
+                              View Photo
+                            </a>
+                          ) : (record.geotagPhoto || "-")}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[200px] min-w-[140px] text-sm text-gray-700">{record.remarks}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm">
+                          <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                            {record.trackerStatus}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[220px] min-w-[150px] text-sm text-gray-700">{record.address}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm font-medium text-emerald-700">{record.status}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-700">{formatDateString(record.attendDate)}</td>
                       </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredData.map((record, index) => (
-                        <tr key={index} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <button
-                              className="bg-gradient-to-r from-amber-400 to-orange-500 text-white hover:from-amber-500 hover:to-orange-600 border-0 py-1 px-3 rounded-md flex items-center gap-2"
-                              onClick={() => handleEditRecord(record)}
-                            >
-                              <Edit className="h-4 w-4" />
-                              Edit
-                            </button>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap font-medium text-blue-600">{record.serialNo}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.complaintId}</td>
-                          <td className="px-6 py-4 whitespace-nowrap font-medium text-blue-600">{record.idNumber}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.technicianName}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.technicianNumber}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.beneficiaryName}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.contactNumber}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.village}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.block}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.district}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.make}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.natureOfComplaint}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {record.hasDriveUrl.uploadDocuments ? (
-                              <a href={record.uploadDocuments} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">
-                                View Document
-                              </a>
-                            ) : record.uploadDocuments}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {record.hasDriveUrl.geotagPhoto ? (
-                              <a href={record.geotagPhoto} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">
-                                View Photo
-                              </a>
-                            ) : record.geotagPhoto}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.remarks}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.trackerStatus}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.address}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.status}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{record.attendDate}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </>
           )}

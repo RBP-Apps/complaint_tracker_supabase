@@ -11,8 +11,6 @@ import {
   X,
   Search,
   Download,
-  ChevronLeft,
-  ChevronRight,
   Eye,
   FileSpreadsheet
 } from 'lucide-react'
@@ -33,8 +31,6 @@ function DashboardStats() {
   const [modalDistrictFilter, setModalDistrictFilter] = useState("")
   const [modalStatusFilter, setModalStatusFilter] = useState("")
   const [modalTechFilter, setModalTechFilter] = useState("")
-  const [currentPage, setCurrentPage] = useState(1)
-  const [rowsPerPage, setRowsPerPage] = useState(10)
 
   useEffect(() => {
     const loggedInUser = localStorage.getItem('username')
@@ -93,11 +89,6 @@ function DashboardStats() {
       document.body.style.overflow = "unset"
     }
   }, [activeModal])
-
-  // Reset pagination when filters change
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [modalSearchTerm, modalDistrictFilter, modalStatusFilter, modalTechFilter])
 
   // Format date helper
   const formatDate = (dateValue) => {
@@ -209,12 +200,12 @@ function DashboardStats() {
       change: "+12%",
       trend: "up",
       icon: Clock,
-      color: "bg-blue-600",
-      lightColor: "bg-blue-50",
-      textColor: "text-blue-600",
-      badgeColor: "bg-blue-100 text-blue-800 border-blue-200",
+      topBorder: "border-t-blue-600",
+      iconBg: "bg-blue-50 text-blue-600 border-blue-200",
+      hoverBorder: "hover:border-blue-300",
+      accentColor: "text-blue-600",
       data: totalComplaintsList,
-      description: "Click to view all registered complaints",
+      description: "All registered complaints in system",
     },
     {
       id: "pending",
@@ -223,12 +214,12 @@ function DashboardStats() {
       change: "-5%",
       trend: "down",
       icon: AlertTriangle,
-      color: "bg-amber-600",
-      lightColor: "bg-amber-50",
-      textColor: "text-amber-600",
-      badgeColor: "bg-amber-100 text-amber-800 border-amber-200",
+      topBorder: "border-t-amber-500",
+      iconBg: "bg-amber-50 text-amber-600 border-amber-200",
+      hoverBorder: "hover:border-amber-300",
+      accentColor: "text-amber-600",
       data: pendingComplaintsList,
-      description: "Click to view pending & reject complaints",
+      description: "Complaints awaiting resolution or action",
     },
     {
       id: "completed",
@@ -237,12 +228,12 @@ function DashboardStats() {
       change: "+18%",
       trend: "up",
       icon: CheckCircle,
-      color: "bg-emerald-600",
-      lightColor: "bg-emerald-50",
-      textColor: "text-emerald-600",
-      badgeColor: "bg-emerald-100 text-emerald-800 border-emerald-200",
+      topBorder: "border-t-emerald-600",
+      iconBg: "bg-emerald-50 text-emerald-600 border-emerald-200",
+      hoverBorder: "hover:border-emerald-300",
+      accentColor: "text-emerald-600",
       data: completedComplaintsList,
-      description: "Click to view approved & closed complaints",
+      description: "Approved and closed complaints",
     },
     {
       id: "insurance",
@@ -251,12 +242,12 @@ function DashboardStats() {
       change: "+8%",
       trend: "up",
       icon: Shield,
-      color: "bg-indigo-600",
-      lightColor: "bg-indigo-50",
-      textColor: "text-indigo-600",
-      badgeColor: "bg-indigo-100 text-indigo-800 border-indigo-200",
+      topBorder: "border-t-purple-600",
+      iconBg: "bg-purple-50 text-purple-600 border-purple-200",
+      hoverBorder: "hover:border-purple-300",
+      accentColor: "text-purple-600",
       data: insuranceComplaintsList,
-      description: "Click to view complaints with insurance",
+      description: "Complaints filed under insurance policy",
     },
   ]
 
@@ -267,7 +258,6 @@ function DashboardStats() {
     setModalDistrictFilter("")
     setModalStatusFilter("")
     setModalTechFilter("")
-    setCurrentPage(1)
   }
 
   // Unique options for modal dropdowns
@@ -330,13 +320,6 @@ function DashboardStats() {
       return true
     })
   }, [activeModal, modalSearchTerm, modalDistrictFilter, modalStatusFilter, modalTechFilter])
-
-  // Pagination calculation
-  const totalPages = Math.max(1, Math.ceil(filteredModalRows.length / rowsPerPage))
-  const paginatedModalRows = useMemo(() => {
-    const start = (currentPage - 1) * rowsPerPage
-    return filteredModalRows.slice(start, start + rowsPerPage)
-  }, [filteredModalRows, currentPage, rowsPerPage])
 
   // Export to Excel
   const handleExportExcel = () => {
@@ -406,13 +389,13 @@ function DashboardStats() {
 
   return (
     <>
-      {/* Stats Cards Grid */}
+      {/* Modern Stats Cards Grid - High Contrast, Dark Text, No White-on-White */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat, index) => (
           <div
             key={index}
             onClick={() => handleCardClick(stat)}
-            className="group cursor-pointer rounded-xl border border-gray-100 shadow-md hover:shadow-xl transition-all duration-200 hover:-translate-y-1 overflow-hidden bg-white relative flex flex-col justify-between"
+            className={`group cursor-pointer rounded-2xl border border-slate-200 bg-white shadow-xs hover:shadow-lg transition-all duration-300 hover:-translate-y-1 overflow-hidden flex flex-col justify-between border-t-4 ${stat.topBorder} ${stat.hoverBorder}`}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
@@ -421,38 +404,54 @@ function DashboardStats() {
                 handleCardClick(stat)
               }
             }}
-            title="Click to view details in modal"
+            title={`Click to view all ${stat.title}`}
           >
-            <div>
-              <div className={`${stat.color} p-4 text-white transition-colors`}>
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold tracking-tight">{stat.title}</h3>
-                  <div className="bg-white/20 p-2 rounded-lg backdrop-blur-xs group-hover:scale-110 transition-transform">
-                    <stat.icon className="h-5 w-5 text-white" />
-                  </div>
+            {/* Card Content */}
+            <div className="p-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Metric
+                  </span>
+                  <h3 className="text-sm sm:text-base font-bold text-slate-800 tracking-tight mt-0.5">
+                    {stat.title}
+                  </h3>
+                </div>
+                <div className={`p-2.5 rounded-xl border ${stat.iconBg} shadow-2xs group-hover:scale-110 transition-transform duration-200`}>
+                  <stat.icon className="h-5 w-5" />
                 </div>
               </div>
-              <div className={`p-5 ${stat.lightColor}`}>
-                <div className="flex items-baseline justify-between">
-                  <p className="text-3xl font-extrabold text-gray-900">
-                    {isLoading ? <span className="animate-pulse text-gray-400">...</span> : stat.value}
-                  </p>
-                  <div className={`flex items-center text-xs font-semibold ${stat.trend === "up" ? "text-emerald-600" : "text-rose-600"}`}>
-                    {stat.trend === "up" ? <ArrowUp className="h-3.5 w-3.5 mr-0.5" /> : <ArrowDown className="h-3.5 w-3.5 mr-0.5" />}
-                    <span>{stat.change}</span>
-                  </div>
+
+              {/* Number and Trend */}
+              <div className="mt-4 flex items-baseline justify-between">
+                <p className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight font-mono">
+                  {isLoading ? (
+                    <span className="inline-block animate-pulse text-slate-300">---</span>
+                  ) : (
+                    stat.value
+                  )}
+                </p>
+                <div className={`flex items-center text-xs font-bold px-2 py-0.5 rounded-full border ${
+                  stat.trend === "up" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"
+                }`}>
+                  {stat.trend === "up" ? <ArrowUp className="h-3 w-3 mr-0.5" /> : <ArrowDown className="h-3 w-3 mr-0.5" />}
+                  <span>{stat.change}</span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1.5">Compared to last month</p>
+              </div>
+
+              <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                <span>vs. previous period</span>
+                <span className="font-semibold text-slate-600">Live Data</span>
               </div>
             </div>
 
-            {/* Click to view footer banner */}
-            <div className="px-4 py-2.5 bg-white border-t border-gray-100 flex items-center justify-between text-xs font-medium text-gray-600 group-hover:text-blue-600 transition-colors">
+            {/* Bottom Interactive Bar */}
+            <div className="px-5 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-slate-600 group-hover:text-blue-600 group-hover:bg-blue-50/40 transition-all">
               <span className="flex items-center gap-1.5">
-                <Eye className="h-3.5 w-3.5 text-gray-400 group-hover:text-blue-600 transition-colors" />
-                View records
+                <Eye className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-600 transition-colors" />
+                <span>View all records</span>
               </span>
-              <span className="text-gray-400 group-hover:translate-x-1 group-hover:text-blue-600 transition-all">
+              <span className="text-slate-400 group-hover:translate-x-1 group-hover:text-blue-600 font-bold transition-transform">
                 →
               </span>
             </div>
@@ -472,24 +471,24 @@ function DashboardStats() {
         >
           <div className="bg-white w-full max-w-6xl max-h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200">
             {/* Modal Header */}
-            <div className={`${activeModal.color} text-white px-5 py-4 flex flex-wrap items-center justify-between gap-3 shadow-sm`}>
+            <div className="bg-slate-900 text-white px-5 py-4 flex flex-wrap items-center justify-between gap-3 shadow-md border-b border-slate-800">
               <div className="flex items-center gap-3">
-                <div className="bg-white/20 p-2.5 rounded-xl backdrop-blur-xs">
-                  <activeModal.icon className="h-6 w-6 text-white" />
+                <div className="bg-slate-800 p-2.5 rounded-xl border border-slate-700">
+                  <activeModal.icon className="h-6 w-6 text-blue-400" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-xl font-bold tracking-tight">{activeModal.title}</h2>
-                    <span className="bg-white/25 text-white text-xs font-semibold px-2.5 py-0.5 rounded-full border border-white/30">
+                    <h2 className="text-xl font-bold text-white tracking-tight">{activeModal.title}</h2>
+                    <span className="bg-blue-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full shadow-xs">
                       {activeModal.data.length} Total Records
                     </span>
                     {userRole && (
-                      <span className="bg-black/20 text-white/90 text-xs px-2 py-0.5 rounded-md">
+                      <span className="bg-slate-800 text-slate-300 text-xs px-2 py-0.5 rounded-md border border-slate-700">
                         Role: {userRole}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-white/85 mt-0.5">
+                  <p className="text-xs text-slate-400 mt-0.5">
                     {activeModal.description}
                   </p>
                 </div>
@@ -499,7 +498,7 @@ function DashboardStats() {
               <button
                 type="button"
                 onClick={() => setActiveModal(null)}
-                className="bg-white/15 hover:bg-white/30 text-white p-2 rounded-xl transition-all hover:rotate-90 duration-200 cursor-pointer"
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white p-2 rounded-xl transition-all hover:rotate-90 duration-200 cursor-pointer border border-slate-700"
                 title="Close modal (Esc)"
               >
                 <X className="h-5 w-5" />
@@ -570,28 +569,13 @@ function DashboardStats() {
                   </div>
                 )}
 
-                <select
-                  value={rowsPerPage}
-                  onChange={(e) => {
-                    setRowsPerPage(Number(e.target.value))
-                    setCurrentPage(1)
-                  }}
-                  className="px-2.5 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700"
-                  title="Rows per page"
-                >
-                  <option value={10}>10 per page</option>
-                  <option value={25}>25 per page</option>
-                  <option value={50}>50 per page</option>
-                  <option value={100}>100 per page</option>
-                </select>
-
                 <button
                   onClick={handleExportExcel}
                   className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs hover:shadow-md transition-all cursor-pointer whitespace-nowrap"
-                  title="Download records in Excel format"
+                  title="Download all records in Excel format"
                 >
                   <FileSpreadsheet className="h-4 w-4" />
-                  <span>Export Excel</span>
+                  <span>Export All to Excel</span>
                 </button>
               </div>
             </div>
@@ -627,8 +611,8 @@ function DashboardStats() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100 text-xs text-gray-700">
-                    {paginatedModalRows.map((row, idx) => {
-                      const serialNum = (currentPage - 1) * rowsPerPage + idx + 1
+                    {filteredModalRows.map((row, idx) => {
+                      const serialNum = idx + 1
                       return (
                         <tr key={row.complaint_id ? `${row.complaint_id}-${idx}` : idx} className="hover:bg-blue-50/40 transition-colors">
                           <td className="px-3 py-3 text-gray-400 font-mono">{serialNum}</td>
@@ -638,22 +622,22 @@ function DashboardStats() {
                           <td className="px-3 py-3 whitespace-nowrap text-gray-600">
                             {formatDate(row.complaint_date)}
                           </td>
-                          <td className="px-3 py-3 font-medium text-gray-900 whitespace-nowrap">
+                          <td className="px-3 py-3 font-medium text-gray-900 min-w-[130px] max-w-[180px] whitespace-normal break-words">
                             {row.beneficiary_name || "-"}
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap font-mono text-gray-600">
                             {row.contact_number || "-"}
                           </td>
-                          <td className="px-3 py-3 max-w-[200px] truncate" title={`${row.village || ""}, ${row.block || ""}, ${row.district || ""}`}>
+                          <td className="px-3 py-3 min-w-[150px] max-w-[220px] whitespace-normal break-words" title={`${row.village || ""}, ${row.block || ""}, ${row.district || ""}`}>
                             {[row.village, row.block, row.district].filter(Boolean).join(", ") || "-"}
                           </td>
-                          <td className="px-3 py-3 whitespace-nowrap text-gray-800">
+                          <td className="px-3 py-3 min-w-[140px] max-w-[200px] whitespace-normal break-words text-gray-800">
                             {row.product || "-"} {row.make ? `(${row.make})` : ""}
                           </td>
-                          <td className="px-3 py-3 max-w-[220px] truncate" title={row.nature_of_complaint}>
+                          <td className="px-3 py-3 min-w-[200px] max-w-[320px] whitespace-normal break-words text-gray-800" title={row.nature_of_complaint}>
                             {row.nature_of_complaint || "-"}
                           </td>
-                          <td className="px-3 py-3 whitespace-nowrap text-gray-800">
+                          <td className="px-3 py-3 min-w-[120px] max-w-[160px] whitespace-normal break-words text-gray-800">
                             {row.technician_name || "-"}
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
@@ -679,48 +663,29 @@ function DashboardStats() {
               )}
             </div>
 
-            {/* Modal Footer / Pagination */}
-            <div className="p-3.5 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-600">
-              <div>
-                Showing{" "}
-                <span className="font-semibold text-gray-900">
-                  {filteredModalRows.length === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1}
-                </span>{" "}
-                to{" "}
-                <span className="font-semibold text-gray-900">
-                  {Math.min(currentPage * rowsPerPage, filteredModalRows.length)}
-                </span>{" "}
-                of{" "}
-                <span className="font-semibold text-gray-900">{filteredModalRows.length}</span> results
+            {/* Modal Footer (All Records Displayed - No Pagination) */}
+            <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                  Showing All {filteredModalRows.length} Complaints
+                </span>
                 {modalSearchTerm && (
-                  <span className="ml-1 text-gray-500">
-                    (filtered from {activeModal.data.length} total)
+                  <span className="text-slate-500 font-medium">
+                    (Filtered from {activeModal.data.length} total)
                   </span>
                 )}
               </div>
 
-              {/* Pagination buttons */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer font-medium"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  <span>Prev</span>
-                </button>
-
-                <span className="px-3 py-1 font-semibold text-gray-700">
-                  {currentPage} / {totalPages}
+              <div className="flex items-center gap-3">
+                <span className="text-slate-400 text-xs hidden sm:inline">
+                  ↕ Scroll table to view all records
                 </span>
-
                 <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage >= totalPages}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer font-medium"
+                  onClick={handleExportExcel}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs hover:shadow-md transition-all cursor-pointer"
                 >
-                  <span>Next</span>
-                  <ChevronRight className="h-4 w-4" />
+                  <FileSpreadsheet className="h-4 w-4" />
+                  <span>Export Excel</span>
                 </button>
               </div>
             </div>

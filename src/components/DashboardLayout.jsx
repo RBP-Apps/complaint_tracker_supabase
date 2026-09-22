@@ -133,7 +133,7 @@ function DashboardLayout({ children }) {
       <div className="flex h-16 items-center border-b border-gray-700 px-4">
         <div className="bg-gray-700 p-1 rounded-full mr-3 flex items-center justify-center">
           <img
-            src="/Logo.PNG"
+            src="/RBP-Logo.PNG"
             alt="RBP logo"
             className=" object-contain "
           />

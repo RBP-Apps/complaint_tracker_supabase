@@ -23,7 +23,7 @@ export const convertImageToBase64 = async (imagePath) => {
 // Preload all logos and return them as an object
 export const preloadAllLogos = async () => {
   const logos = {
-    rbp: await convertImageToBase64('/RBP-Logo.jpg'),
+    rbp: await convertImageToBase64('/RBP-Logo.PNG'),
     rotomag: await convertImageToBase64('/rotomag.png?v=3'),
     solex: await convertImageToBase64('/solex.png'),
     premier: await convertImageToBase64('/premier.png'),

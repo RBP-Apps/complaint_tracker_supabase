@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import supabase from "../utils/supabase"
 
 function VerifiedDocumentsTable() {
   const [verifiedDocuments, setVerifiedDocuments] = useState([])
@@ -8,44 +9,25 @@ function VerifiedDocumentsTable() {
   const [error, setError] = useState(null)
   const [searchTerm, setSearchTerm] = useState("")
 
-
   const formatDateString = (dateValue) => {
     if (!dateValue) return "";
 
     let date;
 
-    // Handle ISO string format (2025-05-22T07:38:28.052Z)
     if (typeof dateValue === 'string' && dateValue.includes('T')) {
       date = new Date(dateValue);
-    }
-    // Handle date format (2025-05-21)
-    else if (typeof dateValue === 'string' && dateValue.includes('-')) {
+    } else if (typeof dateValue === 'string' && dateValue.includes('-')) {
       date = new Date(dateValue);
-    }
-    // Handle Google Sheets Date constructor format like "Date(2025,4,21)"
-    else if (typeof dateValue === 'string' && dateValue.startsWith('Date(')) {
-      // Extract the date parts from "Date(2025,4,21)" format
-      const match = dateValue.match(/Date\((\d+),(\d+),(\d+)\)/);
-      if (match) {
-        const year = parseInt(match[1]);
-        const month = parseInt(match[2]); // Month is 0-indexed in this format
-        const day = parseInt(match[3]);
-        date = new Date(year, month, day);
-      } else {
-        return dateValue;
-      }
-    }
-    // Handle if it's already a Date object
-    else if (typeof dateValue === 'object' && dateValue.getDate) {
+    } else if (typeof dateValue === 'string' && dateValue.includes('/') && dateValue.includes(',')) {
+      date = new Date(dateValue);
+    } else if (typeof dateValue === 'object' && dateValue.getDate) {
       date = dateValue;
-    }
-    else {
-      return dateValue; // Return as is if not a recognizable date format
+    } else {
+      return String(dateValue);
     }
 
-    // Check if date is valid
     if (isNaN(date.getTime())) {
-      return dateValue; // Return original value if invalid date
+      return String(dateValue);
     }
 
     const day = String(date.getDate()).padStart(2, '0');
@@ -54,73 +36,53 @@ function VerifiedDocumentsTable() {
     return `${day}/${month}/${year}`;
   };
 
-  // Function to fetch data from Google Sheets
+  // Function to fetch data from Supabase
   useEffect(() => {
     const fetchVerifiedDocuments = async () => {
       setIsLoading(true)
       setError(null)
 
       try {
-        // Fetch the entire sheet using Google Sheets API directly
-        const sheetUrl =
-          "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=FMS"
-        const response = await fetch(sheetUrl)
-        const text = await response.text()
+        const { data, error: sbError } = await supabase
+          .from("FMS")
+          .select("*")
+          .order("id", { ascending: false });
 
-        // Extract the JSON part from the response
-        const jsonStart = text.indexOf("{")
-        const jsonEnd = text.lastIndexOf("}") + 1
-        const jsonData = text.substring(jsonStart, jsonEnd)
+        if (sbError) throw sbError;
 
-        const data = JSON.parse(jsonData)
-
-        // Process the verified documents data
-        if (data && data.table && data.table.rows) {
-          const documentsData = []
-
-          // Skip the header row and process the data rows
-          data.table.rows.slice(3).forEach((row, index) => {
-            if (row.c) {
-              // Check if BOTH document verification columns have data (AT and AU, indices 45 and 46)
-              const hasDocument1 = row.c[49] && row.c[49].v !== null && row.c[49].v !== ""
-              const hasDocument2 = row.c[50] && row.c[50].v !== null && row.c[50].v !== ""
-
-              // Only include rows where BOTH document fields are not null
-              if (hasDocument1 && hasDocument2) {
-                const document = {
-                  rowIndex: index + 6, // Actual row index in the sheet (1-indexed, +5 for header rows, +1 for 1-indexing)
-                  id: row.c[1] ? row.c[1].v : `COMP-${index + 1}`, // Column B - Complaint No.
-                  date: row.c[2] ? row.c[2].v : "", // Column C - Date
-                  name: row.c[3] ? row.c[3].v : "", // Column D - Name
-                  phone: row.c[4] ? row.c[4].v : "", // Column E - Phone
-                  email: row.c[5] ? row.c[5].v : "", // Column F - Email
-                  address: row.c[6] ? row.c[6].v : "", // Column G - Address
-                  document1: row.c[52] ? row.c[52].v : "", // Document 1
-                  document2: row.c[53] ? row.c[53].v : "", // Document 2
-                  additionalDocuments: row.c[54] ? row.c[54].v : "", // Additional Documents
-                  // verificationDate: row.c[43] ? row.c[43].v : "", // Document Verification Date
-                  verificationDate: row.c[43] ? formatDateString(row.c[43].v) : "",
-                }
-
-                documentsData.push(document)
-              }
-            }
+        const documentsData = (data || [])
+          .filter((row) => {
+            const hasDoc = (row.document1 && row.document1.trim() !== "") ||
+                           (row.document2 && row.document2.trim() !== "") ||
+                           row.verification_date;
+            return row.complaint_id && hasDoc;
           })
+          .map((row, index) => ({
+            rowIndex: index + 1,
+            id: row.complaint_id,
+            date: formatDateString(row.complaint_date || row.timestamp),
+            name: row.company_name || row.beneficiary_name || "",
+            phone: row.contact_number || "",
+            email: row.email || "",
+            address: [row.village, row.block, row.district].filter(Boolean).join(", ") || row.address || "",
+            document1: row.document1 || "",
+            document2: row.document2 || "",
+            additionalDocuments: row.additional_documents || "",
+            verificationDate: formatDateString(row.verification_date),
+          }));
 
-          setVerifiedDocuments(documentsData)
-        }
+        setVerifiedDocuments(documentsData);
       } catch (err) {
-        console.error("Error fetching verified documents data:", err)
-        setError(err.message)
-        // On error, set to empty array
-        setVerifiedDocuments([])
+        console.error("Error fetching verified documents from Supabase:", err);
+        setError(err.message);
+        setVerifiedDocuments([]);
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
-    fetchVerifiedDocuments()
-  }, [])
+    fetchVerifiedDocuments();
+  }, []);
 
   // Filter documents based on search term
   const filteredDocuments = verifiedDocuments.filter(
@@ -176,7 +138,7 @@ function VerifiedDocumentsTable() {
         </div>
       </div>
 
-      <div className="overflow-x-auto -mx-4 sm:mx-0">
+      <div className="overflow-x-auto overflow-y-auto max-h-[500px] -mx-4 sm:mx-0">
         <div className="inline-block min-w-full align-middle">
           {filteredDocuments.length === 0 ? (
             <div className="text-center p-6 bg-gray-50 rounded-lg border border-gray-200">
@@ -184,7 +146,7 @@ function VerifiedDocumentsTable() {
             </div>
           ) : (
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-100">
+              <thead className="bg-gray-100 sticky top-0 z-10">
                 <tr>
                   <th
                     scope="col"

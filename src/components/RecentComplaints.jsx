@@ -1,47 +1,67 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import supabase from "../utils/supabase"
 
 function RecentComplaints() {
-  const [data, setData] = useState(null)
+  const [recentComplaints, setRecentComplaints] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  const formatDate = (dateVal) => {
+    if (!dateVal) return "Unknown"
+    try {
+      const d = new Date(dateVal)
+      if (isNaN(d.getTime())) return String(dateVal)
+      const day = String(d.getDate()).padStart(2, '0')
+      const month = String(d.getMonth() + 1).padStart(2, '0')
+      const year = d.getFullYear()
+      return `${day}/${month}/${year}`
+    } catch {
+      return String(dateVal)
+    }
+  }
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true)
-        // Fetch the entire sheet using Google Sheets API directly
-        const sheetUrl =
-          "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=FMS"
-        const response = await fetch(sheetUrl)
+        setError(null)
 
-        if (!response.ok) {
-          throw new Error(`Failed to fetch sheet data: ${response.status} ${response.statusText}`)
-        }
+        const { data, error: sbError } = await supabase
+          .from("FMS")
+          .select("id, complaint_id, beneficiary_name, product, village, complaint_date, timestamp, planned, actual, planned1, actual1, technician_name")
+          .order("id", { ascending: false })
+          .limit(20)
 
-        const text = await response.text()
+        if (sbError) throw sbError
 
-        // Extract the JSON part from the response
-        const jsonStart = text.indexOf("{")
-        const jsonEnd = text.lastIndexOf("}") + 1
+        const processed = (data || [])
+          .filter((row) => row.complaint_id)
+          .map((row) => {
+            let status = "New"
+            if (row.planned1 && row.actual1) {
+              status = "Completed"
+            } else if (row.planned1) {
+              status = "In Progress"
+            } else if (row.technician_name) {
+              status = "Assigned"
+            }
 
-        if (jsonStart === -1 || jsonEnd === 0) {
-          throw new Error("Invalid response format from Google Sheets")
-        }
+            return {
+              id: row.complaint_id || "COMP-XXXX",
+              beneficiaryName: row.beneficiary_name || "Unknown",
+              product: row.product || "Unknown",
+              village: row.village || "Unknown",
+              date: formatDate(row.complaint_date || row.timestamp),
+              status,
+            }
+          })
+          .slice(0, 5)
 
-        const jsonData = text.substring(jsonStart, jsonEnd)
-        const parsedData = JSON.parse(jsonData)
-
-        // Process the data
-        if (parsedData && parsedData.table && parsedData.table.rows) {
-          // Skip the header rows (first 5 rows)
-          setData(parsedData.table.rows.slice(6))
-        } else {
-          throw new Error("No data found in the sheet")
-        }
+        setRecentComplaints(processed)
       } catch (err) {
-        console.error("Error fetching data:", err)
+        console.error("Error fetching recent complaints from Supabase:", err)
         setError(err.message)
       } finally {
         setIsLoading(false)
@@ -50,76 +70,6 @@ function RecentComplaints() {
 
     fetchData()
   }, [])
-
-  // Process recent complaints from sheet data
-  // Recent complaints: column Y is not null and column Z is null
-  // Process recent complaints from sheet data
-  const processRecentComplaints = () => {
-    if (!data) return []
-
-    return data
-      .filter(
-        (row) =>
-          row.c[24] &&
-          row.c[24].v !== null &&
-          row.c[24].v !== "" && // Column Y has data
-          (!row.c[25] || row.c[25].v === null || row.c[25].v === ""), // Column Z is null/empty
-      )
-      .map((row) => {
-        // Extract relevant data from row
-        const id = row.c[1] ? row.c[1].v : "COMP-XXXX"
-        const beneficiaryName = row.c[7] ? row.c[7].v : "Unknown"
-        const product = row.c[15] ? row.c[15].v : "Unknown"
-        const village = row.c[12] ? row.c[12].v : "Unknown"
-
-        // Simple date display in dd/mm/yyyy format
-        let date = "Unknown"
-        if (row.c[24] && row.c[24].v) {
-          try {
-            // If it's already a string in the correct format
-            if (typeof row.c[24].v === 'string') {
-              date = row.c[24].v
-            }
-            // If it's a date object or serial number
-            else {
-              const dateValue = new Date(row.c[24].v)
-              if (!isNaN(dateValue.getTime())) {
-                const day = String(dateValue.getDate()).padStart(2, '0')
-                const month = String(dateValue.getMonth() + 1).padStart(2, '0')
-                const year = dateValue.getFullYear()
-                date = `${day}/${month}/${year}`
-              }
-            }
-          } catch (e) {
-            console.error("Error formatting date:", e)
-          }
-        }
-
-        // Status logic remains the same
-        let status = "New"
-        if (row.c[35] && row.c[35].v) {
-          if (row.c[36] && row.c[36].v) {
-            status = "Completed"
-          } else {
-            status = "In Progress"
-          }
-        } else if (row.c[27] && row.c[27].v) {
-          status = "Assigned"
-        }
-
-        return {
-          id,
-          beneficiaryName,
-          product,
-          village,
-          date,
-          status,
-        }
-      })
-      .slice(0, 5) // Show only 5 most recent
-  }
-
-  const recentComplaints = processRecentComplaints()
 
   if (isLoading) {
     return (

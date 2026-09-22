@@ -67,7 +67,7 @@ const AdminLetter = () => {
                     const itemType = location.state.itemType || "Battery";
                     const task = tasksArr[0]; // Use first task for some header defaults
                     setTaskData(task);
-                    
+
                     // Template Configuration
                     const siteNames = tasksArr.map(t => t.village || t.siteName || "-").join(", ");
                     const blockNames = Array.from(new Set(tasksArr.map(t => t.block))).join(" & ");
@@ -137,109 +137,96 @@ const AdminLetter = () => {
                     //         rbpTableRows: templateData // Save to special key for RBP format if needed
                     //     }));
                     if (itemType === "Street Light") {
-    // Calculate total defective and replaced quantity
-    const totalDefectiveQty = templateData.reduce((sum, row) => sum + (parseInt(row["DEFECTIVE QTY"]) || 0), 0);
-    const totalReplacedQty = templateData.reduce((sum, row) => sum + (parseInt(row["REPLACED QTY"]) || 0), 0);
-    
-    setLetterInfo(prev => ({
-        ...prev,
-        letterNo: `RBP/SL/SER/21-22/${randomNum.toString().padStart(2, '0')}`,
-        date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
-        subject: `Regarding Repair/Maintenance of Street Lights at following Villages of ${blockNames} Blocks, ${district} Dist.`,
-        reference: [`i) Your Letter Ref No: 1188/CREDA/O&M/${district}/2021-2022/${task.block || "Baikunthpur"} Dt:${actualDate}`],
-        officerName: "THE DIST INCHARGE",
-        department: `DIST OFFICE-${task.block === "Bharatpur" ? "BAIKUNTHPUR" : task.block?.toUpperCase() || "BAIKUNTHPUR"}, DIST:${district.toUpperCase()}`,
-        districtOffice: "CHHATTISGARH",
-        salutation: "Dear Sir,",
-        introParagraph: `With reference to the above subject Complaints, We have received Letter regarding Repair/Maintenance of Street Lights at Following villages of ${blockNames} Blocks, Dist: ${district}. Today we have received the faulty materials along with this Letter. We have dispatched ${totalReplacedQty}nos of ${templateData[0]["STREET LIGHT RATING"]} Working Street Lights against DC No:4716 Dt:${actualDate} for replacement against defective.`,
-        closingParagraph: "Request you to update in your records & close the complaints in your complaint register.",
-        thankYou: "Thanking you.",
-        regards: "Yours faithfully,",
-        forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-        designation: "S.N.Sahoo",
-        copiesTo: [
-            "Superintending Engineer, CREDA Zonal Office, Sarguja",
-            "Executive Engineer, CREDA RO, Sarguja"
-        ],
-        note: "Note: Request you to update in your record & close the complaints in your Complaint register.",
-        totalQty: totalReplacedQty,
-        rbpTableRows: templateData
-    }));
+                        // Calculate total defective and replaced quantity
+                        const totalDefectiveQty = templateData.reduce((sum, row) => sum + (parseInt(row["DEFECTIVE QTY"]) || 0), 0);
+                        const totalReplacedQty = templateData.reduce((sum, row) => sum + (parseInt(row["REPLACED QTY"]) || 0), 0);
+
+                        setLetterInfo(prev => ({
+                            ...prev,
+                            letterNo: `RBP/SL/SER/21-22/${randomNum.toString().padStart(2, '0')}`,
+                            date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
+                            subject: `Regarding Repair/Maintenance of Street Lights at following Villages of ${blockNames} Blocks, ${district} Dist.`,
+                            reference: [`i) Your Letter Ref No: 1188/CREDA/O&M/${district}/2021-2022/${task.block || "Baikunthpur"} Dt:${actualDate}`],
+                            officerName: "THE DIST INCHARGE",
+                            department: `DIST OFFICE-${task.block === "Bharatpur" ? "BAIKUNTHPUR" : task.block?.toUpperCase() || "BAIKUNTHPUR"}, DIST:${district.toUpperCase()}`,
+                            districtOffice: "CHHATTISGARH",
+                            salutation: "Dear Sir,",
+                            introParagraph: `With reference to the above subject Complaints, We have received Letter regarding Repair/Maintenance of Street Lights at Following villages of ${blockNames} Blocks, Dist: ${district}. Today we have received the faulty materials along with this Letter. We have dispatched ${totalReplacedQty}nos of ${templateData[0]["STREET LIGHT RATING"]} Working Street Lights against DC No:4716 Dt:${actualDate} for replacement against defective.`,
+                            closingParagraph: "Request you to update in your records & close the complaints in your complaint register.",
+                            thankYou: "Thanking you.",
+                            regards: "Yours faithfully,",
+                            forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
+                            designation: "S.N.Sahoo",
+                            copiesTo: [
+                                "Superintending Engineer, CREDA Zonal Office, Sarguja",
+                                "Executive Engineer, CREDA RO, Sarguja"
+                            ],
+                            note: "Note: Request you to update in your record & close the complaints in your Complaint register.",
+                            totalQty: totalReplacedQty,
+                            rbpTableRows: templateData
+                        }));
 
 
-                    // } else if (itemType === "Inverter") {
-                    //     setLetterInfo(prev => ({
-                    //         ...prev,
-                    //         letterNo: `RBP/SPVPP/SER/24-25/${randomNum}`,
-                    //         subject: `Regarding Rectification of Power plant Inverter complaints of ${siteNames} sites, Block-${task.block || ""}, Dist: ${district}`,
-                    //         introParagraph: `With reference to the above subject Complaints, M/s Statcon Powtech service Engineer visited to ${siteNames} sites against inverter complaints & rectified the inverter. (M/s Statcon Powtech Service report enclosed for your reference). Now system is working satisfactory.`,
-                    //         officerName: "The ASSISTANT ENGINEER",
-                    //         department: "CREDA DIST OFFICE",
-                    //         districtOffice: `CREDA DIST OFFICE- ${district}, DIST: ${district}`,
-                    //         copiesTo: ["Executive Engineer, CREDA ZO, RAIPUR"],
-                    //         forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-                    //         salutation: "Dear Sir,"
-                    //     }));
+                        // } else if (itemType === "Inverter") {
+                        //     setLetterInfo(prev => ({
+                        //         ...prev,
+                        //         letterNo: `RBP/SPVPP/SER/24-25/${randomNum}`,
+                        //         subject: `Regarding Rectification of Power plant Inverter complaints of ${siteNames} sites, Block-${task.block || ""}, Dist: ${district}`,
+                        //         introParagraph: `With reference to the above subject Complaints, M/s Statcon Powtech service Engineer visited to ${siteNames} sites against inverter complaints & rectified the inverter. (M/s Statcon Powtech Service report enclosed for your reference). Now system is working satisfactory.`,
+                        //         officerName: "The ASSISTANT ENGINEER",
+                        //         department: "CREDA DIST OFFICE",
+                        //         districtOffice: `CREDA DIST OFFICE- ${district}, DIST: ${district}`,
+                        //         copiesTo: ["Executive Engineer, CREDA ZO, RAIPUR"],
+                        //         forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
+                        //         salutation: "Dear Sir,"
+                        //     }));
 
-}else if (itemType === "Inverter") {
-    setLetterInfo(prev => ({
-        ...prev,
-        letterNo: `RBP/SPVPP/SER/24-25/${randomNum}`,
-        date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
-        subject: `Regarding Rectification of Power plant Inverter complaints of ${siteNames} sites, Block-${task.block || ""}, Dist: ${district}`,
-        reference: [`i) 392/CREDA/SPVPP/2024-25/${district.toUpperCase().replace(/ /g, "_")} Dt:${actualDate}`],
-        officerName: "The ASSISTANT ENGINEER",
-        department: "CREDA DIST OFFICE",
-        districtOffice: `CREDA DIST OFFICE- ${district}, DIST: ${district}`,
-        salutation: "Dear Sir,",
-        introParagraph: `With reference to the above subject Complaints, M/s Statcon Powtech service Engineer visited to ${siteNames} sites against inverter complaints & rectified the inverter. (M/s Statcon Powtech Service report enclosed for your reference). Now system is working satisfactory.`,
-        closingParagraph: "Request you to update in your record & close the complaints in your complaint register.",
-        thankYou: "Thanking you.",
-        regards: "Yours faithfully,", 
-        forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-        designation: "S.N.Sahoo",
-        copiesTo: ["Executive Engineer, CREDA ZO, RAIPUR"],
-        note: "Note: Request you to update in your record & close the complaints in your Complaint register.",
-        rbpTableRows: templateData
-    }));
+                    } else if (itemType === "Inverter") {
+                        setLetterInfo(prev => ({
+                            ...prev,
+                            letterNo: `RBP/SPVPP/SER/24-25/${randomNum}`,
+                            date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
+                            subject: `Regarding Rectification of Power plant Inverter complaints of ${siteNames} sites, Block-${task.block || ""}, Dist: ${district}`,
+                            reference: [`i) 392/CREDA/SPVPP/2024-25/${district.toUpperCase().replace(/ /g, "_")} Dt:${actualDate}`],
+                            officerName: "The ASSISTANT ENGINEER",
+                            department: "CREDA DIST OFFICE",
+                            districtOffice: `CREDA DIST OFFICE- ${district}, DIST: ${district}`,
+                            salutation: "Dear Sir,",
+                            introParagraph: `With reference to the above subject Complaints, M/s Statcon Powtech service Engineer visited to ${siteNames} sites against inverter complaints & rectified the inverter. (M/s Statcon Powtech Service report enclosed for your reference). Now system is working satisfactory.`,
+                            closingParagraph: "Request you to update in your record & close the complaints in your complaint register.",
+                            thankYou: "Thanking you.",
+                            regards: "Yours faithfully,",
+                            forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
+                            designation: "S.N.Sahoo",
+                            copiesTo: ["Executive Engineer, CREDA ZO, RAIPUR"],
+                            note: "Note: Request you to update in your record & close the complaints in your Complaint register.",
+                            rbpTableRows: templateData
+                        }));
 
-                    // } else { // Battery
-                    //     setLetterInfo(prev => ({
-                    //         ...prev,
-                    //         letterNo: `RBP/SPVPP/SER/24-25/${randomNum}`,
-                    //         subject: `Regarding Rectification of Power Plant Battery complaint of ${siteNames}, Block-${task.block || ""}, Dist:${district}`,
-                    //         introParagraph: `With reference to the above subject Complaints of ${siteNames} site, Block-${task.block || ""}, Dist-${district} , M/s HBL Engineer visited site on Dt:${actualDate} against Battery complaint & replaced 3nos cell against defective. Now System is working satisfactory(Service reports enclosed for your reference).`,
-                    //         officerName: "THE DIST INCHARGE",
-                    //         department: "CREDA DIST OFFICE",
-                    //         districtOffice: `CREDA DIST OFFICE- ${district}, DIST: ${district}`,
-                    //         copiesTo: ["Superintending Engineer(RE-05), CREDA HO, RAIPUR"],
-                    //         forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-                    //         salutation: "Dear Sir,"
-                    //     }));
-                    // }
+
 
                     } else { // Battery
-    setLetterInfo(prev => ({
-        ...prev,
-        letterNo: `RBP/SPVPP/SER/24-25/${randomNum}`,
-        date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
-        subject: `Regarding Rectification of Power Plant Battery complaint of ${siteNames}, Block-${task.block || ""}, Dist:${district}`,
-        reference: [`i) Your Letter Ref No:1245/J.K/2024-25/${district.toUpperCase().replace(/ /g, "_")} Dt:${actualDate}`],
-        officerName: "THE DIST INCHARGE",
-        department: "CREDA DIST OFFICE",
-        districtOffice: `CREDA DIST OFFICE- ${district}, DIST:${district}`,
-        salutation: "Dear Sir,",
-        introParagraph: `With reference to the above subject Complaints of ${siteNames} site, Block-${task.block || ""}, Dist-${district} , M/s HBL Engineer visited site on Dt:${actualDate} against Battery complaint & replaced 3nos cell against defective. Now System is working satisfactory(Service reports enclosed for your reference).`,
-        closingParagraph: "Request you to update in your record & close the complaints in your complaint register.",
-        thankYou: "Thanking you.",
-        regards: "Yours faithfully,",
-        forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-        designation: "S.N.Sahoo",
-        copiesTo: ["Superintending Engineer(RE-05), CREDA HO, RAIPUR"],
-        note: "Note: Request you to update in your record & close the complaints in your Complaint register.",
-        rbpTableRows: templateData
-    }));
-}
+                        setLetterInfo(prev => ({
+                            ...prev,
+                            letterNo: `RBP/SPVPP/SER/24-25/${randomNum}`,
+                            date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
+                            subject: `Regarding Rectification of Power Plant Battery complaint of ${siteNames}, Block-${task.block || ""}, Dist:${district}`,
+                            reference: [`i) Your Letter Ref No:1245/J.K/2024-25/${district.toUpperCase().replace(/ /g, "_")} Dt:${actualDate}`],
+                            officerName: "THE DIST INCHARGE",
+                            department: "CREDA DIST OFFICE",
+                            districtOffice: `CREDA DIST OFFICE- ${district}, DIST:${district}`,
+                            salutation: "Dear Sir,",
+                            introParagraph: `With reference to the above subject Complaints of ${siteNames} site, Block-${task.block || ""}, Dist-${district} , M/s HBL Engineer visited site on Dt:${actualDate} against Battery complaint & replaced 3nos cell against defective. Now System is working satisfactory(Service reports enclosed for your reference).`,
+                            closingParagraph: "Request you to update in your record & close the complaints in your complaint register.",
+                            thankYou: "Thanking you.",
+                            regards: "Yours faithfully,",
+                            forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
+                            designation: "S.N.Sahoo",
+                            copiesTo: ["Superintending Engineer(RE-05), CREDA HO, RAIPUR"],
+                            note: "Note: Request you to update in your record & close the complaints in your Complaint register.",
+                            rbpTableRows: templateData
+                        }));
+                    }
 
                     setLoading(false);
                     return;
@@ -281,51 +268,45 @@ const AdminLetter = () => {
                     return;
                 }
 
-                // Scenario 3: Fallback - Fetch from FMS sheet (same indices as DraftLetter)
-                const fmsSheetUrl = "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=FMS";
-                const response = await fetch(fmsSheetUrl);
-                const text = await response.text();
-                const jsonStart = text.indexOf("{");
-                const jsonEnd = text.lastIndexOf("}") + 1;
-                const jsonData = text.substring(jsonStart, jsonEnd);
-                const data = JSON.parse(jsonData);
+                // Scenario 3: Fallback - Fetch from Supabase FMS
+                const { data: row, error: fmsError } = await supabase
+                    .from("FMS")
+                    .select("complaint_id, id_number, beneficiary_name, village, block, district, actual, actual1, planned, planned1")
+                    .eq("complaint_id", complaintId)
+                    .maybeSingle();
 
-                if (data?.table?.rows) {
-                    // Match by Complaint ID (Index 1 in FMS)
-                    const row = data.table.rows.find(r => r.c && r.c[1] && String(r.c[1].v).trim() === complaintId);
-                    if (row) {
-                        const task = {
-                            complaintId: row.c[1]?.v || "",
-                            idNumber: row.c[4]?.v || "-",
-                            beneficiaryName: row.c[8]?.v || "",
-                            village: row.c[10]?.v || "",
-                            block: row.c[11]?.v || "",
-                            district: row.c[12]?.v || "",
-                            actualDate: row.c[34]?.v || new Date().toLocaleDateString("en-GB")
-                        };
-                        setTaskData(task);
+                if (row) {
+                    const task = {
+                        complaintId: row.complaint_id || "",
+                        idNumber: row.id_number || "-",
+                        beneficiaryName: row.beneficiary_name || "",
+                        village: row.village || "",
+                        block: row.block || "",
+                        district: row.district || "",
+                        actualDate: row.actual1 || row.actual || new Date().toLocaleDateString("en-GB")
+                    };
+                    setTaskData(task);
 
-                        setTableData([{
-                            "क्र.": "01.",
-                            "सौर समाधान क्र.": task.complaintId || "-",
-                            "आई. डी. नं.": task.idNumber || "-",
-                            "हितग्राही का नाम": task.beneficiaryName || "-",
-                            "ग्राम/ विकासखण्ड": `${task.village || ""}/ ${task.block || ""}`,
-                            "दिनांक": task.actualDate || "-",
-                            "रिमार्क": "संयंत्र कार्य शील हैं."
-                        }]);
+                    setTableData([{
+                        "क्र.": "01.",
+                        "सौर समाधान क्र.": task.complaintId || "-",
+                        "आई. डी. नं.": task.idNumber || "-",
+                        "हितग्राही का नाम": task.beneficiaryName || "-",
+                        "ग्राम/ विकासखण्ड": `${task.village || ""}/ ${task.block || ""}`,
+                        "दिनांक": task.actualDate || "-",
+                        "रिमार्क": "संयंत्र कार्य शील हैं."
+                    }]);
 
-                        if (task.district) {
-                            setLetterInfo(prev => ({
-                                ...prev,
-                                districtOffice: `जिला कार्यालय, ${task.district} (छ०ग०)`,
-                                introParagraph: prev.introParagraph.replace(/कोण्डागांव/g, task.district)
-                            }));
-                        }
+                    if (task.district) {
+                        setLetterInfo(prev => ({
+                            ...prev,
+                            districtOffice: `जिला कार्यालय, ${task.district} (छ०ग०)`,
+                            introParagraph: prev.introParagraph.replace(/कोण्डागांव/g, task.district)
+                        }));
                     }
                 }
             } catch (error) {
-                console.error("Error fetching task details:", error);
+                console.error("Error fetching task details from Supabase:", error);
             } finally {
                 setLoading(false);
             }
@@ -339,41 +320,34 @@ const AdminLetter = () => {
 
     const fetchCompanyOptions = async () => {
         try {
-            const masterSheetUrl = "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=Master";
-            const response = await fetch(masterSheetUrl);
-            const text = await response.text();
-            const jsonStart = text.indexOf("{");
-            const jsonEnd = text.lastIndexOf("}") + 1;
-            const jsonData = text.substring(jsonStart, jsonEnd);
-            const data = JSON.parse(jsonData);
+            const { data: rows, error: masterError } = await supabase
+                .from("Master")
+                .select("company_name1, address, email_id, phone_no");
 
             const options = [];
-            if (data?.table?.rows) {
-                // Using column J (index 9) for Company Name1
-                // Skip header row only if it matches the header text, otherwise include all data
-                data.table.rows.forEach((row) => {
-                    const companyName = row.c[9]?.v;
+            if (rows) {
+                rows.forEach((row) => {
+                    const companyName = row.company_name1;
                     if (companyName) {
                         const nameStr = String(companyName).trim();
-                        // Ignore the literal header labels
                         if (nameStr === "Company Name1" || nameStr === "Company Name" || nameStr === "Company Name 1") {
                             return;
                         }
 
                         options.push({
                             name: nameStr,
-                            address: row.c[10]?.v || "",
-                            email: row.c[11]?.v || "",
-                            phone: row.c[12]?.v || ""
+                            address: row.address || "",
+                            email: row.email_id || "",
+                            phone: row.phone_no || ""
                         });
                     }
                 });
             }
             setCompanyOptions(options);
-        } catch (error) {
-            console.error("Error fetching company options:", error);
-        }
-    };
+    } catch (error) {
+        console.error("Error fetching company options from Supabase:", error);
+    }
+};
 
     useEffect(() => {
         if (location.state?.autoSelectCompany && companyOptions.length > 0) {
@@ -382,19 +356,19 @@ const AdminLetter = () => {
                 if (selected) {
                     console.log("=== AUTO SELECTING COMPANY ===");
                     console.log("Selected company:", selected.name);
-                    
+
                     const newHeaderInfo = {
                         companyName: selected.name,
                         address: selected.address,
                         location: "",
                         contact: `Phone No. ${selected.phone} | Email : ${selected.email}`
                     };
-                    
+
                     setHeaderInfo(newHeaderInfo);
                     setSelectedEmail(selected.email);
-                    
+
                     const isColumnANTrueLocal = taskData?.columnAN === true || taskData?.columnAN === "true" || taskData?.columnAN === "TRUE";
-                    
+
                     // Fixed for RBP Auto-selection logic
                     if ((isColumnANTrueLocal || location.state?.itemType) && selected.name.toUpperCase().includes("RBP")) {
                         // Template values already set in initial useEffect if location.state.tasks exists
@@ -658,79 +632,79 @@ const AdminLetter = () => {
                     {/* Editable Header */}
                     <div id="letter-header" className="text-center mb-10 border-b-2 border-black pb-4">
                         <div className="mb-4 no-print flex justify-center">
-                        {!location.state?.autoSelectCompany && (
-                            <select
-                                id="company-select"
-                                value={headerInfo.companyName}  
-                                className="border border-gray-300 rounded px-2 py-1 bg-white text-sm"
-                                onChange={(e) => {
-                                    const selected = companyOptions.find(c => c.name === e.target.value);
-                                    if (selected) {
-                                        console.log("=== DROPDOWN SELECTED ===");
-                                        console.log("Selected company:", selected.name);
-                                        
-                                        const newHeaderInfo = {
-                                            companyName: selected.name,
-                                            address: selected.address,
-                                            location: "",
-                                            contact: `Phone No. ${selected.phone} | Email : ${selected.email}`
-                                        };
-                                        
-                                        setHeaderInfo(newHeaderInfo);
-                                        setSelectedEmail(selected.email);
-                                        
-                                        const isColumnANTrueLocal = taskData?.columnAN === true || taskData?.columnAN === "true" || taskData?.columnAN === "TRUE";
-                                        
-                                        if (isColumnANTrueLocal && selected.name.toUpperCase().includes("RBP")) {
-                                            setLetterInfo(prev => ({
-                                                ...prev,
-                                                letterNo: `RBP/SPVPP/SER/25-26/${Math.floor(Math.random() * 900) + 100}`,
-                                                officerName: "The DIST INCHARGE",
-                                                department: "CREDA DIST OFFICE",
-                                                districtOffice: `CREDA DIST OFFICE-${taskData?.district || ""}, DIST:${taskData?.district || ""}`,
-                                                subject: "Regarding Rectification of Power Plant Inverter & Battery complaints",
-                                                reference: ["Whatsapp"],
-                                                salutation: "Dear Sir,",
-                                                introParagraph: `With reference to the above subject Complaints M/s Statcon Powtech Service Engineer visited to ${taskData?.block || ""} sites from ${taskData?.actualDate || ""} against Power plant inverter complaints & rectified the inverters. Now System is working satisfactory. (Service report enclosed for your reference).`,
-                                                closingParagraph: "Note: Request you to update in your record & close the complaints in your Complaint register.",
-                                                thankYou: "Thanking you.",
-                                                regards: "Yours faithfully,",
-                                                forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-                                                designation: "S.N.Sahoo",
-                                                copiesTo: [
-                                                    "Executive Engineer (RE-05), CREDA HO, Raipur",
-                                                    "Executive Engineer, CREDA ZO, Bilaspur"
-                                                ],
-                                                companyDetails: {
-                                                    phone: selected.phone,
-                                                    email: selected.email,
-                                                    address: selected.address
-                                                }
-                                            }));
-                                        } else {
-                                            setLetterInfo(prev => ({
-                                                ...prev,
-                                                forCompany: `वास्ते, ${selected.name}`,
-                                                companyDetails: {
-                                                    phone: selected.phone,
-                                                    email: selected.email,
-                                                    address: selected.address
-                                                }
-                                            }));
+                            {!location.state?.autoSelectCompany && (
+                                <select
+                                    id="company-select"
+                                    value={headerInfo.companyName}
+                                    className="border border-gray-300 rounded px-2 py-1 bg-white text-sm"
+                                    onChange={(e) => {
+                                        const selected = companyOptions.find(c => c.name === e.target.value);
+                                        if (selected) {
+                                            console.log("=== DROPDOWN SELECTED ===");
+                                            console.log("Selected company:", selected.name);
+
+                                            const newHeaderInfo = {
+                                                companyName: selected.name,
+                                                address: selected.address,
+                                                location: "",
+                                                contact: `Phone No. ${selected.phone} | Email : ${selected.email}`
+                                            };
+
+                                            setHeaderInfo(newHeaderInfo);
+                                            setSelectedEmail(selected.email);
+
+                                            const isColumnANTrueLocal = taskData?.columnAN === true || taskData?.columnAN === "true" || taskData?.columnAN === "TRUE";
+
+                                            if (isColumnANTrueLocal && selected.name.toUpperCase().includes("RBP")) {
+                                                setLetterInfo(prev => ({
+                                                    ...prev,
+                                                    letterNo: `RBP/SPVPP/SER/25-26/${Math.floor(Math.random() * 900) + 100}`,
+                                                    officerName: "The DIST INCHARGE",
+                                                    department: "CREDA DIST OFFICE",
+                                                    districtOffice: `CREDA DIST OFFICE-${taskData?.district || ""}, DIST:${taskData?.district || ""}`,
+                                                    subject: "Regarding Rectification of Power Plant Inverter & Battery complaints",
+                                                    reference: ["Whatsapp"],
+                                                    salutation: "Dear Sir,",
+                                                    introParagraph: `With reference to the above subject Complaints M/s Statcon Powtech Service Engineer visited to ${taskData?.block || ""} sites from ${taskData?.actualDate || ""} against Power plant inverter complaints & rectified the inverters. Now System is working satisfactory. (Service report enclosed for your reference).`,
+                                                    closingParagraph: "Note: Request you to update in your record & close the complaints in your Complaint register.",
+                                                    thankYou: "Thanking you.",
+                                                    regards: "Yours faithfully,",
+                                                    forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
+                                                    designation: "S.N.Sahoo",
+                                                    copiesTo: [
+                                                        "Executive Engineer (RE-05), CREDA HO, Raipur",
+                                                        "Executive Engineer, CREDA ZO, Bilaspur"
+                                                    ],
+                                                    companyDetails: {
+                                                        phone: selected.phone,
+                                                        email: selected.email,
+                                                        address: selected.address
+                                                    }
+                                                }));
+                                            } else {
+                                                setLetterInfo(prev => ({
+                                                    ...prev,
+                                                    forCompany: `वास्ते, ${selected.name}`,
+                                                    companyDetails: {
+                                                        phone: selected.phone,
+                                                        email: selected.email,
+                                                        address: selected.address
+                                                    }
+                                                }));
+                                            }
                                         }
-                                    }
-                                }}
-                            >
-                                <option value="">Select Company Header</option>
-                                {companyOptions.map((opt, i) => (
-                                    <option key={i} value={opt.name}>{opt.name}</option>
-                                ))}
-                            </select>
-                        )}
+                                    }}
+                                >
+                                    <option value="">Select Company Header</option>
+                                    {companyOptions.map((opt, i) => (
+                                        <option key={i} value={opt.name}>{opt.name}</option>
+                                    ))}
+                                </select>
+                            )}
                         </div>
                         {headerInfo.companyName.includes("RBP") ? (
                             <div className="flex flex-col items-center mb-0 mt-4">
-                                <img src="/RBP-Logo.jpg" alt="RBP Logo" className="h-28 object-contain mb-0" />
+                                <img src="/RBP-Logo.PNG" alt="RBP Logo" className="h-28 object-contain mb-0" />
                             </div>
                         ) : headerInfo.companyName.toLowerCase().includes("rotomag") ? (
                             <div className="flex justify-end mb-4 mt-4">
@@ -802,7 +776,7 @@ const AdminLetter = () => {
                     </div>
 
                     {/* Letter Body */}
-                    { (taskData?.columnAN === true || taskData?.columnAN === "true" || taskData?.columnAN === "TRUE") && headerInfo.companyName.toUpperCase().includes("RBP") ? (
+                    {(taskData?.columnAN === true || taskData?.columnAN === "true" || taskData?.columnAN === "TRUE") && headerInfo.companyName.toUpperCase().includes("RBP") ? (
                         /* ======== RBP ENGLISH FORMAT ======== */
                         <div className="text-sm text-gray-800 leading-relaxed" style={{ fontFamily: 'Georgia, serif' }}>
 
@@ -863,7 +837,7 @@ const AdminLetter = () => {
                                 <div className="flex-1 space-y-1">
                                     {letterInfo.reference?.map((ref, idx) => (
                                         <div key={idx} className="flex gap-1 items-center">
-                                            <span className="text-xs shrink-0">{["i","ii","iii","iv","v"][idx] || idx+1})</span>
+                                            <span className="text-xs shrink-0">{["i", "ii", "iii", "iv", "v"][idx] || idx + 1})</span>
                                             <input
                                                 className="flex-1 border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
                                                 value={ref}
@@ -908,124 +882,123 @@ const AdminLetter = () => {
                             </div>
 
                             {/* ===== RBP TABLE - Fully Editable ===== */}
-                      <div className="my-4 border border-black overflow-x-auto">
-    <table className="w-full border-collapse text-xs">
-        <thead>
-            <tr className="bg-gray-100">
-                {tableColumns.map((col, i) => (
-                    <th key={i} className={`border border-black p-1.5 font-bold text-center ${
-                        col === "Site Name" ? "min-w-[180px]" : 
-                        col === "Problem Reported" ? "min-w-[200px]" : 
-                        col === "RBP Remarks" ? "min-w-[180px]" : "min-w-[80px]"
-                    }`}>{col}</th>
-                ))}
-                <th className="border border-black p-1 bg-gray-200 w-8 no-print"></th>
-            </tr>
-        </thead>
-        <tbody>
-            {(letterInfo.rbpTableRows || tableData).map((row, rowIdx) => (
-                <tr key={rowIdx} className="border-b border-black">
-                    {tableColumns.map((col, colIdx) => (
-                        <td key={colIdx} className="border border-black p-0">
-                            <textarea
-                                className="w-full text-left p-1.5 bg-transparent focus:outline-none focus:bg-blue-50 resize-none text-[11px] leading-tight"
-                                rows={col === "Problem Reported" ? 2 : 1}
-                                value={row[col] || ""}
-                                onChange={(e) => {
-                                    const newRows = [...(letterInfo.rbpTableRows || tableData)];
-                                    newRows[rowIdx] = { ...newRows[rowIdx], [col]: e.target.value };
-                                    handleLetterEdit("rbpTableRows", newRows);
-                                    setTableData(newRows);
-                                }}
-                            />
-                        </td>
-                    ))}
-                    <td className="border border-black p-1 text-center no-print">
-                        <button
-                            onClick={() => {
-                                const newRows = (letterInfo.rbpTableRows || tableData).filter((_, i) => i !== rowIdx);
-                                handleLetterEdit("rbpTableRows", newRows);
-                                setTableData(newRows);
-                            }}
-                            className="text-red-400 hover:text-red-600 text-xs"
-                        >✕</button>
-                    </td>
-                </tr>
-            ))}
-        </tbody>
-    </table>
-    <button
-        className="w-full py-1 text-xs text-blue-600 hover:bg-blue-50 border-t border-black no-print"
-        onClick={() => {
-            const currentRows = letterInfo.rbpTableRows || tableData;
-            const newRow = {};
-            tableColumns.forEach(col => {
-                if (col === "SR No") {
-                    newRow[col] = (currentRows.length + 1).toString().padStart(2, '0') + ".";
-                } else {
-                    newRow[col] = "-";
-                }
-            });
-            handleLetterEdit("rbpTableRows", [...currentRows, newRow]);
-            setTableData([...currentRows, newRow]);
-        }}
-    >+ Add Row</button>
-</div>
+                            <div className="my-4 border border-black overflow-x-auto">
+                                <table className="w-full border-collapse text-xs">
+                                    <thead>
+                                        <tr className="bg-gray-100">
+                                            {tableColumns.map((col, i) => (
+                                                <th key={i} className={`border border-black p-1.5 font-bold text-center ${col === "Site Name" ? "min-w-[180px]" :
+                                                        col === "Problem Reported" ? "min-w-[200px]" :
+                                                            col === "RBP Remarks" ? "min-w-[180px]" : "min-w-[80px]"
+                                                    }`}>{col}</th>
+                                            ))}
+                                            <th className="border border-black p-1 bg-gray-200 w-8 no-print"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(letterInfo.rbpTableRows || tableData).map((row, rowIdx) => (
+                                            <tr key={rowIdx} className="border-b border-black">
+                                                {tableColumns.map((col, colIdx) => (
+                                                    <td key={colIdx} className="border border-black p-0">
+                                                        <textarea
+                                                            className="w-full text-left p-1.5 bg-transparent focus:outline-none focus:bg-blue-50 resize-none text-[11px] leading-tight"
+                                                            rows={col === "Problem Reported" ? 2 : 1}
+                                                            value={row[col] || ""}
+                                                            onChange={(e) => {
+                                                                const newRows = [...(letterInfo.rbpTableRows || tableData)];
+                                                                newRows[rowIdx] = { ...newRows[rowIdx], [col]: e.target.value };
+                                                                handleLetterEdit("rbpTableRows", newRows);
+                                                                setTableData(newRows);
+                                                            }}
+                                                        />
+                                                    </td>
+                                                ))}
+                                                <td className="border border-black p-1 text-center no-print">
+                                                    <button
+                                                        onClick={() => {
+                                                            const newRows = (letterInfo.rbpTableRows || tableData).filter((_, i) => i !== rowIdx);
+                                                            handleLetterEdit("rbpTableRows", newRows);
+                                                            setTableData(newRows);
+                                                        }}
+                                                        className="text-red-400 hover:text-red-600 text-xs"
+                                                    >✕</button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                <button
+                                    className="w-full py-1 text-xs text-blue-600 hover:bg-blue-50 border-t border-black no-print"
+                                    onClick={() => {
+                                        const currentRows = letterInfo.rbpTableRows || tableData;
+                                        const newRow = {};
+                                        tableColumns.forEach(col => {
+                                            if (col === "SR No") {
+                                                newRow[col] = (currentRows.length + 1).toString().padStart(2, '0') + ".";
+                                            } else {
+                                                newRow[col] = "-";
+                                            }
+                                        });
+                                        handleLetterEdit("rbpTableRows", [...currentRows, newRow]);
+                                        setTableData([...currentRows, newRow]);
+                                    }}
+                                >+ Add Row</button>
+                            </div>
 
-{/* Note Section */}
-<div className="mb-3">
-    <textarea
-        className="w-full border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent resize-none text-sm"
-        rows="2"
-        value={letterInfo.note || "Note: Request you to update in your record & close the complaints in your Complaint register."}
-        onChange={(e) => handleLetterEdit("note", e.target.value)}
-    />
-</div>
+                            {/* Note Section */}
+                            <div className="mb-3">
+                                <textarea
+                                    className="w-full border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent resize-none text-sm"
+                                    rows="2"
+                                    value={letterInfo.note || "Note: Request you to update in your record & close the complaints in your Complaint register."}
+                                    onChange={(e) => handleLetterEdit("note", e.target.value)}
+                                />
+                            </div>
 
-{/* Thank You */}
-<div className="mb-4">
-    <input
-        className="border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
-        value={letterInfo.thankYou || "Thanking you."}
-        onChange={(e) => handleLetterEdit("thankYou", e.target.value)}
-    />
-</div>
+                            {/* Thank You */}
+                            <div className="mb-4">
+                                <input
+                                    className="border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
+                                    value={letterInfo.thankYou || "Thanking you."}
+                                    onChange={(e) => handleLetterEdit("thankYou", e.target.value)}
+                                />
+                            </div>
 
-{/* Signature Section */}
-<div className="mb-1 mt-8">
-    <input
-        className="font-bold border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
-        value={letterInfo.forCompany || "For RBP ENERGY (INDIA) PVT Ltd"}
-        onChange={(e) => handleLetterEdit("forCompany", e.target.value)}
-    />
-</div>
-<div className="h-12"></div>
-<div className="mb-6">
-    <input
-        className="font-bold border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
-        value={letterInfo.designation || "S.N.Sahoo"}
-        onChange={(e) => handleLetterEdit("designation", e.target.value)}
-    />
-</div>
+                            {/* Signature Section */}
+                            <div className="mb-1 mt-8">
+                                <input
+                                    className="font-bold border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
+                                    value={letterInfo.forCompany || "For RBP ENERGY (INDIA) PVT Ltd"}
+                                    onChange={(e) => handleLetterEdit("forCompany", e.target.value)}
+                                />
+                            </div>
+                            <div className="h-12"></div>
+                            <div className="mb-6">
+                                <input
+                                    className="font-bold border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
+                                    value={letterInfo.designation || "S.N.Sahoo"}
+                                    onChange={(e) => handleLetterEdit("designation", e.target.value)}
+                                />
+                            </div>
 
-{/* CC Section */}
-<div className="text-sm mt-2 space-y-1">
-    <p className="font-bold">CC:</p>
-    {letterInfo.copiesTo?.map((copy, idx) => (
-        <div key={idx} className="flex gap-2 items-center">
-            <span className="shrink-0">{idx + 1})</span>
-            <input
-                className="flex-1 border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
-                value={copy}
-                onChange={(e) => {
-                    const newCopies = [...letterInfo.copiesTo];
-                    newCopies[idx] = e.target.value;
-                    handleLetterEdit("copiesTo", newCopies);
-                }}
-            />
-        </div>
-    ))}
-</div>
+                            {/* CC Section */}
+                            <div className="text-sm mt-2 space-y-1">
+                                <p className="font-bold">CC:</p>
+                                {letterInfo.copiesTo?.map((copy, idx) => (
+                                    <div key={idx} className="flex gap-2 items-center">
+                                        <span className="shrink-0">{idx + 1})</span>
+                                        <input
+                                            className="flex-1 border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
+                                            value={copy}
+                                            onChange={(e) => {
+                                                const newCopies = [...letterInfo.copiesTo];
+                                                newCopies[idx] = e.target.value;
+                                                handleLetterEdit("copiesTo", newCopies);
+                                            }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
 
                             {/* Note */}
                             <div className="mb-2">
@@ -1085,223 +1058,223 @@ const AdminLetter = () => {
                         </div>
                     ) : (
                         <div className="space-y-6 text-base text-gray-800 leading-relaxed font-serif">
-                        <div className="flex justify-between items-start mb-4">
-                            <div className="flex gap-2 items-center">
-                                <span>पत्र क्र.</span>
-                                <input
-                                    type="text"
-                                    value={letterInfo.letterNo}
-                                    onChange={(e) => handleLetterEdit("letterNo", e.target.value)}
-                                    className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold w-40"
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="flex gap-2 items-center">
+                                    <span>पत्र क्र.</span>
+                                    <input
+                                        type="text"
+                                        value={letterInfo.letterNo}
+                                        onChange={(e) => handleLetterEdit("letterNo", e.target.value)}
+                                        className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold w-40"
+                                    />
+                                </div>
+                                <div className="flex gap-2 items-center">
+                                    <span>दिनांक</span>
+                                    <input
+                                        type="text"
+                                        value={letterInfo.date}
+                                        onChange={(e) => handleLetterEdit("date", e.target.value)}
+                                        className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold w-32"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mt-4">
+                                <p className="font-bold">प्रति,</p>
+                                <div className="pl-12 space-y-1">
+                                    <input
+                                        className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
+                                        value={letterInfo.officerName}
+                                        onChange={(e) => handleLetterEdit("officerName", e.target.value)}
+                                    />
+                                    <input
+                                        className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
+                                        value={letterInfo.department}
+                                        onChange={(e) => handleLetterEdit("department", e.target.value)}
+                                    />
+                                    <input
+                                        className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
+                                        value={letterInfo.districtOffice}
+                                        onChange={(e) => handleLetterEdit("districtOffice", e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mt-6 flex gap-2">
+                                <span className="font-bold whitespace-nowrap min-w-[60px]">विषय:-</span>
+                                <textarea
+                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none font-bold align-top pt-0"
+                                    rows="2"
+                                    value={letterInfo.subject}
+                                    onChange={(e) => handleLetterEdit("subject", e.target.value)}
                                 />
                             </div>
-                            <div className="flex gap-2 items-center">
-                                <span>दिनांक</span>
+
+                            <div className="mt-4 flex gap-2">
+                                <span className="font-bold whitespace-nowrap min-w-[60px]">संदर्भ:-</span>
+                                <div className="w-full space-y-2">
+                                    {letterInfo.reference?.map((ref, idx) => (
+                                        <div key={idx} className="flex gap-2">
+                                            <span className="min-w-[20px]">{idx + 1})</span>
+                                            <textarea
+                                                className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none align-top pt-0"
+                                                rows="2"
+                                                value={ref}
+                                                onChange={(e) => {
+                                                    const newRefs = [...letterInfo.reference];
+                                                    newRefs[idx] = e.target.value;
+                                                    handleLetterEdit("reference", newRefs);
+                                                }}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="mt-6">
                                 <input
-                                    type="text"
-                                    value={letterInfo.date}
-                                    onChange={(e) => handleLetterEdit("date", e.target.value)}
-                                    className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold w-32"
+                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold"
+                                    value={letterInfo.salutation}
+                                    onChange={(e) => handleLetterEdit("salutation", e.target.value)}
                                 />
                             </div>
-                        </div>
 
-                        <div className="mt-4">
-                            <p className="font-bold">प्रति,</p>
-                            <div className="pl-12 space-y-1">
-                                <input
-                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
-                                    value={letterInfo.officerName}
-                                    onChange={(e) => handleLetterEdit("officerName", e.target.value)}
-                                />
-                                <input
-                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
-                                    value={letterInfo.department}
-                                    onChange={(e) => handleLetterEdit("department", e.target.value)}
-                                />
-                                <input
-                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
-                                    value={letterInfo.districtOffice}
-                                    onChange={(e) => handleLetterEdit("districtOffice", e.target.value)}
+                            <div className="mt-2 text-justify">
+                                <textarea
+                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none leading-8"
+                                    rows="3"
+                                    value={letterInfo.introParagraph}
+                                    onChange={(e) => handleLetterEdit("introParagraph", e.target.value)}
                                 />
                             </div>
-                        </div>
 
-                        <div className="mt-6 flex gap-2">
-                            <span className="font-bold whitespace-nowrap min-w-[60px]">विषय:-</span>
-                            <textarea
-                                className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none font-bold align-top pt-0"
-                                rows="2"
-                                value={letterInfo.subject}
-                                onChange={(e) => handleLetterEdit("subject", e.target.value)}
-                            />
-                        </div>
-
-                        <div className="mt-4 flex gap-2">
-                            <span className="font-bold whitespace-nowrap min-w-[60px]">संदर्भ:-</span>
-                            <div className="w-full space-y-2">
-                                {letterInfo.reference?.map((ref, idx) => (
-                                    <div key={idx} className="flex gap-2">
-                                        <span className="min-w-[20px]">{idx + 1})</span>
-                                        <textarea
-                                            className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none align-top pt-0"
-                                            rows="2"
-                                            value={ref}
-                                            onChange={(e) => {
-                                                const newRefs = [...letterInfo.reference];
-                                                newRefs[idx] = e.target.value;
-                                                handleLetterEdit("reference", newRefs);
-                                            }}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="mt-6">
-                            <input
-                                className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold"
-                                value={letterInfo.salutation}
-                                onChange={(e) => handleLetterEdit("salutation", e.target.value)}
-                            />
-                        </div>
-
-                        <div className="mt-2 text-justify">
-                            <textarea
-                                className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none leading-8"
-                                rows="3"
-                                value={letterInfo.introParagraph}
-                                onChange={(e) => handleLetterEdit("introParagraph", e.target.value)}
-                            />
-                        </div>
-
-                        {/* Dynamic Table */}
-                        <div className="my-8 overflow-hidden rounded-md border border-black relative">
-                            <table className="w-full border-collapse">
-                                <thead>
-                                    <tr className="bg-gray-50 border-b border-black">
-                                        {tableColumns.map((col, idx) => (
-                                            <th key={idx} className="border-r border-black p-2 text-center text-sm font-bold last:border-r-0">
-                                                <input
-                                                    type="text"
-                                                    value={col}
-                                                    onChange={(e) => {
-                                                        const oldName = col;
-                                                        const newName = e.target.value;
-                                                        const newCols = [...tableColumns];
-                                                        newCols[idx] = newName;
-                                                        setTableColumns(newCols);
-                                                        setTableData(tableData.map(row => {
-                                                            const newRow = { ...row };
-                                                            newRow[newName] = row[oldName];
-                                                            if (newName !== oldName) delete newRow[oldName];
-                                                            return newRow;
-                                                        }));
-                                                    }}
-                                                    className="w-full text-center focus:outline-none border-none bg-transparent font-bold"
-                                                />
-                                            </th>
-                                        ))}
-                                        {/* Action Header Column for Add Row */}
-                                        <th className="p-2 text-center text-sm font-bold bg-gray-100 no-print w-10 border-l border-black">
-                                            <button
-                                                onClick={addRow}
-                                                className="text-blue-600 hover:text-blue-800 transition-colors"
-                                                title="Add Row"
-                                            >
-                                                <SquarePlus size={20} />
-                                            </button>
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {tableData.map((row, rowIndex) => (
-                                        <tr key={rowIndex} className="border-b border-black last:border-b-0 group">
-                                            {tableColumns.map((col, colIndex) => (
-                                                <td key={colIndex} className="border-r border-black p-2 text-center text-sm last:border-r-0">
+                            {/* Dynamic Table */}
+                            <div className="my-8 overflow-hidden rounded-md border border-black relative">
+                                <table className="w-full border-collapse">
+                                    <thead>
+                                        <tr className="bg-gray-50 border-b border-black">
+                                            {tableColumns.map((col, idx) => (
+                                                <th key={idx} className="border-r border-black p-2 text-center text-sm font-bold last:border-r-0">
                                                     <input
                                                         type="text"
-                                                        value={row[col] || ""}
-                                                        onChange={(e) => handleTableEdit(rowIndex, col, e.target.value)}
-                                                        className="w-full text-center focus:outline-none border-none bg-transparent font-semibold"
+                                                        value={col}
+                                                        onChange={(e) => {
+                                                            const oldName = col;
+                                                            const newName = e.target.value;
+                                                            const newCols = [...tableColumns];
+                                                            newCols[idx] = newName;
+                                                            setTableColumns(newCols);
+                                                            setTableData(tableData.map(row => {
+                                                                const newRow = { ...row };
+                                                                newRow[newName] = row[oldName];
+                                                                if (newName !== oldName) delete newRow[oldName];
+                                                                return newRow;
+                                                            }));
+                                                        }}
+                                                        className="w-full text-center focus:outline-none border-none bg-transparent font-bold"
                                                     />
-                                                </td>
+                                                </th>
                                             ))}
-                                            {/* Action Column for Delete Row */}
-                                            <td className="p-2 text-center text-sm no-print border-l border-black bg-gray-50/50 w-10">
+                                            {/* Action Header Column for Add Row */}
+                                            <th className="p-2 text-center text-sm font-bold bg-gray-100 no-print w-10 border-l border-black">
                                                 <button
-                                                    onClick={() => removeRow(rowIndex)}
-                                                    className="text-red-400 hover:text-red-600 transition-colors"
-                                                    title="Remove Row"
+                                                    onClick={addRow}
+                                                    className="text-blue-600 hover:text-blue-800 transition-colors"
+                                                    title="Add Row"
                                                 >
-                                                    <Trash2 size={16} />
+                                                    <SquarePlus size={20} />
                                                 </button>
-                                            </td>
+                                            </th>
                                         </tr>
+                                    </thead>
+                                    <tbody>
+                                        {tableData.map((row, rowIndex) => (
+                                            <tr key={rowIndex} className="border-b border-black last:border-b-0 group">
+                                                {tableColumns.map((col, colIndex) => (
+                                                    <td key={colIndex} className="border-r border-black p-2 text-center text-sm last:border-r-0">
+                                                        <input
+                                                            type="text"
+                                                            value={row[col] || ""}
+                                                            onChange={(e) => handleTableEdit(rowIndex, col, e.target.value)}
+                                                            className="w-full text-center focus:outline-none border-none bg-transparent font-semibold"
+                                                        />
+                                                    </td>
+                                                ))}
+                                                {/* Action Column for Delete Row */}
+                                                <td className="p-2 text-center text-sm no-print border-l border-black bg-gray-50/50 w-10">
+                                                    <button
+                                                        onClick={() => removeRow(rowIndex)}
+                                                        className="text-red-400 hover:text-red-600 transition-colors"
+                                                        title="Remove Row"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div className="mt-6 text-justify">
+                                <textarea
+                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none leading-8"
+                                    rows="3"
+                                    value={letterInfo.closingParagraph}
+                                    onChange={(e) => handleLetterEdit("closingParagraph", e.target.value)}
+                                />
+                            </div>
+
+                            <div className="mt-10">
+                                <input
+                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left"
+                                    value={letterInfo.thankYou}
+                                    onChange={(e) => handleLetterEdit("thankYou", e.target.value)}
+                                />
+                            </div>
+
+                            {/* Signature Section - MOVED TO LEFT AS REQUESTED */}
+                            <div className="mt-12 flex flex-col items-start space-y-1">
+                                <input
+                                    className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-40"
+                                    value={letterInfo.regards}
+                                    onChange={(e) => handleLetterEdit("regards", e.target.value)}
+                                />
+                                <div className="h-10"></div> {/* Space for signature */}
+                                <input
+                                    className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-64"
+                                    value={letterInfo.forCompany}
+                                    onChange={(e) => handleLetterEdit("forCompany", e.target.value)}
+                                />
+                                <input
+                                    className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-64"
+                                    value={letterInfo.designation}
+                                    onChange={(e) => handleLetterEdit("designation", e.target.value)}
+                                />
+                            </div>
+
+                            {/* CC Section */}
+                            <div className="mt-10 text-sm space-y-2 italic">
+                                <p className="font-bold">प्रतिलिपि:—</p>
+                                <div className="pl-0 space-y-1">
+                                    {letterInfo.copiesTo?.map((copy, idx) => (
+                                        <div key={idx} className="flex gap-2">
+                                            <span className="min-w-[20px]">{idx + 1})</span>
+                                            <input
+                                                className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
+                                                value={copy}
+                                                onChange={(e) => {
+                                                    const newCopies = [...letterInfo.copiesTo];
+                                                    newCopies[idx] = e.target.value;
+                                                    handleLetterEdit("copiesTo", newCopies);
+                                                }}
+                                            />
+                                        </div>
                                     ))}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div className="mt-6 text-justify">
-                            <textarea
-                                className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none leading-8"
-                                rows="3"
-                                value={letterInfo.closingParagraph}
-                                onChange={(e) => handleLetterEdit("closingParagraph", e.target.value)}
-                            />
-                        </div>
-
-                        <div className="mt-10">
-                            <input
-                                className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left"
-                                value={letterInfo.thankYou}
-                                onChange={(e) => handleLetterEdit("thankYou", e.target.value)}
-                            />
-                        </div>
-
-                        {/* Signature Section - MOVED TO LEFT AS REQUESTED */}
-                        <div className="mt-12 flex flex-col items-start space-y-1">
-                            <input
-                                className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-40"
-                                value={letterInfo.regards}
-                                onChange={(e) => handleLetterEdit("regards", e.target.value)}
-                            />
-                            <div className="h-10"></div> {/* Space for signature */}
-                            <input
-                                className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-64"
-                                value={letterInfo.forCompany}
-                                onChange={(e) => handleLetterEdit("forCompany", e.target.value)}
-                            />
-                            <input
-                                className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-64"
-                                value={letterInfo.designation}
-                                onChange={(e) => handleLetterEdit("designation", e.target.value)}
-                            />
-                        </div>
-
-                        {/* CC Section */}
-                        <div className="mt-10 text-sm space-y-2 italic">
-                            <p className="font-bold">प्रतिलिपि:—</p>
-                            <div className="pl-0 space-y-1">
-                                {letterInfo.copiesTo?.map((copy, idx) => (
-                                    <div key={idx} className="flex gap-2">
-                                        <span className="min-w-[20px]">{idx + 1})</span>
-                                        <input
-                                            className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
-                                            value={copy}
-                                            onChange={(e) => {
-                                                const newCopies = [...letterInfo.copiesTo];
-                                                newCopies[idx] = e.target.value;
-                                                handleLetterEdit("copiesTo", newCopies);
-                                            }}
-                                        />
-                                    </div>
-                                ))}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
                     {/* Dynamic Footer Section */}
                     {(headerInfo.companyName.toLowerCase().includes("suraj") || headerInfo.companyName.toLowerCase().includes("tanay")) ? null : (
                         <div id="letter-footer" className="mt-20 border-t border-black pt-4 text-center text-[10px] leading-tight">

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import SearchableSelect from "./SearchableSelect"
+import supabase from "../utils/supabase"
 
 function ReportsTable() {
   const [reports, setReports] = useState([])
@@ -16,65 +17,23 @@ function ReportsTable() {
 
     let date;
 
-    // Handle Google Sheets serial date numbers (like 45466 for 21/06/2025)
     if (typeof dateValue === 'number' && dateValue > 40000) {
-      // Google Sheets date serial number starts from 1900-01-01
-      const googleEpoch = new Date(1899, 11, 30); // Dec 30, 1899
+      const googleEpoch = new Date(1899, 11, 30);
       date = new Date(googleEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
-    }
-    // Handle ISO string format (2025-05-22T07:38:28.052Z)
-    else if (typeof dateValue === 'string' && dateValue.includes('T')) {
+    } else if (typeof dateValue === 'string' && dateValue.includes('T')) {
       date = new Date(dateValue);
-    }
-    // Handle date format (2025-05-21)
-    else if (typeof dateValue === 'string' && dateValue.includes('-')) {
+    } else if (typeof dateValue === 'string' && dateValue.includes('-')) {
       date = new Date(dateValue);
-    }
-    // Handle Google Sheets format like "5/22/2025, 2:32:51 PM"
-    else if (typeof dateValue === 'string' && dateValue.includes('/') && dateValue.includes(',')) {
+    } else if (typeof dateValue === 'string' && dateValue.includes('/') && dateValue.includes(',')) {
       date = new Date(dateValue);
-    }
-    // Handle DD/MM/YYYY format
-    else if (typeof dateValue === 'string' && dateValue.includes('/') && !dateValue.includes(',')) {
-      const parts = dateValue.split('/');
-      if (parts.length === 3) {
-        // Assume DD/MM/YYYY format
-        const day = parseInt(parts[0]);
-        const month = parseInt(parts[1]) - 1; // Month is 0-indexed
-        const year = parseInt(parts[2]);
-        date = new Date(year, month, day);
-      } else {
-        date = new Date(dateValue);
-      }
-    }
-    // Handle Google Sheets Date constructor format like "Date(2025,4,21)" or "Date(2025,4,22,14,32,51)"
-    else if (typeof dateValue === 'string' && dateValue.startsWith('Date(')) {
-      // Extract the date parts from "Date(2025,4,21)" or "Date(2025,4,22,14,32,51)" format
-      const match = dateValue.match(/Date\((\d+),(\d+),(\d+)(?:,(\d+),(\d+),(\d+))?\)/);
-      if (match) {
-        const year = parseInt(match[1]);
-        const month = parseInt(match[2]); // Month is 0-indexed in this format
-        const day = parseInt(match[3]);
-        // Optional time components
-        const hours = match[4] ? parseInt(match[4]) : 0;
-        const minutes = match[5] ? parseInt(match[5]) : 0;
-        const seconds = match[6] ? parseInt(match[6]) : 0;
-        date = new Date(year, month, day, hours, minutes, seconds);
-      } else {
-        return dateValue;
-      }
-    }
-    // Handle if it's already a Date object
-    else if (typeof dateValue === 'object' && dateValue.getDate) {
+    } else if (typeof dateValue === 'object' && dateValue.getDate) {
       date = dateValue;
-    }
-    else {
-      return dateValue; // Return as is if not a recognizable date format
+    } else {
+      return String(dateValue);
     }
 
-    // Check if date is valid
     if (isNaN(date.getTime())) {
-      return dateValue; // Return original value if invalid date
+      return String(dateValue);
     }
 
     const day = String(date.getDate()).padStart(2, '0');
@@ -83,6 +42,7 @@ function ReportsTable() {
     return `${day}/${month}/${year}`;
   };
 
+  // Function to extract unique modes of call for filter dropdown
   const getUniqueModeOfCalls = () => {
     const modes = reports
       .map(report => report.modeOfCall)
@@ -90,6 +50,7 @@ function ReportsTable() {
     return [...new Set(modes)].sort()
   }
 
+  // Function to extract unique statuses for filter dropdown
   const getUniqueStatuses = () => {
     const statuses = reports
       .map(report => report.status)
@@ -97,76 +58,124 @@ function ReportsTable() {
     return [...new Set(statuses)].sort()
   }
 
-  // Function to fetch data from Google Sheets
+  // Function to fetch data from Supabase
   useEffect(() => {
     const fetchReports = async () => {
       setIsLoading(true)
       setError(null)
 
       try {
-        // Fetch the entire sheet using Google Sheets API directly
-        const sheetUrl = "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=Reports"
-        const response = await fetch(sheetUrl)
-        const text = await response.text()
+        let { data, error: repError } = await supabase
+          .from("Reports")
+          .select("*")
+          .order("id", { ascending: false });
 
-        // Extract the JSON part from the response
-        const jsonStart = text.indexOf('{')
-        const jsonEnd = text.lastIndexOf('}') + 1
-        const jsonData = text.substring(jsonStart, jsonEnd)
+        if (repError) {
+          const fallback = await supabase
+            .from("reports")
+            .select("*")
+            .order("id", { ascending: false });
+          if (!fallback.error) {
+            data = fallback.data;
+            repError = null;
+          }
+        }
 
-        const data = JSON.parse(jsonData)
+        if (!data || data.length === 0) {
+          const [{ data: fmsData, error: fmsErr }, { data: trackerData }] = await Promise.all([
+            supabase.from("FMS").select("*").order("id", { ascending: false }),
+            supabase.from("Tracker").select("*").order("id", { ascending: false }),
+          ]);
 
-        // Process the reports data
-        if (data && data.table && data.table.rows) {
-          const reportData = []
+          if (fmsErr) throw fmsErr;
 
-          // Skip the header row and process the data rows
-          data.table.rows.slice(1).forEach((row, index) => {
-            if (row.c) {
-              const report = {
-                slNo: row.c[0] ? row.c[0].v : "", // Column A
-                modeOfCall: row.c[1] ? row.c[1].v : "", // Column B
-                srLogDate: row.c[2] ? (row.c[2].f || formatDateString(row.c[2].v) || row.c[2].v) : "", // Column C
-                complaintNo: row.c[3] ? row.c[3].v : "", // Column D
-                beneficiaryInfo: row.c[4] ? row.c[4].v : "", // Column E
-                village: row.c[5] ? row.c[5].v : "", // Column F
-                block: row.c[6] ? row.c[6].v : "", // Column G
-                district: row.c[7] ? row.c[7].v : "", // Column H
-                srMonth: row.c[8] ? row.c[8].v : "", // Column I
-                projectName: row.c[9] ? row.c[9].v : "", // Column J
-                product: row.c[10] ? row.c[10].v : "", // Column K
-                make: row.c[11] ? row.c[11].v : "", // Column L
-                rating: row.c[12] ? row.c[12].v : "", // Column M
-                productSlNo: row.c[13] ? row.c[13].v : "", // Column N
-                surfaceSubmersible: row.c[14] ? row.c[14].v : "", // Column O
-                observation: row.c[15] ? row.c[15].v : "", // Column P
-                actionTaken: row.c[16] ? row.c[16].v : "", // Column Q
-                techName: row.c[17] ? row.c[17].v : "", // Column R
-                techContactNo: row.c[18] ? row.c[18].v : "", // Column S
-                attendDate: row.c[19] ? (row.c[19].f || formatDateString(row.c[19].v) || row.c[19].v) : "", // Column T
-                closedDate: row.c[20] ? (row.c[20].f || formatDateString(row.c[20].v) || row.c[20].v) : "", // Column U
-                status: row.c[21] ? row.c[21].v : "", // Column V
-                remarks: row.c[22] ? row.c[22].v : "", // Column W
-                fullRowData: row.c
-              }
-
-              reportData.push(report)
+          const trackerMap = new Map();
+          (trackerData || []).forEach((t) => {
+            if (t.complaint_id && !trackerMap.has(t.complaint_id)) {
+              trackerMap.set(t.complaint_id, t);
             }
-          })
+          });
 
-          setReports(reportData)
+          const reportData = (fmsData || []).map((row, index) => {
+            const t = trackerMap.get(row.complaint_id) || {};
+            const dateStr = formatDateString(row.complaint_date || row.timestamp);
+            let srMonth = "";
+            if (dateStr && dateStr.includes("/")) {
+              const parts = dateStr.split("/");
+              if (parts.length === 3) {
+                const d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                srMonth = d.toLocaleString("default", { month: "short" });
+              }
+            }
+
+            return {
+              slNo: index + 1,
+              modeOfCall: row.mode_of_call || "",
+              srLogDate: dateStr,
+              complaintNo: row.complaint_id || "",
+              beneficiaryInfo: [row.beneficiary_name, row.contact_number ? `(${row.contact_number})` : ""].filter(Boolean).join(" "),
+              village: row.village || "",
+              block: row.block || "",
+              district: row.district || "",
+              srMonth,
+              projectName: row.project_name || "",
+              product: row.product || "",
+              make: row.make || "",
+              rating: row.rating || "",
+              productSlNo: row.product_sl_no || "",
+              surfaceSubmersible: row.ac_dc || "",
+              observation: row.nature_of_complaint || "",
+              actionTaken: t.action_taken || row.action_taken || "",
+              techName: row.technician_name || t.technician_name || "",
+              techContactNo: row.technician_contact || t.technician_number || "",
+              attendDate: formatDateString(row.challan_date || row.planned1 || t.actual),
+              closedDate: formatDateString(row.close_date || row.actual1),
+              status: row.status || t.tracker_status || "Pending",
+              remarks: row.notes_for_technician || t.remark || "",
+            };
+          });
+
+          setReports(reportData);
+        } else {
+          const reportData = (data || []).map((row, index) => ({
+            slNo: row.sl_no || index + 1,
+            modeOfCall: row.mode_of_call || "",
+            srLogDate: formatDateString(row.sr_log_date || row.created_at),
+            complaintNo: row.complaint_no || row.complaint_id || "",
+            beneficiaryInfo: row.beneficiary_info || row.beneficiary_name || "",
+            village: row.village || "",
+            block: row.block || "",
+            district: row.district || "",
+            srMonth: row.sr_month || "",
+            projectName: row.project_name || "",
+            product: row.product || "",
+            make: row.make || "",
+            rating: row.rating || "",
+            productSlNo: row.product_sl_no || "",
+            surfaceSubmersible: row.surface_submersible || "",
+            observation: row.observation || "",
+            actionTaken: row.action_taken || "",
+            techName: row.tech_name || row.technician_name || "",
+            techContactNo: row.tech_contact_no || row.technician_contact || "",
+            attendDate: formatDateString(row.attend_date),
+            closedDate: formatDateString(row.closed_date),
+            status: row.status || "",
+            remarks: row.remarks || "",
+          }));
+
+          setReports(reportData);
         }
       } catch (err) {
-        console.error("Error fetching reports data:", err)
-        setError(err.message)
-        setReports([])
+        console.error("Error fetching reports from Supabase:", err);
+        setError(err.message);
+        setReports([]);
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
-    fetchReports()
-  }, [])
+    fetchReports();
+  }, []);
 
   // Filter reports based on search term and filters
   const filteredReports = reports.filter(
@@ -307,7 +316,7 @@ function ReportsTable() {
         </select> */}
       </div>
 
-      <div className="overflow-x-auto -mx-4 sm:mx-0">
+      <div className="overflow-x-auto overflow-y-auto max-h-[500px] -mx-4 sm:mx-0">
         <div className="inline-block min-w-full align-middle">
           {filteredReports.length === 0 ? (
             <div className="text-center p-6 bg-gray-50 rounded-lg border border-gray-200">
@@ -315,7 +324,7 @@ function ReportsTable() {
             </div>
           ) : (
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-100">
+              <thead className="bg-gray-100 sticky top-0 z-10">
                 <tr>
                   <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     Sl No.

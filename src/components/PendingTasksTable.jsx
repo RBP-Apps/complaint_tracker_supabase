@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
-import { Calendar, Upload, MapPin, Loader, Edit, Check, X, Download, FileText } from "react-feather"
+import { useState, useEffect, useMemo, useCallback } from "react"
+import { Calendar, Upload, MapPin, Loader, Edit, Check, X, Download, FileText, RefreshCw } from "react-feather"
 import DatePicker from "react-datepicker"
 import "react-datepicker/dist/react-datepicker.css"
 import * as XLSX from "xlsx"
@@ -11,7 +11,7 @@ import supabase from "../utils/supabase"
 import SearchableSelect from "./SearchableSelect"
 
 
-function TrackerPendingTable() {
+function TrackerPendingTable({ exportRef }) {
   const [pendingTasks, setPendingTasks] = useState([])
   const [selectedTask, setSelectedTask] = useState(null)
   const [selectedTaskData, setSelectedTaskData] = useState(null)
@@ -70,9 +70,7 @@ function TrackerPendingTable() {
     ? (username || "").substring(4).trim()
     : ""
 
-  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwnIMOzsFbniWnPFhl3lzE-2W0l6lD23keuz57-ldS_umSXIJqpEK-qxLE6eM0s7drqrQ/exec"
 
-  const DRIVE_FOLDER_ID = "1-H5DWKRV2u_ueqtLX-ISTPvuySGYBLoT"
 
   // Location and address functions (from reference)
   const getFormattedAddress = async (latitude, longitude) => {
@@ -218,14 +216,56 @@ const generateNextRBPSTId = async () => {
     }
   }
 
-  const fetchTasks = async () => {
-    setIsLoading(true);
+  // Cache check for instant zero-latency render (Stale-While-Revalidate)
+  useEffect(() => {
+    try {
+      const cached = sessionStorage.getItem("tracker_pending_tasks_cache");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setPendingTasks(parsed);
+          setIsLoading(false);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load cached pending tasks:", e);
+    }
+  }, []);
+
+  const fetchTasks = async (isBackground = false) => {
+    if (!isBackground) setIsLoading(true);
     setError(null);
 
     try {
+      // ✅ Fetch required columns from FMS (rating represents system voltage/rating in FMS)
       const { data, error } = await supabase
         .from("FMS")
-        .select("*")
+        .select(`
+          id,
+          complaint_id,
+          id_number,
+          technician_name,
+          technician_contact,
+          beneficiary_name,
+          contact_number,
+          village,
+          block,
+          district,
+          product,
+          make,
+          rating,
+          nature_of_complaint,
+          controller_rid_no,
+          product_sl_no,
+          challan_date,
+          close_date,
+          timestamp,
+          complaint_date,
+          company_name,
+          mode_of_call,
+          status,
+          assign_to_vendor
+        `)
         .order("id", { ascending: false });
 
       if (error) throw error;
@@ -252,12 +292,12 @@ const generateNextRBPSTId = async () => {
           district: row.district,
           product: row.product,
           make: row.make,
-          systemVoltage: row.system_voltage || row.rating || "",
+          systemVoltage: row.rating || "",
           natureOfComplaint: row.nature_of_complaint,
           ContollerRIDNo: row.controller_rid_no,
           ProductSLNo: row.product_sl_no,
           ChallanDate: row.challan_date,
-          CloseDate: row.close_date || row.resolved_date,
+          CloseDate: row.close_date || "",
           timestamp: row.timestamp,
           date: row.complaint_date,
           head: row.timestamp,
@@ -268,68 +308,54 @@ const generateNextRBPSTId = async () => {
         }));
 
       setPendingTasks(taskData);
+      try {
+        sessionStorage.setItem("tracker_pending_tasks_cache", JSON.stringify(taskData));
+      } catch (cacheErr) {
+        // Ignore cache storage errors
+      }
     } catch (err) {
       console.error("❌ Error fetching tasks:", err);
       setError(err.message);
-      setPendingTasks([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const fetchTechnicianOptions = async () => {
+  const fetchMasterOptions = async () => {
     try {
       const { data, error } = await supabase
         .from("Master")
-        .select("technician_name")
-        .not("technician_name", "is", null);
+        .select("technician_name, tracker_status");
 
       if (error) throw error;
 
-      const options = (data || [])
-        .map((item) => item.technician_name)
-        .filter(Boolean);
+      if (data) {
+        const options = data
+          .map((item) => item.technician_name)
+          .filter(Boolean);
+        setTechnicianOptions([...new Set(options)].sort());
 
-      setTechnicianOptions([...new Set(options)].sort());
+        const statusOptions = data
+          .map((row) => row.tracker_status)
+          .filter(Boolean);
+        const uniqueOptions = [...new Set(statusOptions)];
+        const mappedOptions = uniqueOptions.map((status) => ({
+          label: status,
+          value: status.toLowerCase().replace(/[^a-z0-9]/g, ""),
+        }));
+        setTrackerStatusOptions(mappedOptions);
+      }
     } catch (err) {
-      console.error("❌ Error fetching technician options:", err);
-      setTechnicianOptions([]);
-    }
-  };
-
-  const fetchTrackerStatusOptions = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("Master")
-        .select("tracker_status")
-        .not("tracker_status", "is", null);
-
-      if (error) throw error;
-
-      const statusOptions = (data || [])
-        .map((row) => row.tracker_status)
-        .filter(Boolean);
-
-      const uniqueOptions = [...new Set(statusOptions)];
-
-      const mappedOptions = uniqueOptions.map((status) => ({
-        label: status,
-        value: status.toLowerCase().replace(/[^a-z0-9]/g, ""),
-      }));
-
-      setTrackerStatusOptions(mappedOptions);
-    } catch (err) {
-      console.error("❌ Error fetching tracker status:", err);
+      console.error("❌ Error fetching master options:", err);
     }
   };
 
   useEffect(() => {
-    console.log('🚀 Component mounted - Starting parallel data fetch for high performance...');
-    // ✅ Parallel execution of all 3 queries for maximum speed
+    const hasCache = !!sessionStorage.getItem("tracker_pending_tasks_cache");
+    // Parallel execution for maximum performance, background refresh if cached
     Promise.all([
-      fetchTasks(),
-      fetchTechnicianOptions(),
-      fetchTrackerStatusOptions(),
+      fetchTasks(hasCache),
+      fetchMasterOptions(),
     ]);
   }, []);
 
@@ -690,8 +716,86 @@ const generateNextRBPSTId = async () => {
     }));
   };
 
+
+
+  // ✅ Memoized filter lists for high speed
+  const uniqueCompanies = useMemo(() => {
+    const companies = pendingTasks
+      .map((task) => task.companyName)
+      .filter((name) => name && name.trim() !== "");
+    return [...new Set(companies)].sort();
+  }, [pendingTasks]);
+
+  const uniqueModeOfCalls = useMemo(() => {
+    const modes = pendingTasks
+      .map((task) => task.modeOfCall)
+      .filter((mode) => mode && mode.trim() !== "");
+    return [...new Set(modes)].sort();
+  }, [pendingTasks]);
+
+  const uniqueTechnicians = useMemo(() => {
+    const technicians = pendingTasks
+      .map((task) => task.technicianName)
+      .filter((name) => name && name.trim() !== "");
+    return [...new Set(technicians)].sort();
+  }, [pendingTasks]);
+
+  // Role-based filtering
+  const tasksFilteredByRole = useMemo(() => {
+    if (!userRole) return pendingTasks;
+    const lowerRole = String(userRole || "").toLowerCase();
+    if (lowerRole === "admin") return pendingTasks;
+
+    if ((lowerRole === "tech" || lowerRole === "user") && username) {
+      return pendingTasks.filter(
+        (task) => String(task.technicianName || "").toLowerCase() === String(username || "").toLowerCase()
+      );
+    }
+
+    if ((lowerRole === "tech" || lowerRole === "user") && !username) {
+      return [];
+    }
+
+    return pendingTasks;
+  }, [pendingTasks, userRole, username]);
+
+  // Search & column filtering
+  const filteredTasks = useMemo(() => {
+    return tasksFilteredByRole.filter((task) => {
+      const searchFields = [
+        task.complaintId,
+        task.technicianName,
+        task.beneficiaryName,
+        task.contactNumber,
+        task.village,
+        task.block,
+        task.district,
+        task.product,
+        task.make,
+        task.companyName,
+        task.modeOfCall,
+      ];
+
+      const normalizeText = (text) => (text ? text.toString().toLowerCase().trim() : "");
+
+      const matchesSearch = () => {
+        if (!searchTerm || searchTerm.trim() === "") return true;
+        const searchWords = normalizeText(searchTerm).split(/\s+/).filter((w) => w.length > 0);
+        return searchWords.every((word) =>
+          searchFields.some((field) => normalizeText(field).includes(word))
+        );
+      };
+
+      const matchesCompany = companyFilter === "" || task.companyName === companyFilter;
+      const matchesModeOfCall = modeOfCallFilter === "" || task.modeOfCall === modeOfCallFilter;
+      const matchesTechnician = technicianFilter === "" || task.technicianName === technicianFilter;
+
+      return matchesSearch() && matchesCompany && matchesModeOfCall && matchesTechnician;
+    });
+  }, [tasksFilteredByRole, searchTerm, companyFilter, modeOfCallFilter, technicianFilter]);
+
   // ✅ Export to Excel function
-  const exportToExcel = () => {
+  const exportToExcel = useCallback(() => {
     if (!filteredTasks || filteredTasks.length === 0) {
       alert("No data available to export");
       return;
@@ -734,10 +838,10 @@ const generateNextRBPSTId = async () => {
       console.error("Export to Excel failed:", err);
       alert("Failed to export Excel file: " + err.message);
     }
-  };
+  }, [filteredTasks]);
 
   // ✅ Export to PDF function
-  const exportToPDF = () => {
+  const exportToPDF = useCallback(() => {
     if (!filteredTasks || filteredTasks.length === 0) {
       alert("No data available to export");
       return;
@@ -839,129 +943,108 @@ const generateNextRBPSTId = async () => {
       console.error("Export to PDF failed:", err);
       alert("Failed to export PDF file: " + err.message);
     }
-  };
+  }, [filteredTasks]);
 
-  // ✅ Memoized filter lists for high speed
-  const uniqueCompanies = useMemo(() => {
-    const companies = pendingTasks
-      .map((task) => task.companyName)
-      .filter((name) => name && name.trim() !== "");
-    return [...new Set(companies)].sort();
-  }, [pendingTasks]);
-
-  const uniqueModeOfCalls = useMemo(() => {
-    const modes = pendingTasks
-      .map((task) => task.modeOfCall)
-      .filter((mode) => mode && mode.trim() !== "");
-    return [...new Set(modes)].sort();
-  }, [pendingTasks]);
-
-  const uniqueTechnicians = useMemo(() => {
-    const technicians = pendingTasks
-      .map((task) => task.technicianName)
-      .filter((name) => name && name.trim() !== "");
-    return [...new Set(technicians)].sort();
-  }, [pendingTasks]);
-
-  // Role-based filtering
-  const tasksFilteredByRole = useMemo(() => {
-    if (!userRole) return pendingTasks;
-    const lowerRole = String(userRole || "").toLowerCase();
-    if (lowerRole === "admin") return pendingTasks;
-
-    if ((lowerRole === "tech" || lowerRole === "user") && username) {
-      return pendingTasks.filter(
-        (task) => String(task.technicianName || "").toLowerCase() === String(username || "").toLowerCase()
-      );
-    }
-
-    if ((lowerRole === "tech" || lowerRole === "user") && !username) {
-      return [];
-    }
-
-    return pendingTasks;
-  }, [pendingTasks, userRole, username]);
-
-  // Search & column filtering
-  const filteredTasks = useMemo(() => {
-    return tasksFilteredByRole.filter((task) => {
-      const searchFields = [
-        task.complaintId,
-        task.technicianName,
-        task.beneficiaryName,
-        task.contactNumber,
-        task.village,
-        task.block,
-        task.district,
-        task.product,
-        task.make,
-        task.companyName,
-        task.modeOfCall,
-      ];
-
-      const normalizeText = (text) => (text ? text.toString().toLowerCase().trim() : "");
-
-      const matchesSearch = () => {
-        if (!searchTerm || searchTerm.trim() === "") return true;
-        const searchWords = normalizeText(searchTerm).split(/\s+/).filter((w) => w.length > 0);
-        return searchWords.every((word) =>
-          searchFields.some((field) => normalizeText(field).includes(word))
-        );
+  // Connect export functions to parent exportRef
+  useEffect(() => {
+    if (exportRef) {
+      exportRef.current = {
+        exportToExcel,
+        exportToPDF,
       };
+    }
+  }, [exportRef, exportToExcel, exportToPDF]);
 
-      const matchesCompany = companyFilter === "" || task.companyName === companyFilter;
-      const matchesModeOfCall = modeOfCallFilter === "" || task.modeOfCall === modeOfCallFilter;
-      const matchesTechnician = technicianFilter === "" || task.technicianName === technicianFilter;
-
-      return matchesSearch() && matchesCompany && matchesModeOfCall && matchesTechnician;
-    });
-  }, [tasksFilteredByRole, searchTerm, companyFilter, modeOfCallFilter, technicianFilter]);
-
-  if (isLoading) {
+  if (isLoading && pendingTasks.length === 0) {
     return (
-      <div className="p-4 flex justify-center items-center h-64">
-        <div className="text-gray-500">Loading tasks data...</div>
+      <div className="p-4 sm:p-6 space-y-4">
+        {/* Skeleton Header Controls */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 animate-pulse">
+          <div className="h-7 w-56 bg-gray-200 rounded-md"></div>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <div className="h-9 w-48 bg-gray-200 rounded-md"></div>
+            <div className="h-9 w-32 bg-gray-200 rounded-md"></div>
+          </div>
+        </div>
+
+        {/* Skeleton Table (400px container) */}
+        <div className="max-h-[400px] h-[400px] overflow-hidden border border-gray-200 rounded-lg bg-white relative shadow-inner">
+          <div className="bg-slate-100 p-3 border-b border-gray-200 flex gap-4">
+            <div className="h-4 w-16 bg-gray-300 rounded"></div>
+            <div className="h-4 w-28 bg-gray-300 rounded"></div>
+            <div className="h-4 w-24 bg-gray-300 rounded"></div>
+            <div className="h-4 w-32 bg-gray-300 rounded"></div>
+            <div className="h-4 w-28 bg-gray-300 rounded"></div>
+            <div className="h-4 w-24 bg-gray-300 rounded"></div>
+            <div className="h-4 w-24 bg-gray-300 rounded"></div>
+          </div>
+          <div className="divide-y divide-gray-100 p-3 space-y-3">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="flex gap-4 items-center py-2 animate-pulse">
+                <div className="h-7 w-16 bg-amber-100 rounded"></div>
+                <div className="h-4 w-28 bg-gray-200 rounded"></div>
+                <div className="h-4 w-20 bg-gray-100 rounded"></div>
+                <div className="h-4 w-36 bg-gray-200 rounded"></div>
+                <div className="h-4 w-24 bg-gray-100 rounded"></div>
+                <div className="h-4 w-20 bg-gray-100 rounded"></div>
+                <div className="h-4 w-24 bg-gray-100 rounded"></div>
+              </div>
+            ))}
+          </div>
+
+          {/* Centered Professional Spinner Overlay */}
+          <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex flex-col items-center justify-center">
+            <div className="inline-flex items-center gap-2.5 px-4 py-2 bg-white border border-gray-200 shadow-md rounded-full text-sm font-medium text-gray-700">
+              <Loader className="h-4 w-4 text-blue-600 animate-spin" />
+              <span>Loading pending tasks...</span>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error && pendingTasks.length === 0) {
     return (
-      <div className="p-4 flex justify-center items-center h-64">
-        <div className="text-red-500">Error loading data: {error}</div>
+      <div className="p-6 flex flex-col justify-center items-center h-64 text-center">
+        <div className="text-red-500 font-medium mb-2">Error loading tasks: {error}</div>
+        <button
+          onClick={() => fetchTasks(false)}
+          className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium cursor-pointer"
+        >
+          Try Again
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="p-4">
+    <div className="p-4 sm:p-5">
       <div className="mb-4 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-base sm:text-lg font-bold text-gray-800">Tracker Pending Tasks</h1>
           <span className="text-xs bg-blue-100 text-blue-800 font-semibold px-2.5 py-0.5 rounded-full">
             {filteredTasks.length} {filteredTasks.length === 1 ? 'task' : 'tasks'}
           </span>
+          {isLoading && (
+            <span className="inline-flex items-center gap-1 text-xs text-blue-600 font-medium animate-pulse">
+              <Loader className="h-3 w-3 animate-spin" />
+              Refreshing...
+            </span>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
-          {/* Export to Excel & PDF buttons */}
+          {/* Refresh Button */}
           <button
             type="button"
-            onClick={exportToExcel}
-            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-medium rounded-md shadow-sm transition-colors duration-150"
-            title="Export filtered data to Excel"
+            onClick={() => fetchTasks(false)}
+            disabled={isLoading}
+            className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 hover:bg-gray-50 active:bg-gray-100 text-gray-700 text-xs sm:text-sm font-medium rounded-md shadow-xs transition-all cursor-pointer"
+            title="Refresh tasks data"
           >
-            <Download className="h-4 w-4" />
-            <span>Excel Export</span>
-          </button>
-          <button
-            type="button"
-            onClick={exportToPDF}
-            className="flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-medium rounded-md shadow-sm transition-colors duration-150"
-            title="Export filtered data to PDF"
-          >
-            <FileText className="h-4 w-4" />
-            <span>PDF Export</span>
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin text-blue-600" : "text-gray-500"}`} />
+            <span>Refresh</span>
           </button>
 
           <div className="relative flex-1 sm:flex-initial">
@@ -1081,83 +1164,113 @@ const generateNextRBPSTId = async () => {
                 ))}
               </div>
 
-              {/* Desktop Table View */}
-              <div className="hidden md:block overflow-x-auto">
-                <div className="max-h-[600px] overflow-y-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0 z-10">
-                      <tr>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                          Actions
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                          Auto Complaint ID
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                          ID Number
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                          Beneficiary Name
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                          Contact Number
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                          Village
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                          Block
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                          District
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                          Product
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                          Rating
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">Contoller RID No.</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">Product SL No.</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">Challan Date </th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">Close Date</th>
+              {/* Desktop Table View - 400px Fixed Header with Unwrapped Header and Wrapped Body */}
+              <div className="hidden md:block max-h-[400px] h-[400px] overflow-y-auto overflow-x-auto border border-gray-200 rounded-lg shadow-inner bg-white">
+                <table className="min-w-full divide-y divide-gray-200 text-left border-collapse">
+                  <thead className="bg-slate-100 sticky top-0 z-10 shadow-xs">
+                    <tr>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-slate-100 border-b border-gray-200">
+                        Actions
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-slate-100 border-b border-gray-200">
+                        Auto Complaint ID
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-slate-100 border-b border-gray-200">
+                        ID Number
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-slate-100 border-b border-gray-200">
+                        Beneficiary Name
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-slate-100 border-b border-gray-200">
+                        Contact Number
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-slate-100 border-b border-gray-200">
+                        Village
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-slate-100 border-b border-gray-200">
+                        Block
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-slate-100 border-b border-gray-200">
+                        District
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-slate-100 border-b border-gray-200">
+                        Product
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-slate-100 border-b border-gray-200">
+                        Rating
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-slate-100 border-b border-gray-200">
+                        Contoller RID No.
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-slate-100 border-b border-gray-200">
+                        Product SL No.
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-slate-100 border-b border-gray-200">
+                        Challan Date
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-slate-100 border-b border-gray-200">
+                        Close Date
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredTasks.map((task, index) => (
+                      <tr key={task.complaintId || index} className="hover:bg-blue-50/40 transition-colors">
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <button
+                            className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-semibold py-1 px-2.5 rounded-md shadow-xs transition-all cursor-pointer"
+                            onClick={() => handleTaskSelection(task)}
+                          >
+                            Update
+                          </button>
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm font-semibold text-blue-600">
+                          {task.complaintId}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm font-medium text-gray-800">
+                          {task.idNumber}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[170px] min-w-[130px] text-sm text-gray-800">
+                          {task.beneficiaryName}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-700">
+                          {task.contactNumber}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[130px] min-w-[90px] text-sm text-gray-700">
+                          {task.village}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[130px] min-w-[90px] text-sm text-gray-700">
+                          {task.block}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[130px] min-w-[90px] text-sm text-gray-700">
+                          {task.district}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[150px] min-w-[110px] text-sm text-gray-800">
+                          {task.product}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm">
+                          {task.priority && (
+                            <span className={`px-2 py-0.5 text-xs font-semibold rounded-full text-white ${getPriorityColor(task.priority)}`}>
+                              {task.priority}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[140px] min-w-[100px] text-sm text-gray-700">
+                          {task.ContollerRIDNo}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-normal break-words max-w-[140px] min-w-[100px] text-sm text-gray-700">
+                          {task.ProductSLNo}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-700">
+                          {task.ChallanDate}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-700">
+                          {task.CloseDate}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredTasks.map((task, index) => (
-                        <tr key={task.complaintId || index} className="hover:bg-gray-50">
-                          <td className="px-3 py-4 whitespace-nowrap">
-                            <button
-                              className="bg-gradient-to-r from-amber-400 to-orange-500 text-white hover:from-amber-500 hover:to-orange-600 border-0 py-1 px-3 rounded-md"
-                              onClick={() => handleTaskSelection(task)}
-                            >
-                              Update
-                            </button>
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm font-medium">{task.complaintId}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{task.idNumber}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm">{task.beneficiaryName}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm">{task.contactNumber}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm">{task.village}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm">{task.block}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm">{task.district}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm">{task.product}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm">
-                            {task.priority && (
-                              <span className={`px-2 py-1 text-xs font-semibold rounded-full text-white ${getPriorityColor(task.priority)}`}>
-                                {task.priority}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm">{task.ContollerRIDNo}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm">{task.ProductSLNo}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm">{task.ChallanDate}</td>
-                          <td className="px-3 py-4 whitespace-nowrap text-sm">{task.CloseDate}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </>
           )}

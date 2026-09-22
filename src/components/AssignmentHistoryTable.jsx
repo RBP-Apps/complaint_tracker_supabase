@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import SearchableSelect from "./SearchableSelect"
+import supabase from "../utils/supabase"
 
 function AssignmentHistoryTable() {
   const [assignmentHistory, setAssignmentHistory] = useState([])
@@ -24,15 +25,23 @@ function AssignmentHistoryTable() {
     else if (typeof dateValue === 'string' && dateValue.includes('-')) {
       date = new Date(dateValue);
     }
-    // Handle Google Sheets Date constructor format like "Date(2025,4,21)"
+    // Handle Google Sheets format like "5/22/2025, 2:32:51 PM"
+    else if (typeof dateValue === 'string' && dateValue.includes('/') && dateValue.includes(',')) {
+      date = new Date(dateValue);
+    }
+    // Handle Google Sheets Date constructor format like "Date(2025,4,21)" or "Date(2025,4,22,14,32,51)"
     else if (typeof dateValue === 'string' && dateValue.startsWith('Date(')) {
-      // Extract the date parts from "Date(2025,4,21)" format
-      const match = dateValue.match(/Date\((\d+),(\d+),(\d+)\)/);
+      // Extract the date parts from "Date(2025,4,21)" or "Date(2025,4,22,14,32,51)" format
+      const match = dateValue.match(/Date\((\d+),(\d+),(\d+)(?:,(\d+),(\d+),(\d+))?\)/);
       if (match) {
         const year = parseInt(match[1]);
         const month = parseInt(match[2]); // Month is 0-indexed in this format
         const day = parseInt(match[3]);
-        date = new Date(year, month, day);
+        // Optional time components
+        const hours = match[4] ? parseInt(match[4]) : 0;
+        const minutes = match[5] ? parseInt(match[5]) : 0;
+        const seconds = match[6] ? parseInt(match[6]) : 0;
+        date = new Date(year, month, day, hours, minutes, seconds);
       } else {
         return dateValue;
       }
@@ -56,110 +65,86 @@ function AssignmentHistoryTable() {
     return `${day}/${month}/${year}`;
   };
 
-  const getUniqueCompanyNames = () => {
+  // Function to extract unique companies for filter dropdown
+  const getUniqueCompanies = () => {
     const companies = assignmentHistory
       .map(assignment => assignment.companyName)
-      .filter(name => name && name.trim() !== "")
+      .filter(company => company && company.trim() !== "")
     return [...new Set(companies)].sort()
   }
 
-  const getUniqueModeOfCalls = () => {
+  // Function to extract unique modes of call for filter dropdown
+  const getUniqueModesOfCall = () => {
     const modes = assignmentHistory
       .map(assignment => assignment.modeOfCall)
       .filter(mode => mode && mode.trim() !== "")
     return [...new Set(modes)].sort()
   }
 
-  // Function to fetch data from Google Sheets
+  // Function to fetch data from Supabase
   useEffect(() => {
     const fetchAssignmentHistory = async () => {
       setIsLoading(true)
       setError(null)
 
       try {
-        // Fetch the entire sheet using Google Sheets API directly
-        const sheetUrl = "https://docs.google.com/spreadsheets/d/1A9kxc6P8UkQ-pY8R8DQHpW9OIGhxeszUoTou1yKpNvU/gviz/tq?tqx=out:json&sheet=FMS"
-        const response = await fetch(sheetUrl)
-        const text = await response.text()
+        const { data, error } = await supabase
+          .from("FMS")
+          .select("*")
+          .not("planned", "is", null)
+          .not("actual", "is", null)
+          .order("id", { ascending: false });
 
-        // Extract the JSON part from the response
-        const jsonStart = text.indexOf('{')
-        const jsonEnd = text.lastIndexOf('}') + 1
-        const jsonData = text.substring(jsonStart, jsonEnd)
+        if (error) throw error;
 
-        const data = JSON.parse(jsonData)
+        const historyData = (data || []).map((row, index) => ({
+          rowIndex: index + 1,
+          complaintNo: row.complaint_id || "",
+          date: formatDateString(row.complaint_date || row.timestamp),
+          head: row.company_name || "",
+          companyName: row.company_name || "",
+          modeOfCall: row.mode_of_call || "",
+          idNumber: row.id_number || "",
+          projectName: row.project_name || "",
+          complaintNumber: row.complaint_id || "",
+          complaintDate: formatDateString(row.complaint_date),
+          beneficiaryName: row.beneficiary_name || "",
+          contactNumber: row.contact_number || "",
+          village: row.village || "",
+          block: row.block || "",
+          district: row.district || "",
+          product: row.product || "",
+          make: row.make || "",
+          systemVoltage: row.system_voltage || "",
+          rating: row.rating || "",
+          qty: row.qty || "",
+          acDc: row.ac_dc || "",
+          priority: row.rating || "",
+          insuranceType: row.insurance_type || "",
+          natureOfComplaint: row.nature_of_complaint || "",
+          delay: row.delay || "",
+          technicianName: row.technician_name || "",
+          technicianContact: row.technician_contact || "",
+          assigneeName: row.assignee_name || "",
+          assigneeWhatsApp: row.assignee_whatsapp_number || "",
+          location: row.location || "",
+          complaintDetails: row.complaint_details || "",
+          expectedCompletionDate: formatDateString(row.expected_completion_date),
+          notesForTechnician: row.notes_for_technician || "",
+        }));
 
-        // Process the assignments data
-        if (data && data.table && data.table.rows) {
-          const historyData = []
-
-          // Skip the header row and process the data rows
-          data.table.rows.slice(0).forEach((row, index) => {
-            if (row.c) {
-              // Check if column Y (index 25) has data and column Z (index 26) is null/empty
-              const hasColumnY = row.c[24] && row.c[24].v !== null && row.c[24].v !== "";
-              const isColumnZEmpty = row.c[25] && row.c[25].v !== null && row.c[25].v !== "";
-
-              // Only include rows where column Y has data and column Z is null
-              if (hasColumnY && isColumnZEmpty) {
-                const assignment = {
-                  rowIndex: index + 6, // Actual row index in the sheet (1-indexed, +5 for header rows, +1 for 1-indexing)
-
-                  // All columns from B to AI (excluding Planned and Actual)
-                  complaintNo: row.c[1] ? row.c[1].v : "", // Column B - Complaint No.
-                  date: row.c[2] ? formatDateString(row.c[2].v) : "", // Column C - Date
-                  head: row.c[3] ? row.c[3].v : "", // Column D - Head
-                  companyName: row.c[4] ? row.c[4].v : "", // Column E - Company Name
-                  modeOfCall: row.c[5] ? row.c[5].v : "", // Column F - Mode Of Call
-                  idNumber: row.c[6] ? row.c[6].v : "", // Column G - ID Number
-                  projectName: row.c[7] ? row.c[7].v : "", // Column H - Project Name
-                  complaintNumber: row.c[8] ? row.c[8].v : "", // Column I - Complaint Number
-                  complaintDate: row.c[9] ? formatDateString(row.c[9].v) : "", // Column J - Complaint Date
-                  beneficiaryName: row.c[10] ? row.c[10].v : "", // Column K - Beneficiary Name
-                  contactNumber: row.c[11] ? row.c[11].v : "", // Column L - Contact Number
-                  village: row.c[12] ? row.c[12].v : "", // Column M - Village
-                  block: row.c[13] ? row.c[13].v : "", // Column N - Block
-                  district: row.c[14] ? row.c[14].v : "", // Column O - District
-                  product: row.c[15] ? row.c[15].v : "", // Column P - Product
-                  make: row.c[16] ? row.c[16].v : "", // Column Q - Make
-                  systemVoltage: row.c[17] ? row.c[17].v : "", // Column R - System Voltage
-                  rating: row.c[18] ? row.c[18].v : "", // Column S - Rating
-                  qty: row.c[19] ? row.c[19].v : "", // Column T - Qty
-                  acDc: row.c[20] ? row.c[20].v : "", // Column U - AC/DC
-                  priority: row.c[21] ? row.c[21].v : "", // Column V - Priority
-                  insuranceType: row.c[22] ? row.c[22].v : "", // Column W - Insurance Type
-                  natureOfComplaint: row.c[23] ? row.c[23].v : "", // Column X - Nature Of Complaint
-                  // Skip Y (Planned) and Z (Actual) columns as requested
-                  delay: row.c[26] ? row.c[26].v : "", // Column AA - Delay
-                  technicianName: row.c[27] ? row.c[27].v : "", // Column AB - Technician Name
-                  technicianContact: row.c[28] ? row.c[28].v : "", // Column AC - Technician Contact
-                  assigneeName: row.c[29] ? row.c[29].v : "", // Column AD - Assignee Name
-                  assigneeWhatsApp: row.c[30] ? row.c[30].v : "", // Column AE - Assignee WhatsApp Number
-                  location: row.c[31] ? row.c[31].v : "", // Column AF - Location
-                  complaintDetails: row.c[32] ? row.c[32].v : "", // Column AG - Complaint Details
-                  expectedCompletionDate: row.c[33] ? formatDateString(row.c[33].v) : "", // Column AH - Expected Completion Date
-                  notesForTechnician: row.c[34] ? row.c[34].v : "", // Column AI - Notes for Technician
-                }
-
-                historyData.push(assignment)
-              }
-            }
-          })
-
-          setAssignmentHistory(historyData)
-        }
+        setAssignmentHistory(historyData);
       } catch (err) {
-        console.error("Error fetching assignment history data:", err)
-        setError(err.message)
-        // On error, set to empty array
-        setAssignmentHistory([])
+        console.error("Error fetching assignment history from Supabase:", err);
+        setError(err.message);
+        setAssignmentHistory([]);
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
-    fetchAssignmentHistory()
-  }, [])
+    fetchAssignmentHistory();
+  }, []);
 
   // Function to get appropriate color for priority badges
   const getPriorityColor = (priority) => {
@@ -328,12 +313,7 @@ function AssignmentHistoryTable() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-100">
                 <tr>
-                  {/* <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                    Complaint No.
-                  </th> */}
-                  {/* <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                    Date
-                    </th> */}
+                  
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     Complaint Number
                   </th>
