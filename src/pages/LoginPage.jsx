@@ -146,7 +146,7 @@ function LoginPage() {
           <div className="flex items-center justify-center gap-6">
 
             <img
-              src="/Logo.PNG"
+              src="RBP-Logo.PNG"
               alt="logo"
               className="w-28 h-28 object-contain"
             />

@@ -79,6 +79,7 @@ export default function UserManagement() {
   const [showEditPassword, setShowEditPassword] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
+  const [editingUser, setEditingUser] = useState(null);
   const [editFormData, setEditFormData] = useState({
     username: "",
     email: "",
@@ -311,15 +312,16 @@ export default function UserManagement() {
 
   // ------------------ EDIT USER MODAL HANDLERS ------------------
   const handleOpenEditModal = (user) => {
+    setEditingUser(user);
     setEditingUserId(user.id);
     setEditFormData({
-      username: user.username || "",
-      email: user.email || "",
+      username: String(user.username || ""),
+      email: String(user.email || ""),
       password: "", // blank indicates keep current password
-      role: (user.role || "user").toLowerCase(),
-      contact_no: user.contact_no || "",
-      alternate_contact_no: user.alternate_contact_no || "",
-      tech_working_district: user.tech_working_district || "",
+      role: String(user.role || "user").toLowerCase(),
+      contact_no: String(user.contact_no ?? ""),
+      alternate_contact_no: String(user.alternate_contact_no ?? ""),
+      tech_working_district: String(user.tech_working_district || ""),
       page_access: Array.isArray(user.page_access) ? [...user.page_access] : [],
     });
     setShowEditPassword(false);
@@ -350,40 +352,77 @@ export default function UserManagement() {
   };
 
   const handleUpdateUserSubmit = async (e) => {
-    e.preventDefault();
-    if (!editFormData.username.trim() || !editFormData.email.trim()) {
-      showToast("Username and email are required!", "error");
+    if (e && e.preventDefault) e.preventDefault();
+
+    const cleanUsername = String(editFormData.username || "").trim();
+    if (!cleanUsername) {
+      showToast("Username is required!", "error");
       return;
     }
 
     setEditLoading(true);
     try {
       const updatePayload = {
-        username: editFormData.username.trim(),
-        email: editFormData.email.trim(),
-        role: (editFormData.role || "user").toLowerCase(),
-        contact_no: editFormData.contact_no.trim(),
-        alternate_contact_no: editFormData.alternate_contact_no.trim(),
-        tech_working_district: editFormData.tech_working_district.trim(),
+        username: cleanUsername,
+        email: String(editFormData.email || "").trim(),
+        role: String(editFormData.role || "user").toLowerCase(),
+        contact_no: String(editFormData.contact_no ?? "").trim(),
+        alternate_contact_no: String(editFormData.alternate_contact_no ?? "").trim(),
+        tech_working_district: String(editFormData.tech_working_district || "").trim(),
         page_access: editFormData.page_access,
       };
 
       // Only update password if a new one was provided
-      if (editFormData.password && editFormData.password.trim() !== "") {
-        updatePayload.password = editFormData.password.trim();
+      if (editFormData.password && String(editFormData.password).trim() !== "") {
+        updatePayload.password = String(editFormData.password).trim();
       }
 
-      const { error } = await supabase
-        .from("Login")
-        .update(updatePayload)
-        .eq("id", editingUserId);
+      console.log("Submitting user update payload:", updatePayload);
 
-      if (error) throw error;
+      // Construct update query: use id if available, otherwise match by original username
+      let updateQuery;
+      if (editingUserId !== undefined && editingUserId !== null) {
+        updateQuery = supabase.from("Login").update(updatePayload).eq("id", editingUserId);
+      } else if (editingUser?.username) {
+        updateQuery = supabase.from("Login").update(updatePayload).eq("username", editingUser.username);
+      } else {
+        updateQuery = supabase.from("Login").update(updatePayload).eq("username", cleanUsername);
+      }
+
+      let { error } = await updateQuery;
+
+      // Fallback 1: If database schema expects page_access as comma-separated text string
+      if (error && error.message && (error.message.includes("page_access") || error.message.includes("array") || error.message.includes("text[]"))) {
+        console.warn("Retrying update with page_access as comma-separated string...", error);
+        updatePayload.page_access = (editFormData.page_access || []).join(",");
+        
+        let retryQuery;
+        if (editingUserId !== undefined && editingUserId !== null) {
+          retryQuery = supabase.from("Login").update(updatePayload).eq("id", editingUserId);
+        } else {
+          retryQuery = supabase.from("Login").update(updatePayload).eq("username", editingUser?.username || cleanUsername);
+        }
+        const retryRes = await retryQuery;
+        error = retryRes.error;
+      }
+
+      // Fallback 2: If id matching failed, try matching by username
+      if (error && editingUser?.username) {
+        console.warn("Retrying update using username matching...", error);
+        const retryRes = await supabase.from("Login").update(updatePayload).eq("username", editingUser.username);
+        error = retryRes.error;
+      }
+
+      if (error) {
+        console.error("Supabase update error:", error);
+        throw error;
+      }
 
       showToast("User updated successfully!", "success");
       setIsEditModalOpen(false);
       setEditingUserId(null);
-      fetchUsers();
+      setEditingUser(null);
+      await fetchUsers();
     } catch (err) {
       console.error("Error updating user:", err);
       showToast(err.message || "Failed to update user", "error");
@@ -1049,7 +1088,7 @@ export default function UserManagement() {
 
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Email Address <span className="text-rose-500">*</span>
+                        Email Address
                       </label>
                       <input
                         type="email"
@@ -1060,8 +1099,8 @@ export default function UserManagement() {
                             email: e.target.value,
                           })
                         }
+                        placeholder="e.g. user@company.com"
                         className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                        required
                       />
                     </div>
 
