@@ -5,7 +5,9 @@ import { useNavigate } from "react-router-dom"
 import DatePicker from "react-datepicker"
 import "react-datepicker/dist/react-datepicker.css"
 
+import * as XLSX from "xlsx";
 import supabase from "../utils/supabase";
+import { parseToDate, isValidDate, formatDateDisplay, formatDateTimeDisplay } from "../utils/dateUtils";
 
 // ================= REUSABLE SEARCHABLE SELECT COMPONENT =================
 function SearchableSelect({
@@ -188,12 +190,138 @@ function NewComplaintForm() {
   const [filterCompanyName, setFilterCompanyName] = useState("")
   const [filterTechnicianName, setFilterTechnicianName] = useState("")
   const [filterBeneficiaryName, setFilterBeneficiaryName] = useState("")
+  const [filterReporterName, setFilterReporterName] = useState("")
+  const [filterCreatedDateFrom, setFilterCreatedDateFrom] = useState(null)
+  const [filterCreatedDateTo, setFilterCreatedDateTo] = useState(null)
+  const [dateFilterPreset, setDateFilterPreset] = useState("all")
+  const [globalSearch, setGlobalSearch] = useState("")
+  const [isExporting, setIsExporting] = useState(false)
 
-  const [debouncedCompanyName, setDebouncedCompanyName] = useState("")
-  const [debouncedTechnicianName, setDebouncedTechnicianName] = useState("")
-  const [debouncedBeneficiaryName, setDebouncedBeneficiaryName] = useState("")
   const [masterBeneficiaryOptions, setMasterBeneficiaryOptions] = useState([]) // For Create/Update Form (from Master)
-  const [filterBeneficiaryOptions, setFilterBeneficiaryOptions] = useState([]) // For Table Filter (from FMS)
+
+  // Quick date preset helper for Created Date
+  const applyDatePreset = (preset) => {
+    setDateFilterPreset(preset)
+    const now = new Date()
+    if (preset === 'today') {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+      setFilterCreatedDateFrom(start)
+      setFilterCreatedDateTo(end)
+    } else if (preset === 'yesterday') {
+      const yesterday = new Date(now)
+      yesterday.setDate(yesterday.getDate() - 1)
+      const start = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0)
+      const end = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999)
+      setFilterCreatedDateFrom(start)
+      setFilterCreatedDateTo(end)
+    } else if (preset === 'week') {
+      const past7 = new Date(now)
+      past7.setDate(past7.getDate() - 7)
+      const start = new Date(past7.getFullYear(), past7.getMonth(), past7.getDate(), 0, 0, 0)
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+      setFilterCreatedDateFrom(start)
+      setFilterCreatedDateTo(end)
+    } else if (preset === 'month') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0)
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+      setFilterCreatedDateFrom(start)
+      setFilterCreatedDateTo(end)
+    } else if (preset === 'all') {
+      setFilterCreatedDateFrom(null)
+      setFilterCreatedDateTo(null)
+    }
+  }
+
+  // Dynamic filter options derived from tableData
+  const filterReporterOptions = useMemo(() => {
+    return [...new Set(tableData.map(row => row.reporter_name).filter(Boolean))].sort()
+  }, [tableData])
+
+  const filterBeneficiaryOptions = useMemo(() => {
+    return [...new Set(tableData.map(row => row.beneficiary_name).filter(Boolean))].sort()
+  }, [tableData])
+
+  // Filtered complaints based on Global Search and all dropdown/text/date filters
+  const filteredTableData = useMemo(() => {
+    return tableData.filter((row) => {
+      // 1. Company Name filter
+      if (filterCompanyName && !row.company_name?.toLowerCase().includes(filterCompanyName.toLowerCase())) {
+        return false
+      }
+      // 2. Technician Name filter
+      if (filterTechnicianName && !row.technician_name?.toLowerCase().includes(filterTechnicianName.toLowerCase())) {
+        return false
+      }
+      // 3. Beneficiary filter
+      if (filterBeneficiaryName && row.beneficiary_name !== filterBeneficiaryName) {
+        return false
+      }
+      // 4. Reporter Name filter
+      if (filterReporterName && row.reporter_name !== filterReporterName) {
+        return false
+      }
+      // 5. Created Date range filter
+      if (filterCreatedDateFrom || filterCreatedDateTo) {
+        const rowCreated = parseToDate(row.created_at || row.timestamp)
+        if (!rowCreated) return false
+        if (filterCreatedDateFrom) {
+          const from = new Date(filterCreatedDateFrom)
+          from.setHours(0, 0, 0, 0)
+          if (rowCreated < from) return false
+        }
+        if (filterCreatedDateTo) {
+          const to = new Date(filterCreatedDateTo)
+          to.setHours(23, 59, 59, 999)
+          if (rowCreated > to) return false
+        }
+      }
+      // 6. Global Search across all submitted fields
+      if (globalSearch && globalSearch.trim()) {
+        const query = globalSearch.toLowerCase().trim()
+        const searchableValues = [
+          row.complaint_id,
+          row.id_number,
+          row.project_name,
+          row.complaint_number,
+          row.company_name,
+          row.mode_of_call,
+          row.mode_of_letter,
+          row.letter_reference_number,
+          row.beneficiary_name,
+          row.contact_number,
+          row.reference_name,
+          row.village,
+          row.block,
+          row.district,
+          row.product,
+          row.make,
+          row.rating,
+          row.qty,
+          row.insurance_type,
+          row.nature_of_complaint,
+          row.technician_name,
+          row.technician_contact,
+          row.assignee_whatsapp_number,
+          row.reporter_name,
+          row.challan_no,
+          row.controller_rid_no,
+          row.product_sl_no,
+          row.status,
+          formatDateDisplay(row.complaint_date),
+          formatDateDisplay(row.challan_date),
+          formatDateDisplay(row.resolved_date),
+          formatDateDisplay(row.created_at || row.timestamp),
+          formatDateTimeDisplay(row.created_at || row.timestamp),
+        ]
+        const hasMatch = searchableValues.some(val =>
+          val && String(val).toLowerCase().includes(query)
+        )
+        if (!hasMatch) return false
+      }
+      return true
+    })
+  }, [tableData, filterCompanyName, filterTechnicianName, filterBeneficiaryName, filterReporterName, filterCreatedDateFrom, filterCreatedDateTo, globalSearch])
 
   // Document upload states
   const [isUploadingDocument, setIsUploadingDocument] = useState(false)
@@ -238,29 +366,7 @@ function NewComplaintForm() {
   })
 
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedCompanyName(filterCompanyName)
-    }, 500)
 
-    return () => clearTimeout(timer)
-  }, [filterCompanyName])
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedTechnicianName(filterTechnicianName)
-    }, 500)
-
-    return () => clearTimeout(timer)
-  }, [filterTechnicianName])
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedBeneficiaryName(filterBeneficiaryName)
-    }, 500)
-
-    return () => clearTimeout(timer)
-  }, [filterBeneficiaryName])
 
 
 
@@ -465,47 +571,22 @@ function NewComplaintForm() {
       const { data, error } = await supabase
         .from("FMS")
         .select("*")
-        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
 
       if (error) throw error
 
-      let filteredData = data
+      let dataToSet = data || []
 
       // ROLE FILTER
       if (userRole === 'tech' && currentUser) {
-        filteredData = data.filter(row =>
+        dataToSet = dataToSet.filter(row =>
           row.technician_name?.toLowerCase() === currentUser.toLowerCase()
         )
       }
 
-      // FILTERS
-      if (debouncedCompanyName) {
-        filteredData = filteredData.filter(row =>
-          row.company_name?.toLowerCase().includes(debouncedCompanyName.toLowerCase())
-        )
-      }
+      setTableData(dataToSet)
 
-      if (debouncedTechnicianName) {
-        filteredData = filteredData.filter(row =>
-          row.technician_name?.toLowerCase().includes(debouncedTechnicianName.toLowerCase())
-        )
-      }
-
-      const dynamicBeneficiaries = [...new Set(filteredData.map(row => row.beneficiary_name))]
-        .filter(Boolean)
-        .sort()
-
-      setFilterBeneficiaryOptions(dynamicBeneficiaries)
-
-      if (debouncedBeneficiaryName) {
-        filteredData = filteredData.filter(row =>
-          row.beneficiary_name?.toLowerCase().includes(debouncedBeneficiaryName.toLowerCase())
-        )
-      }
-
-      setTableData(filteredData)
-
-      if (filteredData.length === 0) {
+      if (dataToSet.length === 0) {
         setDataError(
           userRole === 'tech'
             ? 'No complaints assigned to you'
@@ -517,9 +598,7 @@ function NewComplaintForm() {
       console.error('Error fetching table data:', error)
       setDataError(error.message)
     }
-  }, [debouncedCompanyName, debouncedTechnicianName, debouncedBeneficiaryName])
-
-
+  }, [])
 
   // Update serial number whenever tableData changes (and has data)
   useEffect(() => {
@@ -527,8 +606,7 @@ function NewComplaintForm() {
     }
   }, [tableData]);
 
-
-  // Update the auto-refresh useEffect to include filter dependencies
+  // Update the auto-refresh useEffect
   useEffect(() => {
     if (autoRefresh && refreshInterval > 0) {
       const interval = setInterval(() => {
@@ -537,7 +615,7 @@ function NewComplaintForm() {
 
       return () => clearInterval(interval)
     }
-  }, [autoRefresh, refreshInterval, fetchTableData, filterCompanyName, filterTechnicianName, filterBeneficiaryName])
+  }, [autoRefresh, refreshInterval, fetchTableData])
 
 
   // Component mount effects
@@ -580,13 +658,19 @@ function NewComplaintForm() {
 
   // ✅ NEW FUNCTION - Open Update Modal with Pre-filled Data
   // ✅ Fixed UPDATE MODAL - Correct field mapping from Supabase columns
-  const handleOpenUpdateModal = (rowIndex) => {
-    const currentRow = tableData[rowIndex]
-    console.log('Opening update modal for row:', rowIndex, currentRow)
+  const handleOpenUpdateModal = (rowOrIndex) => {
+    const currentRow = typeof rowOrIndex === 'object' && rowOrIndex !== null
+      ? rowOrIndex
+      : (filteredTableData[rowOrIndex] || tableData[rowOrIndex])
+
+    if (!currentRow) return
+    console.log('Opening update modal for row:', currentRow)
+
+    const actualRowIndex = tableData.findIndex(r => r.id === currentRow.id)
 
     // Pre-fill all form data with correct Supabase column names
     setUpdateFormData({
-      rowIndex: rowIndex,
+      rowIndex: actualRowIndex !== -1 ? actualRowIndex : 0,
       actualRowNumber: currentRow.id, // Store the actual row ID for reference
       complaintId: currentRow.complaint_id || "",
       companyName: currentRow.company_name || "",
@@ -594,7 +678,7 @@ function NewComplaintForm() {
       idNumber: currentRow.id_number || "",
       projectName: currentRow.project_name || "",
       complaintNumber: currentRow.complaint_number || "",
-      complaintDate: currentRow.complaint_date ? new Date(currentRow.complaint_date) : null,
+      complaintDate: parseToDate(currentRow.complaint_date),
       beneficiaryName: currentRow.beneficiary_name || "",
       contactNumber: currentRow.contact_number || "",
       village: currentRow.village || "",
@@ -611,9 +695,9 @@ function NewComplaintForm() {
       assigneeWhatsapp: currentRow.assignee_whatsapp_number || "",
       controllerRidNo: currentRow.controller_rid_no || "",
       productSlNo: currentRow.product_sl_no || "",
-      challanDate: currentRow.challan_date ? new Date(currentRow.challan_date) : null,
-      closeDate: currentRow.close_date ? new Date(currentRow.close_date) : null,
-      resolvedDate: currentRow.resolved_date ? new Date(currentRow.resolved_date) : null,
+      challanDate: parseToDate(currentRow.challan_date),
+      closeDate: parseToDate(currentRow.close_date),
+      resolvedDate: parseToDate(currentRow.resolved_date),
       reporterName: currentRow.reporter_name || localStorage.getItem('username') || localStorage.getItem('currentUser') || "",
       challanNo: currentRow.challan_no || "",
       letterReferenceNumber: currentRow.letter_reference_number || "",
@@ -623,7 +707,7 @@ function NewComplaintForm() {
       documentUrl: currentRow.document_url || "",
     })
 
-    setCurrentUpdateRow(rowIndex)
+    setCurrentUpdateRow(actualRowIndex !== -1 ? actualRowIndex : 0)
     setShowUpdateModal(true)
   }
 
@@ -660,7 +744,7 @@ function NewComplaintForm() {
     try {
       setIsSubmitting(true)
 
-      const { error } = await supabase
+      let updateQuery = supabase
         .from("FMS")
         .update({
           company_name: updateFormData.companyName,
@@ -695,7 +779,14 @@ function NewComplaintForm() {
           reference_name: updateFormData.referenceName || null,
           document_url: updateFormData.documentUrl || null,
         })
-        .eq("complaint_id", updateFormData.complaintId)
+
+      if (updateFormData.actualRowNumber) {
+        updateQuery = updateQuery.eq("id", updateFormData.actualRowNumber)
+      } else {
+        updateQuery = updateQuery.eq("complaint_id", updateFormData.complaintId)
+      }
+
+      const { error } = await updateQuery
 
       if (error) throw error
 
@@ -713,6 +804,66 @@ function NewComplaintForm() {
 
 
 
+  // Export to Excel handler
+  const handleExportToExcel = () => {
+    try {
+      setIsExporting(true)
+      if (!filteredTableData || filteredTableData.length === 0) {
+        alert("No complaints data to export.")
+        return
+      }
+
+      const exportRows = filteredTableData.map((row) => ({
+        "Created Date": formatDateTimeDisplay(row.created_at || row.timestamp),
+        "Complaint ID": row.complaint_id || "-",
+        "ID Number": row.id_number || "-",
+        "Project Name": row.project_name || "-",
+        "Complaint Number": row.complaint_number || "-",
+        "Complaint Date": formatDateDisplay(row.complaint_date),
+        "Company Name": row.company_name || "-",
+        "Mode of Call": row.mode_of_call || "-",
+        "Mode of Letter": row.mode_of_letter || "-",
+        "Letter Ref Number": row.letter_reference_number || "-",
+        "Beneficiary Name": row.beneficiary_name || "-",
+        "Contact Number": row.contact_number || "-",
+        "Reference Name": row.reference_name || "-",
+        "Village": row.village || "-",
+        "Block": row.block || "-",
+        "District": row.district || "-",
+        "Product": row.product || "-",
+        "Make": row.make || "-",
+        "Rating": row.rating || "-",
+        "Quantity": row.qty || "-",
+        "Insurance Type": row.insurance_type || "-",
+        "Nature of Complaint": row.nature_of_complaint || "-",
+        "Technician Name": row.technician_name || "-",
+        "Technician Contact": row.technician_contact || "-",
+        "Assignee WhatsApp": row.assignee_whatsapp_number || "-",
+        "Reporter Name": row.reporter_name || "-",
+        "Challan No": row.challan_no || "-",
+        "Challan Date": formatDateDisplay(row.challan_date),
+        "Resolved Date": formatDateDisplay(row.resolved_date),
+        "Controller RID No": row.controller_rid_no || "-",
+        "Product SL No": row.product_sl_no || "-",
+        "Assign to Vendor": row.assign_to_vendor ? "Yes" : "No",
+        "Document URL": row.document_url || "-",
+        "Status": row.status || "In Progress",
+      }))
+
+      const worksheet = XLSX.utils.json_to_sheet(exportRows)
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Complaints")
+
+      const dateStr = new Date().toISOString().split("T")[0]
+      XLSX.writeFile(workbook, `Complaints_Data_${dateStr}.xlsx`)
+    } catch (err) {
+      console.error("Export to Excel error:", err)
+      alert("Failed to export Excel: " + err.message)
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   // Add refresh button handler
   const handleRefreshData = async () => {
     setIsLoading(true)
@@ -729,8 +880,10 @@ function NewComplaintForm() {
     try {
       if (!serialNumber) throw new Error("Serial number missing")
 
+      const submissionTimestamp = new Date().toISOString()
       const { error } = await supabase.from("FMS").insert([{
-        timestamp: new Date(),
+        timestamp: submissionTimestamp,
+        created_at: submissionTimestamp,
         complaint_id: serialNumber,
         company_name: formData.companyName,
         mode_of_call: formData.modeOfCall,
@@ -909,62 +1062,7 @@ function NewComplaintForm() {
                 </button>
               </div>
             </div>
-            {/* Add this filter section right after the header and before the table */}
-            <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
 
-                </label>
-                <input
-                  type="text"
-                  value={filterCompanyName}
-                  onChange={(e) => setFilterCompanyName(e.target.value)}
-                  placeholder="Search company..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-
-                </label>
-                <input
-                  type="text"
-                  value={filterTechnicianName}
-                  onChange={(e) => setFilterTechnicianName(e.target.value)}
-                  placeholder="Search technician..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-             
-                <SearchableSelect
-                  options={filterBeneficiaryOptions}
-                  value={filterBeneficiaryName}
-                  onChange={(val) => setFilterBeneficiaryName(val)}
-                  placeholder="All Beneficiaries"
-                />
-              </div>
-
-              {/* Clear All Filters Button */}
-              {
-                (filterCompanyName || filterTechnicianName || filterBeneficiaryName) && (
-                  <div className="md:col-span-3 flex justify-end">
-                    <button
-                      onClick={() => {
-                        setFilterCompanyName("")
-                        setFilterTechnicianName("")
-                        setFilterBeneficiaryName("")
-                      }}
-                      className="text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md"
-                    >
-                      Clear All Filters
-                    </button>
-                  </div>
-                )
-              }
-            </div >
 
 
             {/* ✅ ADD COMPLAINT MODAL - POPUP FORM */}
@@ -1072,10 +1170,11 @@ function NewComplaintForm() {
                       {/* Project Name */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Project Name
+                          Project Name *
                         </label>
                         <SearchableSelect
                           name="projectName"
+                          required
                           options={projectNameOptions}
                           value={formData.projectName}
                           onChange={(val) => setFormData(prev => ({ ...prev, projectName: val }))}
@@ -1104,7 +1203,7 @@ function NewComplaintForm() {
                           Complaint Date *
                         </label>
                         <DatePicker
-                          selected={complaintDate}
+                          selected={isValidDate(complaintDate) ? complaintDate : null}
                           onChange={(date) => setComplaintDate(date)}
                           dateFormat="dd/MM/yyyy"
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1341,7 +1440,7 @@ function NewComplaintForm() {
                           Resolved Date
                         </label>
                         <DatePicker
-                          selected={resolvedDate}
+                          selected={isValidDate(resolvedDate) ? resolvedDate : null}
                           onChange={(date) => setResolvedDate(date)}
                           dateFormat="dd/MM/yyyy"
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1470,10 +1569,10 @@ function NewComplaintForm() {
                           Challan Date
                         </label>
                         <DatePicker
-                          selected={formData.assignToVendor ? null : challanDate}  // Modify this line
-                          onChange={(date) => !formData.assignToVendor && setChallanDate(date)}  // Modify this line
+                          selected={formData.assignToVendor ? null : (isValidDate(challanDate) ? challanDate : null)}
+                          onChange={(date) => !formData.assignToVendor && setChallanDate(date)}
                           dateFormat="dd/MM/yyyy"
-                          disabled={formData.assignToVendor}  // Add this line
+                          disabled={formData.assignToVendor}
                           className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${formData.assignToVendor ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                           placeholderText="Select challan date"
                         />
@@ -1696,7 +1795,7 @@ function NewComplaintForm() {
                             Complaint Date *
                           </label>
                           <DatePicker
-                            selected={updateFormData.complaintDate}
+                            selected={isValidDate(updateFormData.complaintDate) ? updateFormData.complaintDate : null}
                             onChange={(date) => setUpdateFormData(prev => ({ ...prev, complaintDate: date }))}
                             dateFormat="dd/MM/yyyy"
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1932,7 +2031,7 @@ function NewComplaintForm() {
                             Resolved Date
                           </label>
                           <DatePicker
-                            selected={updateFormData.resolvedDate}
+                            selected={isValidDate(updateFormData.resolvedDate) ? updateFormData.resolvedDate : null}
                             onChange={(date) => setUpdateFormData(prev => ({ ...prev, resolvedDate: date }))}
                             dateFormat="dd/MM/yyyy"
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -2021,7 +2120,7 @@ function NewComplaintForm() {
                             Challan Date
                           </label>
                           <DatePicker
-                            selected={updateFormData.challanDate}
+                            selected={isValidDate(updateFormData.challanDate) ? updateFormData.challanDate : null}
                             onChange={(date) => setUpdateFormData(prev => ({ ...prev, challanDate: date }))}
                             dateFormat="dd/MM/yyyy"
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -2110,14 +2209,246 @@ function NewComplaintForm() {
               )
             }
 
-            {/* Table with improved UI */}
+            {/* Table with improved UI & Full Submitted Fields */}
             <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                <h2 className="text-xl font-semibold">
-                  Complaints Data ({tableData.length} records
-                  {localStorage.getItem('userRole') === 'tech' && ' assigned to you'}
-                  )
-                </h2>
+              {/* Header and Action Buttons */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    Complaints Data
+                    <span className="text-xs font-semibold px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full">
+                      {filteredTableData.length} {filteredTableData.length === 1 ? 'record' : 'records'}
+                      {filteredTableData.length !== tableData.length && ` (of ${tableData.length})`}
+                    </span>
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {localStorage.getItem('userRole') === 'tech' ? 'Showing complaints assigned to you' : 'Showing all submitted complaints with complete details'}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Export to Excel Button */}
+                  <button
+                    onClick={handleExportToExcel}
+                    disabled={isExporting || filteredTableData.length === 0}
+                    className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white text-xs sm:text-sm font-medium rounded-lg shadow-xs hover:shadow transition-all cursor-pointer"
+                    title="Export filtered complaints to Excel file"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    {isExporting ? "Exporting..." : "Export Excel"}
+                  </button>
+
+                  {/* Refresh Button */}
+                  <button
+                    onClick={handleRefreshData}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs sm:text-sm font-medium rounded-lg border border-gray-200 transition-all cursor-pointer"
+                    title="Refresh Complaints Data"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Refresh
+                  </button>
+                </div>
+              </div>
+
+              {/* Global Search and Dropdown Filter Section */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+                {/* Global Search Input */}
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    value={globalSearch}
+                    onChange={(e) => setGlobalSearch(e.target.value)}
+                    placeholder="Search anything (Complaint ID, ID No, Beneficiary, Product, Village, Mobile, Tech, Reporter, etc.)..."
+                    className="w-full pl-10 pr-10 py-2.5 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-2xs"
+                  />
+                  {globalSearch && (
+                    <button
+                      onClick={() => setGlobalSearch("")}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
+                      title="Clear search"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Dropdowns Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {/* Reporter Filter */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Filter by Reporter
+                    </label>
+                    <select
+                      value={filterReporterName}
+                      onChange={(e) => setFilterReporterName(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">All Reporters</option>
+                      {filterReporterOptions.map((reporter) => (
+                        <option key={reporter} value={reporter}>
+                          {reporter}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Company Filter */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Filter by Company
+                    </label>
+                    <input
+                      type="text"
+                      value={filterCompanyName}
+                      onChange={(e) => setFilterCompanyName(e.target.value)}
+                      placeholder="Search company..."
+                      className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* Technician Filter */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Filter by Technician
+                    </label>
+                    <input
+                      type="text"
+                      value={filterTechnicianName}
+                      onChange={(e) => setFilterTechnicianName(e.target.value)}
+                      placeholder="Search technician..."
+                      className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* Beneficiary Filter */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Filter by Beneficiary
+                    </label>
+                    <SearchableSelect
+                      options={filterBeneficiaryOptions}
+                      value={filterBeneficiaryName}
+                      onChange={(val) => setFilterBeneficiaryName(val)}
+                      placeholder="All Beneficiaries"
+                    />
+                  </div>
+                </div>
+
+                {/* Created Date Filter Row */}
+                <div className="pt-2.5 border-t border-gray-200 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 mr-1">
+                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span>Created Date:</span>
+                    </div>
+
+                    {/* Quick Presets */}
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200">
+                      {[
+                        { id: "all", label: "All" },
+                        { id: "today", label: "Today" },
+                        { id: "yesterday", label: "Yesterday" },
+                        { id: "week", label: "Last 7 Days" },
+                        { id: "month", label: "This Month" },
+                      ].map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => applyDatePreset(preset.id)}
+                          className={`px-2.5 py-1 text-xs rounded-md font-medium transition cursor-pointer ${
+                            dateFilterPreset === preset.id
+                              ? "bg-blue-600 text-white shadow-2xs"
+                              : "text-gray-600 hover:bg-gray-100"
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Date Pickers for Custom Range */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-500 font-medium">From:</span>
+                      <DatePicker
+                        selected={isValidDate(filterCreatedDateFrom) ? filterCreatedDateFrom : null}
+                        onChange={(date) => {
+                          setFilterCreatedDateFrom(date)
+                          setDateFilterPreset("custom")
+                        }}
+                        dateFormat="dd/MM/yyyy"
+                        className="w-28 px-2 py-1.5 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholderText="DD/MM/YYYY"
+                        isClearable
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-500 font-medium">To:</span>
+                      <DatePicker
+                        selected={isValidDate(filterCreatedDateTo) ? filterCreatedDateTo : null}
+                        onChange={(date) => {
+                          setFilterCreatedDateTo(date)
+                          setDateFilterPreset("custom")
+                        }}
+                        dateFormat="dd/MM/yyyy"
+                        className="w-28 px-2 py-1.5 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholderText="DD/MM/YYYY"
+                        isClearable
+                      />
+                    </div>
+
+                    {(filterCreatedDateFrom || filterCreatedDateTo) && (
+                      <button
+                        type="button"
+                        onClick={() => applyDatePreset("all")}
+                        className="p-1 text-gray-400 hover:text-red-500 rounded cursor-pointer"
+                        title="Clear Date Filter"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Clear All Filters */}
+                {(globalSearch || filterReporterName || filterCompanyName || filterTechnicianName || filterBeneficiaryName || filterCreatedDateFrom || filterCreatedDateTo) && (
+                  <div className="flex justify-end pt-1">
+                    <button
+                      onClick={() => {
+                        setGlobalSearch("")
+                        setFilterReporterName("")
+                        setFilterCompanyName("")
+                        setFilterTechnicianName("")
+                        setFilterBeneficiaryName("")
+                        applyDatePreset("all")
+                      }}
+                      className="inline-flex items-center gap-1.5 text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Clear All Filters
+                    </button>
+                  </div>
+                )}
               </div>
 
               {dataError ? (
@@ -2135,120 +2466,317 @@ function NewComplaintForm() {
                     Try Again
                   </button>
                 </div>
-              ) : tableData.length > 0 ? (
+              ) : filteredTableData.length > 0 ? (
                 <>
-                  {/* Desktop Table View - Hidden on mobile with FIXED HEADER */}
-                  <div className="hidden lg:block border border-gray-200 rounded-lg overflow-hidden">
+                  {/* Desktop Table View - All Submitted Form Values */}
+                  <div className="hidden lg:block border border-gray-200 rounded-xl overflow-hidden shadow-xs">
                     <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                       <table className="min-w-full divide-y divide-gray-200 text-center">
                         <thead className="bg-gray-100 sticky top-0 z-20 text-center whitespace-nowrap">
                           <tr>
-                            <th scope="col" className="sticky left-0 top-0 z-30 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)] border-r border-gray-200">
+                            <th scope="col" className="sticky left-0 top-0 z-30 px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)] border-r border-gray-200">
                               Action
                             </th>
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Created Date
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Complaint ID
                             </th>
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                              ID Number
-                            </th>
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Complaint Date
                             </th>
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              ID Number
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Project Name
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Complaint Number
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Company Name
                             </th>
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Mode Of Call
                             </th>
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                              Document
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Mode Of Letter
                             </th>
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                              Technician Name
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Letter Ref No
                             </th>
-                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                              Challan No
-                            </th>
-                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                              Challan Date
-                            </th>
-                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                              Controller RID
-                            </th>
-                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                              Product SL No
-                            </th>
-                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
-                              Insurance Type
-                            </th>
-                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Beneficiary Name
                             </th>
-                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Contact Number
                             </th>
-                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Reference Name
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Village
                             </th>
-                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Block
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               District
                             </th>
-                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Product
                             </th>
-                            <th scope="col" className="px-3 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Make
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Rating
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Quantity
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Insurance Type
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
                               Nature Of Complaint
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Technician Name
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Technician Contact
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Assignee WhatsApp
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Reporter Name
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Challan No
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Challan Date
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Resolved Date
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Controller RID
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Product SL No
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Assign to Vendor
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Document
+                            </th>
+                            <th scope="col" className="px-3 py-3  text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-100">
+                              Status
                             </th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200 text-center whitespace-normal">
-                          {tableData.map((row, rowIndex) => (
-                            <tr key={`complaint-${row.id}-${rowIndex}`} className="hover:bg-gray-50 group transition-colors">
-
-                              <td className="sticky left-0 z-10 px-3 py-4 whitespace-nowrap bg-white group-hover:bg-gray-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)] border-r border-gray-200">
-                                <button
-                                  onClick={() => handleOpenUpdateModal(rowIndex)}
-                                  className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-sm cursor-pointer"
-                                >
-                                  Update
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(row.id)}
-                                  className="ml-2 px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded-md text-sm cursor-pointer"
-                                >
-                                  Delete
-                                </button>
+                          {filteredTableData.map((row, rowIndex) => (
+                            <tr key={`complaint-${row.id}-${rowIndex}`} className="hover:bg-blue-50/40 group transition-colors">
+                              {/* Action Buttons */}
+                              <td className="sticky left-0 z-10 px-3 py-3.5 whitespace-nowrap bg-white group-hover:bg-gray-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)] border-r border-gray-200">
+                                <div className="flex items-center gap-1.5 justify-center">
+                                  <button
+                                    onClick={() => handleOpenUpdateModal(row)}
+                                    className="px-2.5 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-xs font-medium cursor-pointer transition shadow-2xs"
+                                  >
+                                    Update
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(row.id)}
+                                    className="px-2.5 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs font-medium cursor-pointer transition shadow-2xs"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
                               </td>
 
-                              <td className="px-3 py-4 text-sm text-blue-600 font-medium whitespace-nowrap">
+                              {/* Created Date */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap font-medium text-left">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-gray-50 border border-gray-200 text-gray-700 font-mono text-[11px]">
+                                  <svg className="w-3.5 h-3.5 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                  {formatDateTimeDisplay(row.created_at || row.timestamp)}
+                                </span>
+                              </td>
+
+                              {/* Complaint ID */}
+                              <td className="px-3 py-3.5 text-xs text-blue-600 font-semibold whitespace-nowrap">
                                 {row.complaint_id || "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm text-purple-600 font-medium whitespace-nowrap">
+                              {/* Complaint Date */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {formatDateDisplay(row.complaint_date)}
+                              </td>
+
+                              {/* ID Number */}
+                              <td className="px-3 py-3.5 text-xs text-purple-600 font-medium whitespace-nowrap">
                                 {row.id_number || "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm whitespace-nowrap">
-                                {row.complaint_date
-                                  ? new Date(row.complaint_date).toLocaleDateString()
-                                  : "-"}
+                              {/* Project Name */}
+                              <td className="px-3 py-3.5 text-xs text-gray-800 whitespace-nowrap">
+                                {row.project_name || "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm min-w-[140px] max-w-[200px] break-words">
+                              {/* Complaint Number */}
+                              <td className="px-3 py-3.5 text-xs text-gray-800 whitespace-nowrap">
+                                {row.complaint_number || "-"}
+                              </td>
+
+                              {/* Company Name */}
+                              <td className="px-3 py-3.5 text-xs font-medium text-gray-800 whitespace-nowrap">
                                 {row.company_name || "-"}
                               </td>
 
-                              <td className="px-3 py-4 text-sm min-w-[120px] break-words">
-                                <div>{row.mode_of_call || "-"}</div>
-                                {row.letter_reference_number && (
-                                  <div className="text-xs text-purple-600 font-medium">
-                                    Ref: {row.letter_reference_number}
-                                  </div>
+                              {/* Mode Of Call */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.mode_of_call || "-"}
+                              </td>
+
+                              {/* Mode Of Letter */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.mode_of_letter || "-"}
+                              </td>
+
+                              {/* Letter Ref No */}
+                              <td className="px-3 py-3.5 text-xs text-purple-600 font-medium whitespace-nowrap">
+                                {row.letter_reference_number || "-"}
+                              </td>
+
+                              {/* Beneficiary Name */}
+                              <td className="px-3 py-3.5 text-xs text-gray-800 font-medium min-w-[130px] break-words text-left">
+                                {row.beneficiary_name || "-"}
+                              </td>
+
+                              {/* Contact Number */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.contact_number || "-"}
+                              </td>
+
+                              {/* Reference Name */}
+                              <td className="px-3 py-3.5 text-xs text-amber-800 font-medium whitespace-nowrap">
+                                {row.reference_name || "-"}
+                              </td>
+
+                              {/* Village */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.village || "-"}
+                              </td>
+
+                              {/* Block */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.block || "-"}
+                              </td>
+
+                              {/* District */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.district || "-"}
+                              </td>
+
+                              {/* Product */}
+                              <td className="px-3 py-3.5 text-xs text-gray-800 font-medium whitespace-nowrap">
+                                {row.product || "-"}
+                              </td>
+
+                              {/* Make */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.make || "-"}
+                              </td>
+
+                              {/* Rating */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.rating || "-"}
+                              </td>
+
+                              {/* Quantity */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.qty || "-"}
+                              </td>
+
+                              {/* Insurance Type */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.insurance_type || "-"}
+                              </td>
+
+                              {/* Nature Of Complaint */}
+                              <td className="px-3 py-3.5 text-xs text-gray-800 min-w-[200px] max-w-[300px] break-words text-left">
+                                {row.nature_of_complaint || "-"}
+                              </td>
+
+                              {/* Technician Name */}
+                              <td className="px-3 py-3.5 text-xs text-gray-800 font-medium whitespace-nowrap">
+                                {row.technician_name || "-"}
+                              </td>
+
+                              {/* Technician Contact */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.technician_contact || "-"}
+                              </td>
+
+                              {/* Assignee WhatsApp */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.assignee_whatsapp_number || "-"}
+                              </td>
+
+                              {/* Reporter Name */}
+                              <td className="px-3 py-3.5 text-xs whitespace-nowrap">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                  {row.reporter_name || "-"}
+                                </span>
+                              </td>
+
+                              {/* Challan No */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.challan_no || "-"}
+                              </td>
+
+                              {/* Challan Date */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {formatDateDisplay(row.challan_date)}
+                              </td>
+
+                              {/* Resolved Date */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {formatDateDisplay(row.resolved_date)}
+                              </td>
+
+                              {/* Controller RID */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.controller_rid_no || "-"}
+                              </td>
+
+                              {/* Product SL No */}
+                              <td className="px-3 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                                {row.product_sl_no || "-"}
+                              </td>
+
+                              {/* Assign to Vendor */}
+                              <td className="px-3 py-3.5 text-xs whitespace-nowrap">
+                                {row.assign_to_vendor ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                    Yes
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400">No</span>
                                 )}
                               </td>
 
-                              <td className="px-3 py-4 text-sm whitespace-nowrap">
+                              {/* Document */}
+                              <td className="px-3 py-3.5 text-xs whitespace-nowrap">
                                 {row.document_url ? (
                                   <a
                                     href={row.document_url}
@@ -2263,141 +2791,152 @@ function NewComplaintForm() {
                                 )}
                               </td>
 
-                              <td className="px-3 py-4 text-sm min-w-[130px] break-words">
-                                {row.technician_name || "-"}
+                              {/* Status */}
+                              <td className="px-3 py-3.5 text-xs whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  String(row.status || '').toUpperCase() === 'APPROVED-CLOSE'
+                                    ? 'bg-green-100 text-green-800 border border-green-200'
+                                    : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                }`}>
+                                  {row.status || "In Progress"}
+                                </span>
                               </td>
-                              <td className="px-3 py-4 text-sm min-w-[110px] break-words">
-                                {row.challan_no || "-"}
-                              </td>
-
-                              <td className="px-3 py-4 text-sm whitespace-nowrap">
-                                {row.challan_date
-                                  ? new Date(row.challan_date).toLocaleDateString()
-                                  : "-"}
-                              </td>
-
-                              <td className="px-3 py-4 text-sm min-w-[110px] break-words">
-                                {row.controller_rid_no || "-"}
-                              </td>
-
-                              <td className="px-3 py-4 text-sm min-w-[110px] break-words">
-                                {row.product_sl_no || "-"}
-                              </td>
-                              <td className="px-3 py-4 text-sm min-w-[110px] break-words">
-                                {row.insurance_type || "-"}
-                              </td>
-
-                              <td className="px-3 py-4 text-sm min-w-[140px] max-w-[200px] break-words">
-                                {row.beneficiary_name || "-"}
-                              </td>
-
-                              <td className="px-3 py-4 text-sm min-w-[130px] break-words">
-                                {row.contact_number || (row.reference_name ? (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-amber-50 text-amber-800 border border-amber-200">
-                                    Ref: {row.reference_name}
-                                  </span>
-                                ) : "-")}
-                              </td>
-
-                              <td className="px-3 py-4 text-sm min-w-[120px] break-words">
-                                {row.village || "-"}
-                              </td>
-
-                              <td className="px-3 py-4 text-sm min-w-[120px] break-words">
-                                {row.district || "-"}
-                              </td>
-
-                              <td className="px-3 py-4 text-sm min-w-[120px] break-words">
-                                {row.product || "-"}
-                              </td>
-
-                              <td className="px-3 py-4 text-sm min-w-[220px] max-w-[320px] break-words text-left">
-                                {row.nature_of_complaint || "-"}
-                              </td>
-
                             </tr>
                           ))}
                         </tbody>
                       </table>
-                    </div >
-                  </div >
+                    </div>
+                  </div>
 
-                  {/* Mobile Card View - Visible on mobile only */}
+                  {/* Mobile Card View - All Submitted Form Values */}
                   <div className="lg:hidden space-y-4">
-                    {tableData.map((row, rowIndex) => (
+                    {filteredTableData.map((row, rowIndex) => (
                       <div
                         key={`mobile-${row.id}-${rowIndex}`}
-                        className="border rounded-lg p-4 bg-white border-gray-200"
+                        className="border rounded-xl p-4 bg-white border-gray-200 shadow-xs space-y-3"
                       >
                         {/* Header */}
-                        <div className="flex justify-between items-start mb-3">
+                        <div className="flex justify-between items-start border-b border-gray-100 pb-3">
                           <div>
-                            <div className="text-xs text-gray-500">Complaint ID</div>
-                            <div className="font-semibold text-blue-600">
+                            <div className="text-xs text-gray-500 font-medium">Complaint ID</div>
+                            <div className="font-bold text-blue-600 text-base">
                               {row.complaint_id || "-"}
                             </div>
+                            {/* Created Date & Time */}
+                            <div className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5">
+                              <span>📅 Created:</span>
+                              <span className="font-medium text-gray-700">{formatDateTimeDisplay(row.created_at || row.timestamp)}</span>
+                            </div>
                           </div>
 
-                          <button
-                            onClick={() => handleOpenUpdateModal(rowIndex)}
-                            className="px-3 py-1 bg-blue-500 text-white rounded-md text-sm"
-                          >
-                            Update
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleOpenUpdateModal(row)}
+                              className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-xs font-medium cursor-pointer shadow-2xs"
+                            >
+                              Update
+                            </button>
+                            <button
+                              onClick={() => handleDelete(row.id)}
+                              className="px-2.5 py-1 bg-red-500 hover:bg-red-600 text-white rounded-md text-xs font-medium cursor-pointer shadow-2xs"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
 
-                        {/* Details */}
-                        <div className="space-y-2 text-sm">
+                        {/* Badges row */}
+                        <div className="flex flex-wrap gap-1.5 text-xs">
+                          <span className={`px-2 py-0.5 rounded-full font-medium ${
+                            String(row.status || '').toUpperCase() === 'APPROVED-CLOSE'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {row.status || "In Progress"}
+                          </span>
+                          {row.company_name && (
+                            <span className="px-2 py-0.5 bg-gray-100 text-gray-800 rounded-full font-medium">
+                              {row.company_name}
+                            </span>
+                          )}
+                          {row.project_name && (
+                            <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full font-medium border border-purple-200">
+                              {row.project_name}
+                            </span>
+                          )}
+                        </div>
 
-                          <div><b>ID:</b> {row.id_number || "-"}</div>
-                          <div><b>Date:</b> {row.complaint_date ? new Date(row.complaint_date).toLocaleDateString() : "-"}</div>
-                          <div><b>Company:</b> {row.company_name || "-"}</div>
-                          <div><b>Technician:</b> {row.technician_name || "-"}</div>
+                        {/* Details Grid */}
+                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-700 pt-1">
+                          <div><b>ID Number:</b> {row.id_number || "-"}</div>
+                          <div><b>Complaint No:</b> {row.complaint_number || "-"}</div>
+                          <div><b>Complaint Date:</b> {formatDateDisplay(row.complaint_date)}</div>
+                          <div><b>Mode of Call:</b> {row.mode_of_call || "-"}</div>
+                          {row.mode_of_letter && <div><b>Letter Mode:</b> {row.mode_of_letter}</div>}
+                          {row.letter_reference_number && <div><b>Letter Ref:</b> {row.letter_reference_number}</div>}
                           <div><b>Beneficiary:</b> {row.beneficiary_name || "-"}</div>
-                          <div>
-                            <b>Contact:</b>{" "}
-                            {row.contact_number || (row.reference_name ? (
-                              <span className="text-amber-800 font-medium">Ref: {row.reference_name}</span>
-                            ) : "-")}
-                          </div>
+                          <div><b>Contact:</b> {row.contact_number || "-"}</div>
+                          {row.reference_name && <div className="col-span-2 text-amber-800"><b>Reference Name:</b> {row.reference_name}</div>}
                           <div><b>Village:</b> {row.village || "-"}</div>
+                          <div><b>Block:</b> {row.block || "-"}</div>
                           <div><b>District:</b> {row.district || "-"}</div>
                           <div><b>Product:</b> {row.product || "-"}</div>
-                          <div>
-                            <b>Mode:</b> {row.mode_of_call || "-"}
-                            {row.letter_reference_number && (
-                              <span className="ml-1 text-purple-600 font-medium">(Ref: {row.letter_reference_number})</span>
-                            )}
-                          </div>
-                          {row.document_url && (
-                            <div>
-                              <b>Document:</b>{" "}
-                              <a
-                                href={row.document_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-600 underline font-semibold"
-                              >
-                                📄 View Uploaded Document ↗
-                              </a>
-                            </div>
-                          )}
-                          <div><b>Complaint:</b> {row.nature_of_complaint || "-"}</div>
-
+                          <div><b>Make:</b> {row.make || "-"}</div>
+                          <div><b>Rating:</b> {row.rating || "-"}</div>
+                          <div><b>Quantity:</b> {row.qty || "-"}</div>
+                          <div><b>Insurance:</b> {row.insurance_type || "-"}</div>
+                          <div><b>Technician:</b> {row.technician_name || "-"}</div>
+                          <div><b>Tech Contact:</b> {row.technician_contact || "-"}</div>
+                          <div><b>WhatsApp:</b> {row.assignee_whatsapp_number || "-"}</div>
+                          <div><b>Reporter:</b> {row.reporter_name || "-"}</div>
+                          <div><b>Challan No:</b> {row.challan_no || "-"}</div>
+                          <div><b>Challan Date:</b> {formatDateDisplay(row.challan_date)}</div>
+                          <div><b>Resolved Date:</b> {formatDateDisplay(row.resolved_date)}</div>
+                          <div><b>Controller RID:</b> {row.controller_rid_no || "-"}</div>
+                          <div><b>Product SL:</b> {row.product_sl_no || "-"}</div>
+                          <div><b>Assign to Vendor:</b> {row.assign_to_vendor ? "Yes" : "No"}</div>
                         </div>
+
+                        <div className="text-xs text-gray-800 pt-1 border-t border-gray-100">
+                          <b>Complaint:</b> {row.nature_of_complaint || "-"}
+                        </div>
+
+                        {row.document_url && (
+                          <div className="pt-1">
+                            <a
+                              href={row.document_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition"
+                            >
+                              📄 View Uploaded Document ↗
+                            </a>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
                 </>
               ) : (
-                <div className="text-center p-6 bg-gray-50 rounded-lg border border-gray-200">
-                  <div className="flex justify-center items-center h-24">
-                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent"></div>
-                  </div>
+                <div className="text-center p-8 bg-gray-50 rounded-xl border border-gray-200">
+                  <p className="text-gray-500 text-sm">No complaints match your filters or search criteria.</p>
+                  {(globalSearch || filterReporterName || filterCompanyName || filterTechnicianName || filterBeneficiaryName) && (
+                    <button
+                      onClick={() => {
+                        setGlobalSearch("")
+                        setFilterReporterName("")
+                        setFilterCompanyName("")
+                        setFilterTechnicianName("")
+                        setFilterBeneficiaryName("")
+                      }}
+                      className="mt-3 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium px-3.5 py-1.5 rounded-lg border border-blue-200 transition cursor-pointer"
+                    >
+                      Clear All Filters
+                    </button>
+                  )}
                 </div>
               )}
-
-            </div >
+            </div>
           </>
         )}
       </div >
