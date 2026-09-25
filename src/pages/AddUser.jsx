@@ -1354,7 +1354,7 @@ export default function UserManagement() {
 
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Email Address <span className="text-rose-500">*</span>
+                        Email Address 
                       </label>
                       <input
                         type="email"
