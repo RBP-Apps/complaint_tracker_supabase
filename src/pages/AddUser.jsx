@@ -278,8 +278,8 @@ export default function UserManagement() {
 
   const handleAddUserSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.username.trim() || !formData.email.trim() || !formData.password.trim()) {
-      showToast("Username, email, and password are required!", "error");
+    if (!formData.username.trim() || !formData.password.trim()) {
+      showToast("Username and password are required!", "error");
       return;
     }
 
