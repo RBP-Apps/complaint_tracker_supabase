@@ -983,7 +983,7 @@ function ComplaintsTable() {
               </div>
 
               {/* Desktop Table View */}
-              <div className="hidden md:block overflow-x-auto max-h-[500px] overflow-y-auto border border-slate-200/90 rounded-xl shadow-2xs">
+              <div className="hidden md:block overflow-x-auto max-h-[300px] overflow-y-auto border border-slate-200/90 rounded-xl shadow-2xs">
                 <table className="min-w-full divide-y divide-slate-200 text-left">
                   <thead className="bg-slate-50 sticky top-0 z-10 text-xs font-bold text-slate-600 uppercase tracking-wider backdrop-blur-xs border-b border-slate-200">
                     <tr>

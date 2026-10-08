@@ -83,27 +83,14 @@ function DraftLetter() {
     const [emailBody, setEmailBody] = useState("")
     const [emailAttachments, setEmailAttachments] = useState([])
 
-    const [selectedPendingIds, setSelectedPendingIds] = useState(new Set());
     const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
-    const [selectedLetterType, setSelectedLetterType] = useState("Draft Letter");
+    const [selectedLetterType, setSelectedLetterType] = useState("Battery");
+    const [selectedLetterTask, setSelectedLetterTask] = useState(null);
 
-    const togglePendingSelection = (complaintId) => {
-        const newSet = new Set(selectedPendingIds);
-        if (newSet.has(complaintId)) {
-            newSet.delete(complaintId);
-        } else {
-            newSet.add(complaintId);
-        }
-        setSelectedPendingIds(newSet);
-    };
-
-    const toggleSelectAllPending = (checked) => {
-        if (checked) {
-            const allIds = pendingTasks.map(t => t.complaintId);
-            setSelectedPendingIds(new Set(allIds));
-        } else {
-            setSelectedPendingIds(new Set());
-        }
+    const openGenerateLetterModal = (task) => {
+        setSelectedLetterTask(task);
+        setSelectedLetterType("Battery");
+        setIsGenerateModalOpen(true);
     };
 
 
@@ -646,19 +633,7 @@ function DraftLetter() {
                         </button>
                     </nav>
 
-                    {/* Generate Letter Button */}
-                    {activeTab === "pending" && selectedPendingIds.size > 0 && (
-                        <div>
-                            <button
-                                type="button"
-                                onClick={() => setIsGenerateModalOpen(true)}
-                                className="py-2 px-4 shadow-sm border border-blue-300 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 flex items-center font-medium"
-                            >
-                                <FileText size={16} className="mr-2" />
-                                Generate Letter
-                            </button>
-                        </div>
-                    )}
+
                 </div>
 
                 {/* Filters */}
@@ -772,19 +747,9 @@ function DraftLetter() {
                                                 </th>
                                             )}
                                             {activeTab === "pending" && (
-                                                <>
-                                                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                                                        <input
-                                                            type="checkbox"
-                                                            className="h-4 w-4 text-blue-600 border-gray-300 rounded cursor-pointer"
-                                                            onChange={(e) => toggleSelectAllPending(e.target.checked)}
-                                                        />
-                                                    </th>
-
-                                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                                        Actions
-                                                    </th>
-                                                </>
+                                                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                                    Actions
+                                                </th>
                                             )}
                                             <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                                                 Complaint Id
@@ -856,7 +821,7 @@ function DraftLetter() {
                                     <tbody className="bg-white divide-y divide-gray-200">
                                         {filteredTasks.length === 0 ? (
                                             <tr>
-                                                <td colSpan={activeTab === "pending" ? 14 : 18} className="px-3 py-10 text-center text-gray-500 italic font-medium">
+                                                <td colSpan={activeTab === "pending" ? 13 : 18} className="px-3 py-10 text-center text-gray-500 italic font-medium">
                                                     {activeTab === "pending"
                                                         ? "No pending draft letter complaints found"
                                                         : "No draft letter complaint history found"
@@ -877,27 +842,15 @@ function DraftLetter() {
                                                         </td>
                                                     )}
                                                     {activeTab === "pending" && (
-                                                        <>
-                                                            {/* ✅ Checkbox */}
-                                                            <td className="px-3 py-4 text-center">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded cursor-pointer"
-                                                                    checked={selectedPendingIds?.has(task.complaintId)}
-                                                                    onChange={() => togglePendingSelection(task.complaintId)}
-                                                                />
-                                                            </td>
-
-                                                            {/* ✅ Action */}
-                                                            <td className="px-3 py-4 whitespace-nowrap">
-                                                                <button
-                                                                    className="bg-gradient-to-r from-amber-400 to-orange-500 text-white py-1 px-3 rounded-md"
-                                                                    onClick={() => openReviewDialog(task)}
-                                                                >
-                                                                    Review
-                                                                </button>
-                                                            </td>
-                                                        </>
+                                                        <td className="px-3 py-4 whitespace-nowrap">
+                                                            <button
+                                                                className="inline-flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-1.5 px-3 rounded-md text-xs font-medium shadow-sm hover:shadow transition-all cursor-pointer"
+                                                                onClick={() => openGenerateLetterModal(task)}
+                                                            >
+                                                                <FileText size={14} />
+                                                                Generate Letter
+                                                            </button>
+                                                        </td>
                                                     )}
                                                     <td className="px-3 py-4 whitespace-nowrap text-sm">{task.complaintId}</td>
                                                     <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{task.idNumber}</td>
@@ -1068,10 +1021,11 @@ function DraftLetter() {
                                             {activeTab === "pending" && (
                                                 <div className="mt-2">
                                                     <button
-                                                        className="w-full bg-gradient-to-r from-amber-400 to-orange-500 text-white py-1.5 rounded-md text-xs font-medium"
-                                                        onClick={() => openReviewDialog(task)}
+                                                        className="w-full inline-flex items-center justify-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-1.5 rounded-md text-xs font-medium shadow-sm cursor-pointer"
+                                                        onClick={() => openGenerateLetterModal(task)}
                                                     >
-                                                        Review
+                                                        <FileText size={14} />
+                                                        Generate Letter
                                                     </button>
                                                 </div>
                                             )}
@@ -1538,14 +1492,17 @@ function DraftLetter() {
                                         </select>
                                     </div>
                                     <p className="text-sm text-gray-500">
-                                        Selected complaint for letter generation: <span className="font-semibold text-gray-700">{pendingTasks.find(t => t.complaintId === [...selectedPendingIds][0])?.complaintId || 'Unknown'}</span>
+                                        Selected complaint for letter generation: <span className="font-semibold text-gray-700">{selectedLetterTask?.complaintId || 'Unknown'}</span>
                                     </p>
                                 </div>
 
                                 <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
                                     <button
                                         type="button"
-                                        onClick={() => setIsGenerateModalOpen(false)}
+                                        onClick={() => {
+                                            setIsGenerateModalOpen(false);
+                                            setSelectedLetterTask(null);
+                                        }}
                                         className="py-2 px-4 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium"
                                     >
                                         Cancel
@@ -1553,14 +1510,15 @@ function DraftLetter() {
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            const selectedTasksArray = pendingTasks.filter(t => selectedPendingIds.has(t.complaintId));
-                                            const firstSelectedId = [...selectedPendingIds][0];
+                                            if (!selectedLetterTask) return;
+                                            const taskToPass = selectedLetterTask;
                                             setIsGenerateModalOpen(false);
-                                            navigate(`/dashboard/admin-letter/${firstSelectedId}`, {
+                                            navigate(`/dashboard/admin-letter/${taskToPass.complaintId}`, {
                                                 state: {
-                                                    tasks: selectedTasksArray,
+                                                    task: taskToPass,
+                                                    tasks: [taskToPass],
                                                     itemType: selectedLetterType,
-                                                    autoSelectCompany: "RBP ENERGY (INDIA) PVT. LTD."
+                                                    autoSelectCompany: taskToPass.companyName || "RBP ENERGY (INDIA) PVT. LTD."
                                                 }
                                             });
                                         }}
