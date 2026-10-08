@@ -1,10 +1,8 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { MapPin, BarChart3, CheckCircle2, AlertCircle, Search } from "lucide-react"
+import { MapPin, BarChart3, CheckCircle2, AlertCircle, Search, X, ChevronRight, Phone, MessageSquare, ExternalLink } from "lucide-react"
 import supabase from "../utils/supabase";
-
-
 
 function ComplaintsByRegion() {
   const [complaints, setComplaints] = useState([])
@@ -14,12 +12,36 @@ function ComplaintsByRegion() {
   const [user, setUser] = useState(null)
   const [userRole, setUserRole] = useState(null)
 
+  // District detail modal state
+  const [selectedDistrict, setSelectedDistrict] = useState(null)
+  const [modalSearch, setModalSearch] = useState("")
+  const [modalStatusFilter, setModalStatusFilter] = useState("all") // 'all' | 'pending' | 'resolved'
+
   useEffect(() => {
     const loggedInUser = localStorage.getItem("username")
     const loggedInRole = localStorage.getItem("userRole")
     if (loggedInUser) setUser(loggedInUser)
     if (loggedInRole) setUserRole(loggedInRole)
   }, [])
+
+  // Handle ESC key to close modal & prevent background body scroll
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setSelectedDistrict(null)
+      }
+    }
+    if (selectedDistrict) {
+      window.addEventListener("keydown", handleKeyDown)
+      document.body.style.overflow = "hidden"
+    } else {
+      document.body.style.overflow = ""
+    }
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown)
+      document.body.style.overflow = ""
+    }
+  }, [selectedDistrict])
 
   const formatDateString = (dateValue) => {
     if (!dateValue) return ""
@@ -159,69 +181,45 @@ useEffect(() => {
     }
   )
 
-  // const districtSummary = useMemo(() => {
-  //   const map = new Map()
-
-  //   filteredComplaints.forEach((c) => {
-  //     const key = c.district || "UNKNOWN"
-  //     if (!map.has(key)) {
-  //       map.set(key, {
-  //         district: key,
-  //         total: 0,
-  //         resolved: 0,
-  //         pending: 0,
-  //       })
-  //     }
-  //     const entry = map.get(key)
-  //     entry.total += 1
-
-  //     const s = String(c.status || "").toUpperCase()
-  //     if (s.includes("APPROVED-CLOSE") || s.includes("COMPLETED")) {
-  //       entry.resolved += 1
-  //     } else {
-  //       entry.pending += 1
-  //     }
-  //   })
-
-  //   return Array.from(map.values()).sort((a, b) =>
-  //     a.district.localeCompare(b.district)
-  //   )
-  // }, [filteredComplaints])
-
   const districtSummary = useMemo(() => {
-  const map = new Map()
+    const map = new Map()
 
-  filteredComplaints.forEach((c) => {
-    const rawDistrict = c.district || "UNKNOWN"
+    filteredComplaints.forEach((c) => {
+      const rawDistrict = (c.district || "").trim()
+      const key = rawDistrict ? rawDistrict.toLowerCase() : "unknown"
 
-    const key = rawDistrict.trim().toLowerCase() // 🔥 FIX
+      if (!map.has(key)) {
+        const formatted = rawDistrict
+          ? rawDistrict
+              .split(/\s+/)
+              .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+              .join(" ")
+          : "Not Specified"
 
-    if (!map.has(key)) {
-      map.set(key, {
-        district: key.charAt(0).toUpperCase() + key.slice(1),
-        total: 0,
-        resolved: 0,
-        pending: 0,
-      })
-    }
+        map.set(key, {
+          district: formatted,
+          districtKey: key,
+          total: 0,
+          resolved: 0,
+          pending: 0,
+        })
+      }
 
-    const entry = map.get(key)
-    entry.total += 1
+      const entry = map.get(key)
+      entry.total += 1
 
-    const s = String(c.status || "").toUpperCase()
-    if (s.includes("APPROVED-CLOSE") || s.includes("COMPLETED")) {
-      entry.resolved += 1
-    } else {
-      entry.pending += 1
-    }
-  })
+      const s = String(c.status || "").toUpperCase()
+      if (s.includes("APPROVED-CLOSE") || s.includes("COMPLETED")) {
+        entry.resolved += 1
+      } else {
+        entry.pending += 1
+      }
+    })
 
-  return Array.from(map.values()).sort((a, b) =>
-    a.district.localeCompare(b.district)
-  )
-}, [filteredComplaints])
-
-
+    return Array.from(map.values()).sort((a, b) =>
+      a.district.localeCompare(b.district)
+    )
+  }, [filteredComplaints])
 
   const grandTotals = useMemo(() => {
     return districtSummary.reduce(
@@ -234,6 +232,65 @@ useEffect(() => {
       { total: 0, resolved: 0, pending: 0 }
     )
   }, [districtSummary])
+
+  // Selected district statistics
+  const selectedDistrictStats = useMemo(() => {
+    if (!selectedDistrict) return null
+    return (
+      districtSummary.find(
+        (d) => d.district.toLowerCase() === selectedDistrict.toLowerCase()
+      ) || null
+    )
+  }, [districtSummary, selectedDistrict])
+
+  // Complaints belonging to selected district
+  const districtComplaints = useMemo(() => {
+    if (!selectedDistrict) return []
+    const target = selectedDistrict.trim().toLowerCase()
+    return filteredComplaints.filter((c) => {
+      const raw = (c.district || "").trim().toLowerCase()
+      const formatted = raw
+        ? raw
+            .split(/\s+/)
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+            .join(" ")
+        : "not specified"
+
+      return (
+        raw === target ||
+        formatted.toLowerCase() === target ||
+        (target === "not specified" && !raw) ||
+        (target === "unknown" && !raw)
+      )
+    })
+  }, [filteredComplaints, selectedDistrict])
+
+  // Filtered complaints within modal (by status & search)
+  const filteredDistrictComplaints = useMemo(() => {
+    return districtComplaints.filter((c) => {
+      const isResolved =
+        String(c.status || "").toUpperCase().includes("APPROVED-CLOSE") ||
+        String(c.status || "").toUpperCase().includes("COMPLETED")
+
+      if (modalStatusFilter === "resolved" && !isResolved) return false
+      if (modalStatusFilter === "pending" && isResolved) return false
+
+      if (!modalSearch.trim()) return true
+      const q = modalSearch.toLowerCase().trim()
+      return (
+        String(c.complaintId || "").toLowerCase().includes(q) ||
+        String(c.beneficiaryName || "").toLowerCase().includes(q) ||
+        String(c.village || "").toLowerCase().includes(q) ||
+        String(c.block || "").toLowerCase().includes(q) ||
+        String(c.product || "").toLowerCase().includes(q) ||
+        String(c.make || "").toLowerCase().includes(q) ||
+        String(c.rating || "").toLowerCase().includes(q) ||
+        String(c.natureOfComplaint || "").toLowerCase().includes(q) ||
+        String(c.technicianName || "").toLowerCase().includes(q) ||
+        String(c.contactNumber || "").includes(q)
+      )
+    })
+  }, [districtComplaints, modalStatusFilter, modalSearch])
 
   if (isLoading) {
     return (
@@ -298,13 +355,14 @@ useEffect(() => {
               <th className="px-4 py-3 whitespace-nowrap text-center">Resolved</th>
               <th className="px-4 py-3 whitespace-nowrap text-center">Pending</th>
               <th className="px-4 py-3 whitespace-nowrap text-center">Resolution Rate</th>
+              <th className="px-4 py-3 whitespace-nowrap text-center">Action</th>
             </tr>
           </thead>
 
           <tbody className="divide-y divide-slate-100 bg-white text-xs sm:text-sm">
             {districtSummary.length === 0 ? (
               <tr>
-                <td colSpan="5" className="p-8 text-center text-slate-400">
+                <td colSpan="6" className="p-8 text-center text-slate-400">
                   No district records found matching "{searchTerm}"
                 </td>
               </tr>
@@ -314,11 +372,19 @@ useEffect(() => {
                 return (
                   <tr
                     key={d.district}
-                    className="hover:bg-blue-50/40 transition-colors"
+                    onClick={() => {
+                      setSelectedDistrict(d.district)
+                      setModalSearch("")
+                      setModalStatusFilter("all")
+                    }}
+                    className="hover:bg-blue-50/70 transition-all cursor-pointer group active:scale-[0.998]"
+                    title={`Click to view all complaints in ${d.district}`}
                   >
-                    <td className="px-4 py-3 font-semibold text-slate-800 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span>{d.district}</span>
+                    <td className="px-4 py-3 font-semibold text-slate-800 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-blue-500 group-hover:scale-125 transition-transform" />
+                        <span className="group-hover:text-blue-600 transition-colors font-medium">{d.district}</span>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className="inline-flex items-center justify-center min-w-[32px] rounded-lg bg-slate-100 text-xs font-bold text-slate-800 px-2.5 py-1 font-mono">
@@ -353,6 +419,21 @@ useEffect(() => {
                           {resolutionRate}%
                         </span>
                       </div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedDistrict(d.district)
+                          setModalSearch("")
+                          setModalStatusFilter("all")
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 transition-all cursor-pointer shadow-2xs group-hover:bg-blue-600 group-hover:text-white"
+                      >
+                        <span>View Details</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
                     </td>
                   </tr>
                 )
@@ -394,6 +475,256 @@ useEffect(() => {
           </span>
         </div>
       </div>
+
+      {/* DISTRICT COMPLAINTS DETAILS MODAL */}
+      {selectedDistrict && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-5 animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedDistrict(null)
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-slate-200 animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-blue-50/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-blue-600 text-white shadow-xs">
+                  <MapPin className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                      {selectedDistrict} District
+                    </h3>
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 font-mono">
+                      {districtComplaints.length} Total Complaints
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Complete complaints directory, current status, and resolution details for {selectedDistrict}
+                  </p>
+                </div>
+              </div>
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setSelectedDistrict(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer ml-auto sm:ml-0 flex items-center gap-1 text-xs"
+                title="Close modal (Esc)"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Quick KPI stats in modal */}
+            {selectedDistrictStats && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-4 bg-slate-50/70 border-b border-slate-200 text-xs">
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <span className="text-slate-500 text-[11px] font-medium block">Total Complaints</span>
+                  <span className="text-lg font-bold text-slate-900 font-mono">{selectedDistrictStats.total}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <span className="text-slate-500 text-[11px] font-medium block">Resolved</span>
+                  <span className="text-lg font-bold text-emerald-600 font-mono">{selectedDistrictStats.resolved}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <span className="text-slate-500 text-[11px] font-medium block">Pending</span>
+                  <span className="text-lg font-bold text-amber-600 font-mono">{selectedDistrictStats.pending}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <span className="text-slate-500 text-[11px] font-medium block">Resolution Rate</span>
+                  <span className="text-lg font-bold text-blue-600 font-mono">
+                    {selectedDistrictStats.total > 0
+                      ? Math.round((selectedDistrictStats.resolved / selectedDistrictStats.total) * 100)
+                      : 0}%
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Filter and Search Bar inside modal */}
+            <div className="p-3 sm:p-4 border-b border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-white">
+              {/* Search input */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search by beneficiary, village, block, phone, product, technician..."
+                  value={modalSearch}
+                  onChange={(e) => setModalSearch(e.target.value)}
+                  className="w-full pl-8 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                />
+                {modalSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setModalSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    title="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Status filter buttons */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setModalStatusFilter("all")}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition cursor-pointer ${
+                    modalStatusFilter === "all"
+                      ? "bg-slate-900 text-white shadow-xs font-semibold"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  All ({districtComplaints.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalStatusFilter("pending")}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition cursor-pointer ${
+                    modalStatusFilter === "pending"
+                      ? "bg-amber-600 text-white shadow-xs font-semibold"
+                      : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+                  }`}
+                >
+                  Pending ({selectedDistrictStats?.pending || 0})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalStatusFilter("resolved")}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition cursor-pointer ${
+                    modalStatusFilter === "resolved"
+                      ? "bg-emerald-600 text-white shadow-xs font-semibold"
+                      : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+                  }`}
+                >
+                  Resolved ({selectedDistrictStats?.resolved || 0})
+                </button>
+              </div>
+            </div>
+
+            {/* Complaints Table inside Modal */}
+            <div className="overflow-y-auto flex-1 max-h-[50vh]">
+              {filteredDistrictComplaints.length === 0 ? (
+                <div className="p-12 text-center">
+                  <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-700">No matching complaints found</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {modalSearch ? `No complaints match "${modalSearch}" in this filter` : "No complaints recorded under this status"}
+                  </p>
+                  {modalSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setModalSearch("")}
+                      className="mt-3 px-3 py-1 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
+                    >
+                      Clear Search
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
+                  <thead className="bg-slate-100 sticky top-0 z-10 font-semibold text-slate-700 uppercase tracking-wider">
+                    <tr>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Complaint ID</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Beneficiary & Location</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Product Details</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Nature of Complaint</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Technician</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Date</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {filteredDistrictComplaints.map((c, i) => {
+                      const isResolved =
+                        String(c.status || "").toUpperCase().includes("APPROVED-CLOSE") ||
+                        String(c.status || "").toUpperCase().includes("COMPLETED");
+
+                      return (
+                        <tr key={c.complaintId || i} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-3.5 py-2.5 font-bold font-mono text-blue-600 whitespace-nowrap">
+                            {c.complaintId}
+                          </td>
+                          <td className="px-3.5 py-2.5">
+                            <div className="font-semibold text-slate-900">{c.beneficiaryName || "—"}</div>
+                            <div className="text-[11px] text-slate-500">
+                              {[c.village, c.block].filter(Boolean).join(", ") || "—"}
+                            </div>
+                            {c.contactNumber && (
+                              <a
+                                href={`tel:${c.contactNumber}`}
+                                className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline font-mono mt-0.5"
+                                title="Call beneficiary"
+                              >
+                                <Phone className="w-3 h-3" />
+                                {c.contactNumber}
+                              </a>
+                            )}
+                          </td>
+                          <td className="px-3.5 py-2.5">
+                            <div className="font-medium text-slate-800">{c.product || "—"}</div>
+                            <div className="text-[11px] text-slate-500">
+                              {[c.make, c.rating, c.qty ? `Qty: ${c.qty}` : ""].filter(Boolean).join(" • ") || "—"}
+                            </div>
+                          </td>
+                          <td className="px-3.5 py-2.5 max-w-[220px]">
+                            <p className="line-clamp-2 text-slate-700 text-[11px]" title={c.natureOfComplaint}>
+                              {c.natureOfComplaint || "—"}
+                            </p>
+                          </td>
+                          <td className="px-3.5 py-2.5 whitespace-nowrap">
+                            <div className="font-medium text-slate-800">{c.technicianName || "Unassigned"}</div>
+                            {c.technicianContact && (
+                              <div className="text-[11px] text-slate-500 font-mono">
+                                {c.technicianContact}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3.5 py-2.5 whitespace-nowrap text-slate-600 font-mono text-[11px]">
+                            <div>{c.complaintDate || "—"}</div>
+                            {c.closeDate && (
+                              <div className="text-[10px] text-emerald-600">Closed: {c.closeDate}</div>
+                            )}
+                          </td>
+                          <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono ${
+                                isResolved
+                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                  : "bg-amber-100 text-amber-800 border border-amber-200"
+                              }`}
+                            >
+                              {c.status || "Open"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 sm:p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
+              <span>
+                Showing <strong className="text-slate-700">{filteredDistrictComplaints.length}</strong> of{" "}
+                <strong className="text-slate-700">{districtComplaints.length}</strong> complaints in {selectedDistrict}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedDistrict(null)}
+                className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium cursor-pointer transition shadow-xs"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

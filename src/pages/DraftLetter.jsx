@@ -13,6 +13,51 @@ import DashboardLayout from "../components/DashboardLayout"
 import supabase from "../utils/supabase"
 import SearchableSelect from "../components/SearchableSelect"
 
+const DEFAULT_COMPANY_OPTIONS = [
+    {
+        name: "RBP ENERGY (INDIA) PVT. LTD.",
+        email: "info@rbpindia.com",
+        phone: "9200012500",
+        address: "303 Guru Ghasidas Plaza, Amapara, G.E Road, Raipur (C.G) 492001",
+        aliases: ["RBP", "RBP ENERGY", "RBP ENERGY (INDIA) PVT LTD"]
+    },
+    {
+        name: "TANAY VIDHYUT (I) PVT. LTD.",
+        email: "tanay.vidhyut@gmail.com",
+        phone: "+91 94255398289",
+        address: "P.S. City Colony, House No. 08, Changorabhata",
+        aliases: ["TANAY", "TANAY VIDHYUT", "TANAY VIDHYUT (I) PVT LTD"]
+    },
+    {
+        name: "ROTOMAG MOTORS & CONTROLS PVT. LTD.",
+        email: "Mail@rotomag.com",
+        phone: "+91-2692-236005",
+        address: "Regd.Off. : 2102/3&4, GIDC Estate, Vitthal Udyognagar Gujarat-388 121, India",
+        aliases: ["ROTOMAG", "ROTOMAG MOTORS", "ROTOMAG MOTORS & CONTROLS"]
+    },
+    {
+        name: "SOLEX ENERGY LIMITED",
+        email: "solexin14@gmail.com",
+        phone: "+91-2692-230317",
+        address: "Plot No: 131/A, Phase - 1, Nr. Krimy, H M Road, G. I. D. C, Vitthal Udyognagar - 388121, Dist: Anand (Gujarat)",
+        aliases: ["SOLEX", "SOLEX ENERGY", "SOLEX ENERGY PVT LTD"]
+    },
+    {
+        name: "SURAJ ENTERPRISES",
+        email: "surajenterprise0587@gmail.com",
+        phone: "88895-44440",
+        address: "Jayanti Nagar, Shri Ram Chowk, Sikola Bhata, Durg (C.G.) 491001",
+        aliases: ["SURAJ", "SURAJ ENTERPRISE"]
+    },
+    {
+        name: "PREMIER ENERGIES LTD.",
+        email: "info@premierenergies.com",
+        phone: "+91-40-27744415",
+        address: "Sy.No.54/Part, Above G.Pulla Reddy Sweets, Vikrampuri, Secunderabad-500009, Telangana",
+        aliases: ["PREMIER", "PREMIER ENERGIES"]
+    }
+];
+
 function DraftLetter() {
     const navigate = useNavigate()
     const location = useLocation()
@@ -28,7 +73,7 @@ function DraftLetter() {
     const [searchTerm, setSearchTerm] = useState("")
     const [email, setEmail] = useState("")
     const [selectedCompany, setSelectedCompany] = useState("")
-    const [companyOptions, setCompanyOptions] = useState([])
+    const [companyOptions, setCompanyOptions] = useState(DEFAULT_COMPANY_OPTIONS)
     const [filterDistrict, setFilterDistrict] = useState("")
     const [filterBlock, setFilterBlock] = useState("")
     const [filterTechnician, setFilterTechnician] = useState("")
@@ -115,7 +160,7 @@ function DraftLetter() {
                 trackerStatus: statusValue,
                 columnV: planned1,
                 actualDate: actual1,
-                companyName: row.company || "",
+                companyName: row.company_name || row.company || "",
                 email: row.email || "",
                 pdfUrl: row.pdf || "",
                 columnAN: false,
@@ -167,34 +212,116 @@ function DraftLetter() {
 
 
 
-    const fetchCompanyOptions = async () => {
-    try {
-        console.log("[DEBUG] Fetching Master from Supabase...")
-
-        const { data, error } = await supabase
-            .from("Master")
-            .select("*")
-
-        if (error) throw error
-
-        const options = data.map(row => ({
-            name: row.company_name1 || "",
-            address: row.address || "",
-            email: row.email_id || "",
-            phone: row.phone_no || ""
-        }))
-
-        console.log("[DEBUG] Company options:", options)
-
-        setCompanyOptions(options)
-
-    } catch (err) {
-        console.error("Failed fetching Master:", err)
+    const findCompanyDetails = (nameToMatch) => {
+        if (!nameToMatch) return null
+        const clean = String(nameToMatch).trim().toLowerCase()
+        return companyOptions.find(c => {
+            if (!c?.name) return false
+            const cName = c.name.trim().toLowerCase()
+            if (cName === clean) return true
+            if (Array.isArray(c.aliases) && c.aliases.some(a => a.toLowerCase() === clean)) return true
+            return false
+        })
     }
-}
 
+    const openReviewDialog = (task) => {
+        setSelectedTask(task.id)
+        setSelectedTaskData(task)
+        setIsDialogOpen(true)
+        const currentComp = task.companyName || task.company || ""
+        const matched = findCompanyDetails(currentComp)
+        if (matched) {
+            setSelectedCompany(matched.name)
+            setEmail(matched.email || task.email || "")
+        } else {
+            setSelectedCompany(currentComp)
+            setEmail(task.email || "")
+        }
+    }
 
+    const fetchCompanyOptions = async () => {
+        try {
+            console.log("[DEBUG] Fetching Master from Supabase...")
 
+            const { data: rows, error: masterError } = await supabase
+                .from("Master")
+                .select("company_name, company_name1, address, email_id, phone_no")
+
+            if (masterError) {
+                console.warn("[DEBUG] Error fetching Master:", masterError.message)
+            }
+
+            const optionsMap = new Map()
+
+            // 1. Add default profiles first
+            DEFAULT_COMPANY_OPTIONS.forEach(p => {
+                if (p?.name && p.name.trim()) {
+                    optionsMap.set(p.name.trim().toLowerCase(), {
+                        name: p.name.trim(),
+                        address: p.address || "",
+                        email: p.email || "",
+                        phone: p.phone || "",
+                        aliases: p.aliases || []
+                    })
+                }
+            })
+
+            // 2. Merge Master table rows
+            if (rows && Array.isArray(rows)) {
+                rows.forEach((row) => {
+                    const rawName = row.company_name || row.company_name1
+                    if (rawName) {
+                        const nameStr = String(rawName).trim()
+                        const lower = nameStr.toLowerCase()
+                        if (
+                            !nameStr ||
+                            nameStr === "Company Name1" ||
+                            nameStr === "Company Name" ||
+                            nameStr === "Company Name 1" ||
+                            lower === "select" ||
+                            lower === "select a company" ||
+                            lower === "null" ||
+                            lower === "undefined" ||
+                            lower === "-"
+                        ) {
+                            return
+                        }
+
+                        let matchedKey = null
+                        for (const [key, val] of optionsMap.entries()) {
+                            if (key === lower || (Array.isArray(val.aliases) && val.aliases.some(a => a.toLowerCase() === lower))) {
+                                matchedKey = key
+                                break
+                            }
+                        }
+
+                        if (!matchedKey) {
+                            optionsMap.set(lower, {
+                                name: nameStr,
+                                address: row.address || "",
+                                email: row.email_id || "",
+                                phone: row.phone_no || "",
+                                aliases: []
+                            })
+                        } else {
+                            const existing = optionsMap.get(matchedKey)
+                            if (row.address && !existing.address) existing.address = row.address
+                            if (row.email_id && !existing.email) existing.email = row.email_id
+                            if (row.phone_no && !existing.phone) existing.phone = row.phone_no
+                        }
+                    }
+                })
+            }
+
+            const combinedOptions = Array.from(optionsMap.values())
+            console.log("[DEBUG] Deduplicated unique company options:", combinedOptions)
+            setCompanyOptions(combinedOptions)
+
+        } catch (err) {
+            console.error("Failed fetching Master:", err)
+            setCompanyOptions(DEFAULT_COMPANY_OPTIONS)
+        }
+    }
 
     const handleUpdateTask = async () => {
         if (!selectedCompany) {
@@ -210,12 +337,16 @@ function DraftLetter() {
             if (taskIndex === -1 && activeTab === 'pending') throw new Error("Task not found")
             const task = activeTab === 'pending' ? { ...currentTasks[taskIndex] } : selectedTaskData
 
-            const companyDetails = companyOptions.find(c => c.name === selectedCompany) || {}
+            const companyDetails = findCompanyDetails(selectedCompany) || {}
 
             // Update Supabase FMS table with selected company
             const { error: updateError } = await supabase
                 .from("FMS")
-                .update({ company: selectedCompany, email: companyDetails.email || "" })
+                .update({ 
+                    company: selectedCompany, 
+                    company_name: selectedCompany, 
+                    email: companyDetails.email || email || "" 
+                })
                 .eq("complaint_id", task.complaintId)
 
             if (updateError) {
@@ -225,12 +356,16 @@ function DraftLetter() {
             setIsDialogOpen(false)
             resetDialogState()
 
+            const companyToPass = selectedCompany || task.companyName || "";
+            const taskWithCompany = { ...task, companyName: companyToPass, company: companyToPass };
+
             // Navigate to AdminLetter page for letter generation
             navigate(`/dashboard/admin-letter/${task.complaintId}`, {
                 state: {
-                    tasks: [task],
+                    task: taskWithCompany,
+                    tasks: [taskWithCompany],
                     itemType: "Battery",
-                    autoSelectCompany: selectedCompany
+                    autoSelectCompany: companyToPass
                 }
             })
 
@@ -923,13 +1058,7 @@ function DraftLetter() {
                                                         <td className="px-3 py-3 whitespace-nowrap">
                                                             <button
                                                                 className="bg-gradient-to-r from-amber-400 to-orange-500 text-white hover:from-amber-500 hover:to-orange-600 border-0 py-1 px-3 rounded-md text-xs font-medium cursor-pointer shadow-xs transition-all"
-                                                                onClick={() => {
-                                                                    setSelectedTask(task.id)
-                                                                    setSelectedTaskData(task)
-                                                                    setIsDialogOpen(true)
-                                                                    setEmail("")
-                                                                    setSelectedCompany("")
-                                                                }}
+                                                                onClick={() => openReviewDialog(task)}
                                                             >
                                                                 Review
                                                             </button>
@@ -1109,13 +1238,7 @@ function DraftLetter() {
                                                 <div className="mt-2">
                                                     <button
                                                         className="w-full bg-gradient-to-r from-amber-400 to-orange-500 text-white py-1.5 rounded-md text-xs font-medium"
-                                                        onClick={() => {
-                                                            setSelectedTask(task.id)
-                                                            setSelectedTaskData(task)
-                                                            setIsDialogOpen(true)
-                                                            setEmail("")
-                                                            setSelectedCompany("")
-                                                        }}
+                                                        onClick={() => openReviewDialog(task)}
                                                     >
                                                         Review
                                                     </button>
@@ -1313,9 +1436,9 @@ function DraftLetter() {
                                                             onChange={(e) => {
                                                                 const companyName = e.target.value;
                                                                 setSelectedCompany(companyName);
-                                                                const companyDetails = companyOptions.find(c => c.name === companyName);
-                                                                if (companyDetails) {
-                                                                    setEmail(companyDetails.email || "");
+                                                                const companyDetails = findCompanyDetails(companyName);
+                                                                if (companyDetails && companyDetails.email) {
+                                                                    setEmail(companyDetails.email);
                                                                 } else {
                                                                     setEmail("");
                                                                 }
@@ -1323,11 +1446,24 @@ function DraftLetter() {
                                                             className="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                                         >
                                                             <option value="">Select a company</option>
-                                                            {companyOptions.filter(opt => opt.name && opt.name.trim() !== "").map((opt, index) => (
-                                                                <option key={index} value={opt.name}>
+                                                            {/* Render strictly unique company options */}
+                                                            {Array.from(
+                                                                new Map(
+                                                                    companyOptions
+                                                                        .filter(opt => opt && opt.name && opt.name.trim() !== "")
+                                                                        .map(opt => [opt.name.trim().toLowerCase(), opt])
+                                                                ).values()
+                                                            ).map((opt) => (
+                                                                <option key={opt.name} value={opt.name}>
                                                                     {opt.name}
                                                                 </option>
                                                             ))}
+                                                            {/* Ensure existing selected company is not lost even if not in master list */}
+                                                            {selectedCompany && !companyOptions.some(opt => opt.name?.trim().toLowerCase() === selectedCompany.trim().toLowerCase()) && (
+                                                                <option value={selectedCompany}>
+                                                                    {selectedCompany}
+                                                                </option>
+                                                            )}
                                                         </select>
                                                     </div>
                                                 </div>
@@ -1335,7 +1471,20 @@ function DraftLetter() {
                                             <div className="flex justify-end gap-2 mt-4">
                                                 <button
                                                     type="button"
-                                                    onClick={() => navigate(`/dashboard/admin-letter/${selectedTaskData?.complaintId}`, { state: { task: selectedTaskData } })}
+                                                    onClick={() => {
+                                                        const compToPass = selectedCompany || selectedTaskData?.companyName || "";
+                                                        const updatedTask = {
+                                                            ...selectedTaskData,
+                                                            companyName: compToPass
+                                                        };
+                                                        navigate(`/dashboard/admin-letter/${selectedTaskData?.complaintId}`, {
+                                                            state: {
+                                                                task: updatedTask,
+                                                                tasks: [updatedTask],
+                                                                autoSelectCompany: compToPass
+                                                            }
+                                                        });
+                                                    }}
                                                     className="py-2 px-4 border border-blue-300 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 flex items-center"
                                                     disabled={isSubmitting}
                                                 >

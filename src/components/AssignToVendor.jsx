@@ -22,6 +22,7 @@ import {
   Layers,
   MapPin,
   Phone,
+  Mail,
   User,
   ShieldCheck,
   Briefcase
@@ -37,6 +38,7 @@ function AssignToVendorForm() {
   // States for dropdown options
   const [vendorNameOptions, setVendorNameOptions] = useState([]);
   const [productTypeOptions, setProductTypeOptions] = useState([]);
+  const [vendorDetailsMap, setVendorDetailsMap] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [dataError, setDataError] = useState(null);
 
@@ -60,6 +62,8 @@ function AssignToVendorForm() {
   // Form data state
   const [formData, setFormData] = useState({
     vendorName: "",
+    vendorMobile: "",
+    vendorEmail: "",
     productType: "",
     sendDetailsToVendor: false,
     vendorComplaintId: "",
@@ -118,13 +122,29 @@ function AssignToVendorForm() {
 
         const { data, error } = await supabase
           .from("Master")
-          .select("vendor_name, product_type");
+          .select("*");
 
         if (error) throw error;
 
-        const vendorNames = (data || []).map((i) => i.vendor_name).filter(Boolean);
-        const productTypes = (data || []).map((i) => i.product_type).filter(Boolean);
+        const vMap = {};
+        const vendorNames = [];
+        const productTypes = [];
 
+        (data || []).forEach((item) => {
+          if (item.vendor_name) {
+            const vName = item.vendor_name.trim();
+            vendorNames.push(vName);
+            vMap[vName] = {
+              phone: item.phone_no || item.vendor_mobile || item.vendor_phone || "",
+              email: item.email_id || item.vendor_email || "",
+            };
+          }
+          if (item.product_type) {
+            productTypes.push(item.product_type.trim());
+          }
+        });
+
+        setVendorDetailsMap(vMap);
         setVendorNameOptions([...new Set(vendorNames)].sort());
         setProductTypeOptions([...new Set(productTypes)].sort());
       } catch (error) {
@@ -329,7 +349,17 @@ function AssignToVendorForm() {
   };
 
   const handleSelectChange = (name, value) => {
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (name === "vendorName") {
+      const details = vendorDetailsMap[value] || {};
+      setFormData((prev) => ({
+        ...prev,
+        vendorName: value,
+        vendorMobile: details.phone || "",
+        vendorEmail: details.email || "",
+      }));
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleFileSelect = (e) => {
@@ -347,6 +377,8 @@ function AssignToVendorForm() {
     setSelectedComplaint(null);
     setFormData({
       vendorName: "",
+      vendorMobile: "",
+      vendorEmail: "",
       productType: "",
       sendDetailsToVendor: false,
       vendorComplaintId: "",
@@ -993,6 +1025,52 @@ function AssignToVendorForm() {
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  {/* Vendor Mobile Number (Autofilled) */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                      <span>Vendor Mobile Number</span>
+                      {formData.vendorMobile && (
+                        <span className="text-[10px] text-teal-700 font-semibold bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">
+                          Autofilled
+                        </span>
+                      )}
+                    </label>
+                    <div className="relative">
+                      <Phone size={14} className="absolute left-3.5 top-3 text-slate-400" />
+                      <input
+                        type="tel"
+                        name="vendorMobile"
+                        value={formData.vendorMobile}
+                        onChange={handleChange}
+                        placeholder="Auto-filled on vendor selection"
+                        className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50/70 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Vendor Email (Autofilled) */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                      <span>Vendor Email</span>
+                      {formData.vendorEmail && (
+                        <span className="text-[10px] text-blue-700 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                          Autofilled
+                        </span>
+                      )}
+                    </label>
+                    <div className="relative">
+                      <Mail size={14} className="absolute left-3.5 top-3 text-slate-400" />
+                      <input
+                        type="email"
+                        name="vendorEmail"
+                        value={formData.vendorEmail}
+                        onChange={handleChange}
+                        placeholder="Auto-filled on vendor selection"
+                        className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50/70 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      />
+                    </div>
                   </div>
 
                   {/* Vendor Complaint ID */}

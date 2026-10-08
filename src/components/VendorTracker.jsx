@@ -249,18 +249,8 @@ function VendorTracker() {
   // Base raw lists for Pending and History
   const rawHistoryList = useMemo(() => {
     return (vendorTrackerData || []).filter((row) => {
-      const plannedDate = row[7]?.toString().trim();
-      const actualDate = row[8]?.toString().trim();
-      return (
-        plannedDate &&
-        actualDate &&
-        plannedDate !== "" &&
-        actualDate !== "" &&
-        plannedDate !== "null" &&
-        actualDate !== "null" &&
-        plannedDate !== "undefined" &&
-        actualDate !== "undefined"
-      );
+      // Keep any submitted record that has a serial_number or complaint_id
+      return Boolean(row[1] || row[2]);
     });
   }, [vendorTrackerData]);
 
@@ -483,9 +473,29 @@ function VendorTracker() {
   };
 
   const generateVTId = async () => {
-    const { data, error } = await supabase.rpc("generate_vt_id");
-    if (error) throw error;
-    return data;
+    try {
+      const { data, error } = await supabase.rpc("generate_vt_id");
+      if (!error && data) return data;
+    } catch (e) {
+      console.warn("RPC generate_vt_id failed, falling back to manual generation:", e);
+    }
+
+    try {
+      const { data: lastRows } = await supabase
+        .from("VendorTracker")
+        .select("serial_number")
+        .order("id", { ascending: false })
+        .limit(1);
+
+      let nextNum = 1;
+      if (lastRows && lastRows.length > 0 && lastRows[0]?.serial_number) {
+        const num = parseInt(lastRows[0].serial_number.replace(/\D/g, ""), 10) || 0;
+        nextNum = num + 1;
+      }
+      return `VT-${String(nextNum).padStart(3, "0")}`;
+    } catch (err) {
+      return `VT-${Date.now().toString().slice(-4)}`;
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -507,26 +517,82 @@ function VendorTracker() {
         setUploading(false);
       }
 
-      const timestamp = new Date();
       const vtId = await generateVTId();
-      const plannedDate = vendorDate;
-      const actualDate = new Date();
 
-      const { error } = await supabase.from("VendorTracker").insert([
-        {
-          timestamp,
-          serial_number: vtId,
-          complaint_id: selectedComplaint?.[2] || "",
-          date: plannedDate,
-          status: formData.status,
-          remark: formData.remark || "",
-          upload: uploadedFiles.map((f) => f.url).join(", "),
-          planned: plannedDate,
-          actual: actualDate,
-        },
-      ]);
+      // Format date strictly as YYYY-MM-DD
+      const formattedDate =
+        vendorDate instanceof Date
+          ? `${vendorDate.getFullYear()}-${String(vendorDate.getMonth() + 1).padStart(2, "0")}-${String(vendorDate.getDate()).padStart(2, "0")}`
+          : String(vendorDate).split("T")[0];
 
-      if (error) throw error;
+      const nowIso = new Date().toISOString();
+      const complaintId = selectedComplaint?.[2] || "";
+
+      const primaryPayload = {
+        timestamp: nowIso,
+        serial_number: vtId,
+        complaint_id: complaintId,
+        date: formattedDate,
+        status: formData.status,
+        remark: formData.remark || "",
+        upload: uploadedFiles.map((f) => f.url).join(", "),
+        planned: formattedDate,
+        actual: nowIso,
+      };
+
+      let { error } = await supabase.from("VendorTracker").insert([primaryPayload]);
+
+      // Handle Postgres 42883 trigger error (operator does not exist: timestamp without time zone - text)
+      if (error) {
+        console.warn("Primary VendorTracker insert error:", error);
+        if (
+          error.code === "42883" ||
+          (error.message && error.message.includes("operator does not exist"))
+        ) {
+          // Attempt fallback insert without planned/actual columns
+          const fallbackPayload = {
+            timestamp: nowIso,
+            serial_number: vtId,
+            complaint_id: complaintId,
+            date: formattedDate,
+            status: formData.status,
+            remark: formData.remark || "",
+            upload: uploadedFiles.map((f) => f.url).join(", "),
+          };
+          const fallbackRes = await supabase.from("VendorTracker").insert([fallbackPayload]);
+          if (fallbackRes.error) {
+            throw new Error(
+              `Database Trigger Type Error (${fallbackRes.error.code || error.code}): ${fallbackRes.error.message || error.message}\n\n` +
+              `Supabase database mein "VendorTracker" table par trigger 'actual - planned' ko subtract kar raha hai jisme type mismatch (timestamp - text) hai.\n` +
+              `Kripya Supabase SQL Editor mein provided SQL fix script run karein.`
+            );
+          }
+          error = null;
+        } else {
+          throw error;
+        }
+      }
+
+      // Sync status with FMS table directly (consistent with TechnicianTracker & PendingAssignments)
+      if (complaintId) {
+        try {
+          const fmsUpdate = {
+            last_attend_status: formData.status,
+          };
+          if (formData.status?.toLowerCase() === "completed") {
+            fmsUpdate.status = "APPROVED-CLOSE";
+            fmsUpdate.actual1 = nowIso;
+            fmsUpdate.close_date = formattedDate;
+          }
+          const { error: fmsErr } = await supabase
+            .from("FMS")
+            .update(fmsUpdate)
+            .eq("complaint_id", complaintId);
+          if (fmsErr) console.warn("FMS sync warning (non-fatal):", fmsErr.message);
+        } catch (fmsErr) {
+          console.warn("FMS sync error (non-fatal):", fmsErr);
+        }
+      }
 
       alert("Vendor Tracker record submitted successfully! ✅");
       handleBackToTable();

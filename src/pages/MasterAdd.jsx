@@ -162,9 +162,11 @@ const MASTER_CATEGORIES = [
     icon: Handshake,
     color: "from-teal-500 to-emerald-600",
     lightBg: "bg-teal-50 text-teal-700 border-teal-200",
-    description: "Authorized third-party equipment and service vendors.",
+    description: "Authorized third-party equipment and service vendors with contact and email details.",
     inputs: [
-      { key: "vendor_name", label: "Vendor Name", placeholder: "e.g. SolarTech Solutions Pvt Ltd", type: "text", required: true }
+      { key: "vendor_name", label: "Vendor Name", placeholder: "e.g. SolarTech Solutions Pvt Ltd", type: "text", required: true },
+      { key: "phone_no", label: "Vendor Mobile Number", placeholder: "e.g. 9876543210", type: "tel", maxLength: 15 },
+      { key: "email_id", label: "Vendor Email", placeholder: "e.g. vendor@example.com", type: "email" }
     ]
   },
   {
@@ -289,10 +291,15 @@ export default function MasterDataManagement() {
       } else if (cat.id === "company_name1") {
         counts[cat.id] = masterData.filter(
           (item) =>
-            (item.company_name1 && item.company_name1.toString().trim() !== "") ||
-            (item.address && item.address.toString().trim() !== "") ||
-            (item.email_id && item.email_id.toString().trim() !== "") ||
-            (item.phone_no && item.phone_no.toString().trim() !== "")
+            !item.vendor_name &&
+            ((item.company_name1 && item.company_name1.toString().trim() !== "") ||
+              (item.address && item.address.toString().trim() !== "") ||
+              (item.email_id && item.email_id.toString().trim() !== "") ||
+              (item.phone_no && item.phone_no.toString().trim() !== ""))
+        ).length;
+      } else if (cat.id === "vendor_name") {
+        counts[cat.id] = masterData.filter(
+          (item) => item.vendor_name && item.vendor_name.toString().trim() !== ""
         ).length;
       } else if (cat.id === "checked") {
         counts[cat.id] = masterData.filter(
@@ -333,10 +340,15 @@ export default function MasterDataManagement() {
     } else if (activeCategory.id === "company_name1") {
       items = masterData.filter(
         (item) =>
-          (item.company_name1 && item.company_name1.toString().trim() !== "") ||
-          (item.address && item.address.toString().trim() !== "") ||
-          (item.email_id && item.email_id.toString().trim() !== "") ||
-          (item.phone_no && item.phone_no.toString().trim() !== "")
+          !item.vendor_name &&
+          ((item.company_name1 && item.company_name1.toString().trim() !== "") ||
+            (item.address && item.address.toString().trim() !== "") ||
+            (item.email_id && item.email_id.toString().trim() !== "") ||
+            (item.phone_no && item.phone_no.toString().trim() !== ""))
+      );
+    } else if (activeCategory.id === "vendor_name") {
+      items = masterData.filter(
+        (item) => item.vendor_name && item.vendor_name.toString().trim() !== ""
       );
     } else if (activeCategory.id === "checked") {
       items = masterData.filter(
@@ -1060,6 +1072,26 @@ export default function MasterDataManagement() {
                                           <span className="flex items-center gap-1 text-gray-600 line-clamp-1">
                                             <MapPin className="h-3 w-3 text-gray-400" />
                                             {item.address}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ) : activeCategory.id === "vendor_name" ? (
+                                    <div>
+                                      <p className="text-sm font-semibold text-gray-900">
+                                        {item.vendor_name || "Unnamed Vendor"}
+                                      </p>
+                                      <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 mt-1">
+                                        {item.phone_no && (
+                                          <span className="flex items-center gap-1 text-teal-700 font-medium">
+                                            <Phone className="h-3 w-3" />
+                                            {item.phone_no}
+                                          </span>
+                                        )}
+                                        {item.email_id && (
+                                          <span className="flex items-center gap-1 text-blue-700 font-medium">
+                                            <Mail className="h-3 w-3" />
+                                            {item.email_id}
                                           </span>
                                         )}
                                       </div>

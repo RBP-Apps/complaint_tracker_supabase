@@ -8,6 +8,137 @@ import RBPLetterPDF from "../components/RBPLetterPDF";
 import supabase from "../utils/supabase";
 
 
+const DEFAULT_COMPANY_PROFILES = [
+    {
+        name: "RBP ENERGY (INDIA) PVT. LTD.",
+        aliases: ["RBP", "RBP ENERGY", "RBP ENERGY (INDIA) PVT LTD"],
+        address: "303 Guru Ghasidas Plaza, Amapara, G.E Road, Raipur (C.G) 492001",
+        location: "Raipur (C.G) - 492001",
+        phone: "9200012500",
+        email: "info@rbpindia.com",
+        contact: "T : 9200012500 | Email : info@rbpindia.com | Website : www.rbpindia.com",
+        forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
+        designation: "S.N.Sahoo"
+    },
+    {
+        name: "TANAY VIDHYUT (I) PVT. LTD.",
+        aliases: ["TANAY", "TANAY VIDHYUT", "TANAY VIDHYUT (I) PVT LTD"],
+        address: "P.S. City Colony, House No. 08, Changorabhata",
+        location: "Raipur (C.G.) - 492013",
+        phone: "+91 94255398289",
+        email: "tanay.vidhyut@gmail.com",
+        contact: "Phone No. +91 94255398289 Email : tanay.vidhyut@gmail.com",
+        forCompany: "वास्ते, तनय विद्युत (ई०) प्रा.लि.",
+        designation: "अधिकृत हस्ताक्षरकर्ता"
+    },
+    {
+        name: "ROTOMAG MOTORS & CONTROLS PVT. LTD.",
+        aliases: ["ROTOMAG", "ROTOMAG MOTORS", "ROTOMAG MOTORS & CONTROLS"],
+        address: "Regd.Off. : 2102/3&4, GIDC Estate, Vitthal Udyognagar Gujarat-388 121, India",
+        location: "Vitthal Udyognagar Gujarat-388 121",
+        phone: "+91-2692-236005",
+        email: "Mail@rotomag.com",
+        contact: "Ph. : +91-2692-236005 | Email : Mail@rotomag.com | www.rotomag.com",
+        forCompany: "वास्ते, ROTOMAG MOTORS & CONTROLS PVT. LTD.",
+        designation: "अधिकृत हस्ताक्षरकर्ता"
+    },
+    {
+        name: "SOLEX ENERGY LIMITED",
+        aliases: ["SOLEX", "SOLEX ENERGY", "SOLEX ENERGY PVT LTD"],
+        address: "Plot No: 131/A, Phase - 1, Nr. Krimy, H M Road, G. I. D. C, Vitthal Udyognagar - 388121, Dist: Anand (Gujarat)",
+        location: "Vitthal Udyognagar - 388121",
+        phone: "+91-2692-230317",
+        email: "solexin14@gmail.com",
+        contact: "Tel. : +91-2692-230317 | Email : solexin14@gmail.com",
+        forCompany: "वास्ते, SOLEX ENERGY LIMITED",
+        designation: "अधिकृत हस्ताक्षरकर्ता"
+    },
+    {
+        name: "SURAJ ENTERPRISES",
+        aliases: ["SURAJ", "SURAJ ENTERPRISE"],
+        address: "Jayanti Nagar, Shri Ram Chowk, Sikola Bhata, Durg (C.G.) 491001",
+        location: "Durg (C.G.) - 491001",
+        phone: "88895-44440",
+        email: "surajenterprise0587@gmail.com",
+        contact: "Call: 88895-44440 | Email : surajenterprise0587@gmail.com",
+        forCompany: "वास्ते, SURAJ ENTERPRISES",
+        designation: "अधिकृत हस्ताक्षरकर्ता"
+    },
+    {
+        name: "PREMIER ENERGIES LTD.",
+        aliases: ["PREMIER", "PREMIER ENERGIES"],
+        address: "Sy.No.54/Part, Above G.Pulla Reddy Sweets, Vikrampuri, Secunderabad-500009, Telangana",
+        location: "Secunderabad-500009, Telangana",
+        phone: "+91-40-27744415",
+        email: "info@premierenergies.com",
+        contact: "Tel: +91-40-27744415 | Email : info@premierenergies.com",
+        forCompany: "वास्ते, PREMIER ENERGIES LTD.",
+        designation: "अधिकृत हस्ताक्षरकर्ता"
+    }
+];
+
+const getCompanyProfile = (rawName, customOptions = []) => {
+    if (!rawName) return null;
+    const clean = String(rawName).trim();
+    if (!clean) return null;
+    const lower = clean.toLowerCase();
+
+    // 1. Try finding in customOptions exact match
+    const customMatch = (customOptions || []).find(
+        opt => opt?.name && opt.name.toLowerCase() === lower
+    );
+    if (customMatch && (customMatch.address || customMatch.email || customMatch.phone)) {
+        return {
+            name: customMatch.name,
+            address: customMatch.address || "",
+            location: customMatch.location || "",
+            phone: customMatch.phone || "",
+            email: customMatch.email || "",
+            contact: customMatch.phone || customMatch.email
+                ? `Phone No. ${customMatch.phone || ""} | Email : ${customMatch.email || ""}`
+                : "",
+            forCompany: customMatch.name.toUpperCase().includes("RBP")
+                ? "For RBP ENERGY (INDIA) PVT Ltd"
+                : `वास्ते, ${customMatch.name}`,
+            designation: customMatch.name.toUpperCase().includes("RBP") ? "S.N.Sahoo" : "अधिकृत हस्ताक्षरकर्ता"
+        };
+    }
+
+    // 2. Try finding in DEFAULT_COMPANY_PROFILES by name or aliases
+    for (const profile of DEFAULT_COMPANY_PROFILES) {
+        if (profile.name.toLowerCase() === lower) return profile;
+        if (profile.aliases && profile.aliases.some(a => a.toLowerCase() === lower || lower.includes(a.toLowerCase()) || a.toLowerCase().includes(lower))) {
+            return profile;
+        }
+    }
+
+    if (customMatch) {
+        return {
+            name: customMatch.name,
+            address: customMatch.address || "",
+            location: customMatch.location || "",
+            phone: customMatch.phone || "",
+            email: customMatch.email || "",
+            contact: "",
+            forCompany: `वास्ते, ${customMatch.name}`,
+            designation: "अधिकृत हस्ताक्षरकर्ता"
+        };
+    }
+
+    return {
+        name: clean,
+        address: "",
+        location: "",
+        phone: "",
+        email: "",
+        contact: "",
+        forCompany: clean.toUpperCase().includes("RBP")
+            ? "For RBP ENERGY (INDIA) PVT Ltd"
+            : `वास्ते, ${clean}`,
+        designation: clean.toUpperCase().includes("RBP") ? "S.N.Sahoo" : "अधिकृत हस्ताक्षरकर्ता"
+    };
+};
+
 const AdminLetter = () => {
     const { complaintId } = useParams();
     const navigate = useNavigate();
@@ -17,15 +148,32 @@ const AdminLetter = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [isSavingPDF, setIsSavingPDF] = useState(false);
     const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
-    const [companyOptions, setCompanyOptions] = useState([]);
-    const [selectedEmail, setSelectedEmail] = useState("tanay.vidhyut@gmail.com");
+    const [companyOptions, setCompanyOptions] = useState(DEFAULT_COMPANY_PROFILES.map(p => ({
+        name: p.name,
+        address: p.address,
+        email: p.email,
+        phone: p.phone,
+        location: p.location || ""
+    })));
+
+    const initialCompanyCandidate =
+        location.state?.autoSelectCompany ||
+        (location.state?.tasks && location.state.tasks[0]?.companyName) ||
+        (location.state?.tasks && location.state.tasks[0]?.company) ||
+        location.state?.task?.companyName ||
+        location.state?.task?.company ||
+        "";
+
+    const initialProfile = getCompanyProfile(initialCompanyCandidate) || DEFAULT_COMPANY_PROFILES[1];
+
+    const [selectedEmail, setSelectedEmail] = useState(initialProfile.email || "tanay.vidhyut@gmail.com");
 
     // Header Content State
     const [headerInfo, setHeaderInfo] = useState({
-        companyName: "TANAY VIDHYUT (I) PVT. LTD.",
-        address: "P.S. City Colony, House No. 08, Changorabhata",
-        location: "Raipur (C.G.) - 492013",
-        contact: "Phone No. +91 94255398289 Email : tanay.vidhyut@gmail.com"
+        companyName: initialProfile.name,
+        address: initialProfile.address,
+        location: initialProfile.location || "",
+        contact: initialProfile.contact || ""
     });
 
     // Letter Content State (Dynamic)
@@ -56,6 +204,78 @@ const AdminLetter = () => {
     // Dynamic Table State
     const [tableColumns, setTableColumns] = useState(["क्र.", "सौर समाधान क्र.", "आई. डी. नं.", "हितग्राही का नाम", "ग्राम/ विकासखण्ड", "दिनांक", "रिमार्क"]);
     const [tableData, setTableData] = useState([]);
+
+    const applyCompanyProfile = (targetName) => {
+        if (!targetName) return;
+        const profile = getCompanyProfile(targetName, companyOptions);
+        if (!profile) return;
+
+        setHeaderInfo({
+            companyName: profile.name,
+            address: profile.address,
+            location: profile.location || "",
+            contact: profile.contact || (profile.phone ? `Phone No. ${profile.phone} | Email : ${profile.email}` : "")
+        });
+
+        if (profile.email) {
+            setSelectedEmail(profile.email);
+        }
+
+        const isRBP = profile.name.toUpperCase().includes("RBP");
+        const isColumnANTrueLocal = taskData?.columnAN === true || taskData?.columnAN === "true" || taskData?.columnAN === "TRUE";
+
+        if ((isColumnANTrueLocal || location.state?.itemType || location.state?.tasks) && isRBP) {
+            if (!location.state?.tasks) {
+                setLetterInfo(prev => ({
+                    ...prev,
+                    letterNo: prev.letterNo && prev.letterNo.startsWith("RBP") ? prev.letterNo : `RBP/SPVPP/SER/25-26/${Math.floor(Math.random() * 900) + 100}`,
+                    officerName: prev.officerName || "The DIST INCHARGE",
+                    department: prev.department || "CREDA DIST OFFICE",
+                    districtOffice: prev.districtOffice || `CREDA DIST OFFICE-${taskData?.district || ""}, DIST:${taskData?.district || ""}`,
+                    subject: prev.subject || "Regarding Rectification of Power Plant Inverter & Battery complaints",
+                    reference: prev.reference?.length ? prev.reference : ["Whatsapp"],
+                    salutation: "Dear Sir,",
+                    introParagraph: prev.introParagraph || `With reference to the above subject Complaints M/s Statcon Powtech Service Engineer visited to ${taskData?.block || ""} sites from ${taskData?.actualDate || ""} against Power plant inverter complaints & rectified the inverters. Now System is working satisfactory. (Service report enclosed for your reference).`,
+                    closingParagraph: prev.closingParagraph || "Note: Request you to update in your record & close the complaints in your Complaint register.",
+                    thankYou: "Thanking you.",
+                    regards: "Yours faithfully,",
+                    forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
+                    designation: "S.N.Sahoo",
+                    copiesTo: prev.copiesTo?.length ? prev.copiesTo : [
+                        "Executive Engineer (RE-05), CREDA HO, Raipur",
+                        "Executive Engineer, CREDA ZO, Bilaspur"
+                    ],
+                    companyDetails: {
+                        phone: profile.phone,
+                        email: profile.email,
+                        address: profile.address
+                    }
+                }));
+            } else {
+                setLetterInfo(prev => ({
+                    ...prev,
+                    forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
+                    designation: "S.N.Sahoo",
+                    companyDetails: {
+                        phone: profile.phone,
+                        email: profile.email,
+                        address: profile.address
+                    }
+                }));
+            }
+        } else {
+            setLetterInfo(prev => ({
+                ...prev,
+                forCompany: profile.forCompany || `वास्ते, ${profile.name}`,
+                designation: profile.designation || prev.designation || "अधिकृत हस्ताक्षरकर्ता",
+                companyDetails: {
+                    phone: profile.phone,
+                    email: profile.email,
+                    address: profile.address
+                }
+            }));
+        }
+    };
 
     useEffect(() => {
         const fetchTaskDetails = async () => {
@@ -119,26 +339,8 @@ const AdminLetter = () => {
 
                     // Update Letter Info based on Item Type
                     const randomNum = Math.floor(Math.random() * 900) + 100;
-                    // if (itemType === "Street Light") {
-                    //     setLetterInfo(prev => ({
-                    //         ...prev,
-                    //         letterNo: `RBP/SL/SER/21-22/${randomNum}`,
-                    //         subject: `Regarding Repair/Maintenance of Street Lights at following Villages of ${blockNames} Blocks, ${district} Dist.`,
-                    //         introParagraph: `With reference to the above subject Complaints, We have received Letter regarding Repair/Maintenance of Street Lights at Following villages of ${blockNames} Blocks, Dist: ${district}. Today we have received the faulty materials along with this Letter. We have dispatched ${templateData.length}nos of ${templateData[0]["STREET LIGHT RATING"]} Working Street Lights against DC No:XXXX Dt:${actualDate} for replacement against defective.`,
-                    //         officerName: "THE DIST INCHARGE",
-                    //         department: "DIST OFFICE-BAIKUNTHPUR, DIST:KORIA",
-                    //         districtOffice: "CHHATTISGARH",
-                    //         copiesTo: [
-                    //             "Superintending Engineer, CREDA Zonal Office, Sarguja",
-                    //             "Executive Engineer, CREDA RO, Sarguja"
-                    //         ],
-                    //         forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-                    //         salutation: "Dear Sir,",
-                    //         rbpTableRows: templateData // Save to special key for RBP format if needed
-                    //     }));
+                   
                     if (itemType === "Street Light") {
-                        // Calculate total defective and replaced quantity
-                        const totalDefectiveQty = templateData.reduce((sum, row) => sum + (parseInt(row["DEFECTIVE QTY"]) || 0), 0);
                         const totalReplacedQty = templateData.reduce((sum, row) => sum + (parseInt(row["REPLACED QTY"]) || 0), 0);
 
                         setLetterInfo(prev => ({
@@ -166,21 +368,6 @@ const AdminLetter = () => {
                             rbpTableRows: templateData
                         }));
 
-
-                        // } else if (itemType === "Inverter") {
-                        //     setLetterInfo(prev => ({
-                        //         ...prev,
-                        //         letterNo: `RBP/SPVPP/SER/24-25/${randomNum}`,
-                        //         subject: `Regarding Rectification of Power plant Inverter complaints of ${siteNames} sites, Block-${task.block || ""}, Dist: ${district}`,
-                        //         introParagraph: `With reference to the above subject Complaints, M/s Statcon Powtech service Engineer visited to ${siteNames} sites against inverter complaints & rectified the inverter. (M/s Statcon Powtech Service report enclosed for your reference). Now system is working satisfactory.`,
-                        //         officerName: "The ASSISTANT ENGINEER",
-                        //         department: "CREDA DIST OFFICE",
-                        //         districtOffice: `CREDA DIST OFFICE- ${district}, DIST: ${district}`,
-                        //         copiesTo: ["Executive Engineer, CREDA ZO, RAIPUR"],
-                        //         forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-                        //         salutation: "Dear Sir,"
-                        //     }));
-
                     } else if (itemType === "Inverter") {
                         setLetterInfo(prev => ({
                             ...prev,
@@ -203,8 +390,6 @@ const AdminLetter = () => {
                             rbpTableRows: templateData
                         }));
 
-
-
                     } else { // Battery
                         setLetterInfo(prev => ({
                             ...prev,
@@ -226,6 +411,11 @@ const AdminLetter = () => {
                             note: "Note: Request you to update in your record & close the complaints in your Complaint register.",
                             rbpTableRows: templateData
                         }));
+                    }
+
+                    const targetComp = location.state.autoSelectCompany || task.companyName || task.company;
+                    if (targetComp) {
+                        applyCompanyProfile(targetComp);
                     }
 
                     setLoading(false);
@@ -252,6 +442,12 @@ const AdminLetter = () => {
                             introParagraph: prev.introParagraph.replace(/कोण्डागांव/g, task.district)
                         }));
                     }
+
+                    const targetComp = location.state.autoSelectCompany || task.companyName || task.company;
+                    if (targetComp) {
+                        applyCompanyProfile(targetComp);
+                    }
+
                     setLoading(false);
                     return;
                 }
@@ -271,7 +467,7 @@ const AdminLetter = () => {
                 // Scenario 3: Fallback - Fetch from Supabase FMS
                 const { data: row, error: fmsError } = await supabase
                     .from("FMS")
-                    .select("complaint_id, id_number, beneficiary_name, village, block, district, actual, actual1, planned, planned1")
+                    .select("complaint_id, id_number, beneficiary_name, village, block, district, company_name, company, actual, actual1, planned, planned1")
                     .eq("complaint_id", complaintId)
                     .maybeSingle();
 
@@ -283,6 +479,7 @@ const AdminLetter = () => {
                         village: row.village || "",
                         block: row.block || "",
                         district: row.district || "",
+                        companyName: row.company_name || row.company || "",
                         actualDate: row.actual1 || row.actual || new Date().toLocaleDateString("en-GB")
                     };
                     setTaskData(task);
@@ -304,6 +501,11 @@ const AdminLetter = () => {
                             introParagraph: prev.introParagraph.replace(/कोण्डागांव/g, task.district)
                         }));
                     }
+
+                    const targetComp = location.state?.autoSelectCompany || task.companyName;
+                    if (targetComp) {
+                        applyCompanyProfile(targetComp);
+                    }
                 }
             } catch (error) {
                 console.error("Error fetching task details from Supabase:", error);
@@ -322,109 +524,86 @@ const AdminLetter = () => {
         try {
             const { data: rows, error: masterError } = await supabase
                 .from("Master")
-                .select("company_name1, address, email_id, phone_no");
+                .select("company_name, company_name1, address, email_id, phone_no");
 
-            const options = [];
-            if (rows) {
+            const optionsMap = new Map();
+
+            // First add default profiles
+            DEFAULT_COMPANY_PROFILES.forEach(p => {
+                optionsMap.set(p.name.toLowerCase(), {
+                    name: p.name,
+                    address: p.address,
+                    email: p.email,
+                    phone: p.phone,
+                    location: p.location || ""
+                });
+            });
+
+            // Then merge Master table rows
+            if (rows && !masterError) {
                 rows.forEach((row) => {
-                    const companyName = row.company_name1;
-                    if (companyName) {
-                        const nameStr = String(companyName).trim();
-                        if (nameStr === "Company Name1" || nameStr === "Company Name" || nameStr === "Company Name 1") {
+                    const rawName = row.company_name || row.company_name1;
+                    if (rawName) {
+                        const nameStr = String(rawName).trim();
+                        const lower = nameStr.toLowerCase();
+                        if (
+                            nameStr === "Company Name1" ||
+                            nameStr === "Company Name" ||
+                            nameStr === "Company Name 1" ||
+                            lower === "select"
+                        ) {
                             return;
                         }
 
-                        options.push({
-                            name: nameStr,
-                            address: row.address || "",
-                            email: row.email_id || "",
-                            phone: row.phone_no || ""
-                        });
+                        if (!optionsMap.has(lower)) {
+                            optionsMap.set(lower, {
+                                name: nameStr,
+                                address: row.address || "",
+                                email: row.email_id || "",
+                                phone: row.phone_no || "",
+                                location: ""
+                            });
+                        } else {
+                            const existing = optionsMap.get(lower);
+                            if (row.address && !existing.address) existing.address = row.address;
+                            if (row.email_id && !existing.email) existing.email = row.email_id;
+                            if (row.phone_no && !existing.phone) existing.phone = row.phone_no;
+                        }
                     }
                 });
             }
-            setCompanyOptions(options);
-    } catch (error) {
-        console.error("Error fetching company options from Supabase:", error);
-    }
-};
+
+            const combinedOptions = Array.from(optionsMap.values());
+            setCompanyOptions(combinedOptions);
+
+            const targetCompany = location.state?.autoSelectCompany || 
+                                  location.state?.task?.companyName || 
+                                  (location.state?.tasks && location.state.tasks[0]?.companyName);
+            if (targetCompany) {
+                applyCompanyProfile(targetCompany);
+            }
+        } catch (error) {
+            console.error("Error fetching company options from Supabase:", error);
+            setCompanyOptions(DEFAULT_COMPANY_PROFILES.map(p => ({
+                name: p.name,
+                address: p.address,
+                email: p.email,
+                phone: p.phone,
+                location: p.location || ""
+            })));
+        }
+    };
 
     useEffect(() => {
-        if (location.state?.autoSelectCompany && companyOptions.length > 0) {
-            if (headerInfo.companyName !== location.state.autoSelectCompany) {
-                const selected = companyOptions.find(c => c.name === location.state.autoSelectCompany);
-                if (selected) {
-                    console.log("=== AUTO SELECTING COMPANY ===");
-                    console.log("Selected company:", selected.name);
+        const candidate =
+            location.state?.autoSelectCompany ||
+            location.state?.task?.companyName ||
+            (location.state?.tasks && location.state.tasks[0]?.companyName);
 
-                    const newHeaderInfo = {
-                        companyName: selected.name,
-                        address: selected.address,
-                        location: "",
-                        contact: `Phone No. ${selected.phone} | Email : ${selected.email}`
-                    };
-
-                    setHeaderInfo(newHeaderInfo);
-                    setSelectedEmail(selected.email);
-
-                    const isColumnANTrueLocal = taskData?.columnAN === true || taskData?.columnAN === "true" || taskData?.columnAN === "TRUE";
-
-                    // Fixed for RBP Auto-selection logic
-                    if ((isColumnANTrueLocal || location.state?.itemType) && selected.name.toUpperCase().includes("RBP")) {
-                        // Template values already set in initial useEffect if location.state.tasks exists
-                        // If only company auto-select is triggered, we can set defaults here if not already set
-                        if (!location.state?.tasks) {
-                            setLetterInfo(prev => ({
-                                ...prev,
-                                letterNo: `RBP/SPVPP/SER/25-26/${Math.floor(Math.random() * 900) + 100}`,
-                                officerName: "The DIST INCHARGE",
-                                department: "CREDA DIST OFFICE",
-                                districtOffice: `CREDA DIST OFFICE-${taskData?.district || ""}, DIST:${taskData?.district || ""}`,
-                                subject: "Regarding Rectification of Power Plant Inverter & Battery complaints",
-                                reference: ["Whatsapp"],
-                                salutation: "Dear Sir,",
-                                introParagraph: `With reference to the above subject Complaints M/s Statcon Powtech Service Engineer visited to ${taskData?.block || ""} sites from ${taskData?.actualDate || ""} against Power plant inverter complaints & rectified the inverters. Now System is working satisfactory. (Service report enclosed for your reference).`,
-                                closingParagraph: "Note: Request you to update in your record & close the complaints in your Complaint register.",
-                                thankYou: "Thanking you.",
-                                regards: "Yours faithfully,",
-                                forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-                                designation: "S.N.Sahoo",
-                                copiesTo: [
-                                    "Executive Engineer (RE-05), CREDA HO, Raipur",
-                                    "Executive Engineer, CREDA ZO, Bilaspur"
-                                ],
-                                companyDetails: {
-                                    phone: selected.phone,
-                                    email: selected.email,
-                                    address: selected.address
-                                }
-                            }));
-                        } else {
-                            // Overlay company details onto existing letterInfo set by template logic
-                            setLetterInfo(prev => ({
-                                ...prev,
-                                companyDetails: {
-                                    phone: selected.phone,
-                                    email: selected.email,
-                                    address: selected.address
-                                }
-                            }));
-                        }
-                    } else {
-                        setLetterInfo(prev => ({
-                            ...prev,
-                            forCompany: `वास्ते, ${selected.name}`,
-                            companyDetails: {
-                                phone: selected.phone,
-                                email: selected.email,
-                                address: selected.address
-                            }
-                        }));
-                    }
-                }
-            }
+        if (candidate && headerInfo.companyName !== candidate) {
+            applyCompanyProfile(candidate);
         }
-    }, [companyOptions, location.state, headerInfo.companyName, taskData]);
+    }, [location.state, companyOptions]);
 
 
     const addRow = () => {
@@ -487,9 +666,11 @@ const AdminLetter = () => {
             const isColumnANTrue =
                 taskData?.columnAN === true ||
                 taskData?.columnAN === "true" ||
-                taskData?.columnAN === "TRUE";
+                taskData?.columnAN === "TRUE" ||
+                Boolean(location.state?.itemType) ||
+                Boolean(location.state?.tasks);
 
-            const isRBP = headerInfo?.companyName?.toUpperCase().includes("RBP");
+            const isRBP = (headerInfo?.companyName || "").toUpperCase().includes("RBP");
 
             console.log("STEP2 CHECK 👉", { columnAN: taskData?.columnAN, company: headerInfo?.companyName, isColumnANTrue, isRBP });
 
@@ -524,6 +705,7 @@ const AdminLetter = () => {
                     .update({
                         pdf: pdfUrl,
                         company: headerInfo.companyName,
+                        company_name: headerInfo.companyName,
                         email: selectedEmail,
                         actual1: currentDate
                     })
@@ -557,9 +739,11 @@ const AdminLetter = () => {
             const isColumnANTrue =
                 taskData?.columnAN === true ||
                 taskData?.columnAN === "true" ||
-                taskData?.columnAN === "TRUE";
+                taskData?.columnAN === "TRUE" ||
+                Boolean(location.state?.itemType) ||
+                Boolean(location.state?.tasks);
 
-            const isRBP = headerInfo?.companyName?.toUpperCase().includes("RBP");
+            const isRBP = (headerInfo?.companyName || "").toUpperCase().includes("RBP");
 
             const PdfComponent = isColumnANTrue && isRBP
                 ? (<RBPLetterPDF headerInfo={headerInfo} letterInfo={letterInfo} tableColumns={tableColumns} tableData={tableData} />)
@@ -631,90 +815,72 @@ const AdminLetter = () => {
                 <div className="max-w-4xl mx-auto bg-white shadow-2xl rounded-none p-12 print:shadow-none print:p-8 min-h-[1056px] relative overflow-hidden border border-gray-100" id="letter-content">
                     {/* Editable Header */}
                     <div id="letter-header" className="text-center mb-10 border-b-2 border-black pb-4">
-                        <div className="mb-4 no-print flex justify-center">
-                            {!location.state?.autoSelectCompany && (
-                                <select
-                                    id="company-select"
-                                    value={headerInfo.companyName}
-                                    className="border border-gray-300 rounded px-2 py-1 bg-white text-sm"
-                                    onChange={(e) => {
-                                        const selected = companyOptions.find(c => c.name === e.target.value);
-                                        if (selected) {
-                                            console.log("=== DROPDOWN SELECTED ===");
-                                            console.log("Selected company:", selected.name);
-
-                                            const newHeaderInfo = {
-                                                companyName: selected.name,
-                                                address: selected.address,
-                                                location: "",
-                                                contact: `Phone No. ${selected.phone} | Email : ${selected.email}`
-                                            };
-
-                                            setHeaderInfo(newHeaderInfo);
-                                            setSelectedEmail(selected.email);
-
-                                            const isColumnANTrueLocal = taskData?.columnAN === true || taskData?.columnAN === "true" || taskData?.columnAN === "TRUE";
-
-                                            if (isColumnANTrueLocal && selected.name.toUpperCase().includes("RBP")) {
-                                                setLetterInfo(prev => ({
-                                                    ...prev,
-                                                    letterNo: `RBP/SPVPP/SER/25-26/${Math.floor(Math.random() * 900) + 100}`,
-                                                    officerName: "The DIST INCHARGE",
-                                                    department: "CREDA DIST OFFICE",
-                                                    districtOffice: `CREDA DIST OFFICE-${taskData?.district || ""}, DIST:${taskData?.district || ""}`,
-                                                    subject: "Regarding Rectification of Power Plant Inverter & Battery complaints",
-                                                    reference: ["Whatsapp"],
-                                                    salutation: "Dear Sir,",
-                                                    introParagraph: `With reference to the above subject Complaints M/s Statcon Powtech Service Engineer visited to ${taskData?.block || ""} sites from ${taskData?.actualDate || ""} against Power plant inverter complaints & rectified the inverters. Now System is working satisfactory. (Service report enclosed for your reference).`,
-                                                    closingParagraph: "Note: Request you to update in your record & close the complaints in your Complaint register.",
-                                                    thankYou: "Thanking you.",
-                                                    regards: "Yours faithfully,",
-                                                    forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-                                                    designation: "S.N.Sahoo",
-                                                    copiesTo: [
-                                                        "Executive Engineer (RE-05), CREDA HO, Raipur",
-                                                        "Executive Engineer, CREDA ZO, Bilaspur"
-                                                    ],
-                                                    companyDetails: {
-                                                        phone: selected.phone,
-                                                        email: selected.email,
-                                                        address: selected.address
-                                                    }
-                                                }));
-                                            } else {
-                                                setLetterInfo(prev => ({
-                                                    ...prev,
-                                                    forCompany: `वास्ते, ${selected.name}`,
-                                                    companyDetails: {
-                                                        phone: selected.phone,
-                                                        email: selected.email,
-                                                        address: selected.address
-                                                    }
-                                                }));
-                                            }
-                                        }
-                                    }}
-                                >
-                                    <option value="">Select Company Header</option>
-                                    {companyOptions.map((opt, i) => (
-                                        <option key={i} value={opt.name}>{opt.name}</option>
-                                    ))}
-                                </select>
-                            )}
+                        <div className="mb-6 no-print flex items-center justify-center gap-3 bg-gray-50 border border-gray-200 rounded-lg p-2.5 max-w-md mx-auto shadow-sm">
+                            <label htmlFor="company-select" className="text-xs font-bold text-gray-700 whitespace-nowrap">
+                                Company Header:
+                            </label>
+                            <select
+                                id="company-select"
+                                value={headerInfo.companyName}
+                                className="border border-gray-300 rounded px-3 py-1.5 bg-white text-sm font-semibold text-gray-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+                                onChange={(e) => {
+                                    applyCompanyProfile(e.target.value);
+                                }}
+                            >
+                                <option value="">-- Select Company Header --</option>
+                                {Array.from(
+                                    new Map(
+                                        companyOptions
+                                            .filter(opt => opt && opt.name && opt.name.trim() !== "")
+                                            .map(opt => [opt.name.trim().toLowerCase(), opt])
+                                    ).values()
+                                ).map((opt) => (
+                                    <option key={opt.name} value={opt.name}>{opt.name}</option>
+                                ))}
+                                {headerInfo.companyName && !companyOptions.some(opt => opt.name?.trim().toLowerCase() === headerInfo.companyName.trim().toLowerCase()) && (
+                                    <option value={headerInfo.companyName}>{headerInfo.companyName}</option>
+                                )}
+                            </select>
                         </div>
-                        {headerInfo.companyName.includes("RBP") ? (
-                            <div className="flex flex-col items-center mb-0 mt-4">
-                                <img src="/RBP-Logo.PNG" alt="RBP Logo" className="h-28 object-contain mb-0" />
+
+                        {(headerInfo.companyName || "").toUpperCase().includes("RBP") ? (
+                            <div className="flex flex-col items-center mb-0 mt-2 text-center">
+                                <img src="/RBP-Logo.PNG" alt="RBP Logo" className="h-24 object-contain mb-1" />
+                                <h1 className="text-xl font-bold tracking-wider text-gray-900 uppercase">
+                                    {headerInfo.companyName || "RBP ENERGY (INDIA) PVT. LTD."}
+                                </h1>
+                                <p className="text-xs text-gray-700 mt-0.5">
+                                    {headerInfo.address || "303 Guru Ghasidas Plaza, Amapara, G.E Road, Raipur (C.G) 492001"}
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                    {headerInfo.contact || "T : 9200012500 | Email : info@rbpindia.com | Website : www.rbpindia.com"}
+                                </p>
                             </div>
-                        ) : headerInfo.companyName.toLowerCase().includes("rotomag") ? (
-                            <div className="flex justify-end mb-4 mt-4">
-                                <img src="/rotomag.png?v=3" alt="Rotomag Logo" className="h-32 object-contain" />
+                        ) : (headerInfo.companyName || "").toLowerCase().includes("rotomag") ? (
+                            <div className="flex flex-col items-end mb-4 mt-2">
+                                <img src="/rotomag.png?v=3" alt="Rotomag Logo" className="h-24 object-contain" />
+                                <h2 className="text-base font-bold text-gray-900 uppercase tracking-wide mt-1">
+                                    {headerInfo.companyName || "ROTOMAG MOTORS & CONTROLS PVT. LTD."}
+                                </h2>
+                                {headerInfo.address && (
+                                    <p className="text-xs text-gray-600 mt-0.5">
+                                        {headerInfo.address}
+                                    </p>
+                                )}
                             </div>
-                        ) : headerInfo.companyName.toLowerCase().includes("solex") ? (
-                            <div className="flex justify-end mb-4 mt-4">
-                                <img src="/solex.png" alt="Solex Logo" className="h-24 object-contain" />
+                        ) : (headerInfo.companyName || "").toLowerCase().includes("solex") ? (
+                            <div className="flex flex-col items-end mb-4 mt-2">
+                                <img src="/solex.png" alt="Solex Logo" className="h-20 object-contain" />
+                                <h2 className="text-base font-bold text-[#f58220] uppercase tracking-wide mt-1">
+                                    {headerInfo.companyName || "SOLEX ENERGY LIMITED"}
+                                </h2>
+                                {headerInfo.address && (
+                                    <p className="text-xs text-gray-600 mt-0.5">
+                                        {headerInfo.address}
+                                    </p>
+                                )}
                             </div>
-                        ) : headerInfo.companyName.toLowerCase().includes("suraj") ? (
+                        ) : (headerInfo.companyName || "").toLowerCase().includes("suraj") ? (
                             <div className="w-full font-sans mb-4">
                                 <div className="flex justify-between items-start">
                                     <div className="flex flex-col items-start">
@@ -741,9 +907,17 @@ const AdminLetter = () => {
                                 </div>
                                 <div className="border-t-2 border-[#ed7d31] my-1 w-full"></div>
                             </div>
-                        ) : headerInfo.companyName.toLowerCase().includes("premier") ? (
-                            <div className="flex justify-start mb-4 mt-4">
+                        ) : (headerInfo.companyName || "").toLowerCase().includes("premier") ? (
+                            <div className="flex flex-col items-start mb-4 mt-2">
                                 <img src="/premier.png" alt="Premier Logo" className="h-28 object-contain" />
+                                <h2 className="text-base font-bold text-[#2f5597] uppercase tracking-wide mt-1">
+                                    {headerInfo.companyName || "PREMIER ENERGIES LTD."}
+                                </h2>
+                                {headerInfo.address && (
+                                    <p className="text-xs text-gray-600 mt-0.5">
+                                        {headerInfo.address}
+                                    </p>
+                                )}
                             </div>
                         ) : (
                             <>
@@ -776,7 +950,7 @@ const AdminLetter = () => {
                     </div>
 
                     {/* Letter Body */}
-                    {(taskData?.columnAN === true || taskData?.columnAN === "true" || taskData?.columnAN === "TRUE") && headerInfo.companyName.toUpperCase().includes("RBP") ? (
+                    {((taskData?.columnAN === true || taskData?.columnAN === "true" || taskData?.columnAN === "TRUE" || Boolean(location.state?.itemType) || Boolean(location.state?.tasks)) && (headerInfo.companyName || "").toUpperCase().includes("RBP")) ? (
                         /* ======== RBP ENGLISH FORMAT ======== */
                         <div className="text-sm text-gray-800 leading-relaxed" style={{ fontFamily: 'Georgia, serif' }}>
 
@@ -982,61 +1156,6 @@ const AdminLetter = () => {
                             </div>
 
                             {/* CC Section */}
-                            <div className="text-sm mt-2 space-y-1">
-                                <p className="font-bold">CC:</p>
-                                {letterInfo.copiesTo?.map((copy, idx) => (
-                                    <div key={idx} className="flex gap-2 items-center">
-                                        <span className="shrink-0">{idx + 1})</span>
-                                        <input
-                                            className="flex-1 border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
-                                            value={copy}
-                                            onChange={(e) => {
-                                                const newCopies = [...letterInfo.copiesTo];
-                                                newCopies[idx] = e.target.value;
-                                                handleLetterEdit("copiesTo", newCopies);
-                                            }}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Note */}
-                            <div className="mb-2">
-                                <textarea
-                                    className="w-full border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent resize-none text-sm font-bold"
-                                    rows="2"
-                                    value={letterInfo.note || "Note: Request you to update in your record & close the complaints in your Complaint register."}
-                                    onChange={(e) => handleLetterEdit("note", e.target.value)}
-                                />
-                            </div>
-
-                            {/* Thank You */}
-                            <div className="mb-6">
-                                <input
-                                    className="border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
-                                    value={letterInfo.thankYou}
-                                    onChange={(e) => handleLetterEdit("thankYou", e.target.value)}
-                                />
-                            </div>
-
-                            {/* Signature */}
-                            <div className="mb-1">
-                                <input
-                                    className="font-bold border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
-                                    value={letterInfo.forCompany}
-                                    onChange={(e) => handleLetterEdit("forCompany", e.target.value)}
-                                />
-                            </div>
-                            <div className="h-10"></div>
-                            <div className="mb-4">
-                                <input
-                                    className="font-bold border-b border-black focus:border-blue-400 focus:outline-none bg-transparent text-sm underline"
-                                    value={letterInfo.designation}
-                                    onChange={(e) => handleLetterEdit("designation", e.target.value)}
-                                />
-                            </div>
-
-                            {/* CC */}
                             <div className="text-sm mt-2 space-y-1">
                                 <p className="font-bold">CC:</p>
                                 {letterInfo.copiesTo?.map((copy, idx) => (
