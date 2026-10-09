@@ -72,6 +72,7 @@ function DraftLetter() {
     const [error, setError] = useState(null)
     const [searchTerm, setSearchTerm] = useState("")
     const [email, setEmail] = useState("")
+    const [whatsappNumber, setWhatsappNumber] = useState("")
     const [selectedCompany, setSelectedCompany] = useState("")
     const [companyOptions, setCompanyOptions] = useState(DEFAULT_COMPANY_OPTIONS)
     const [filterDistrict, setFilterDistrict] = useState("")
@@ -237,6 +238,7 @@ function DraftLetter() {
             setSelectedCompany(currentComp)
             setEmail(task.email || "")
         }
+        setWhatsappNumber(task.assigneeWhatsApp || task.technicianContact || task.contactNumber || "")
     }
 
     const fetchCompanyOptions = async () => {
@@ -364,8 +366,9 @@ function DraftLetter() {
                 state: {
                     task: taskWithCompany,
                     tasks: [taskWithCompany],
-                    itemType: "Battery",
-                    autoSelectCompany: companyToPass
+                    autoSelectCompany: companyToPass,
+                    whatsappNumber: whatsappNumber,
+                    email: email
                 }
             })
 
@@ -381,6 +384,7 @@ function DraftLetter() {
         setSelectedTask(null)
         setSelectedTaskData(null)
         setEmail("")
+        setWhatsappNumber("")
         setSelectedCompany("")
     }
 
@@ -1466,6 +1470,42 @@ function DraftLetter() {
                                                             )}
                                                         </select>
                                                     </div>
+
+                                                    {/* WhatsApp Number Field */}
+                                                    <div className="space-y-2">
+                                                        <label htmlFor="companyWhatsapp" className="block text-sm font-medium text-gray-700">
+                                                            WhatsApp Number
+                                                        </label>
+                                                        <div className="relative rounded-md shadow-xs">
+                                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                                                <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">+91</span>
+                                                            </div>
+                                                            <input
+                                                                id="companyWhatsapp"
+                                                                type="tel"
+                                                                maxLength={10}
+                                                                value={whatsappNumber}
+                                                                onChange={(e) => setWhatsappNumber(e.target.value.replace(/\D/g, ""))}
+                                                                placeholder="Enter WhatsApp Number"
+                                                                className="w-full border border-gray-300 rounded-md py-2 pl-14 pr-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Email Field */}
+                                                    <div className="space-y-2">
+                                                        <label htmlFor="companyEmail" className="block text-sm font-medium text-gray-700">
+                                                            Email
+                                                        </label>
+                                                        <input
+                                                            id="companyEmail"
+                                                            type="email"
+                                                            value={email}
+                                                            onChange={(e) => setEmail(e.target.value)}
+                                                            placeholder="Enter Email"
+                                                            className="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div className="flex justify-end gap-2 mt-4">
@@ -1481,7 +1521,9 @@ function DraftLetter() {
                                                             state: {
                                                                 task: updatedTask,
                                                                 tasks: [updatedTask],
-                                                                autoSelectCompany: compToPass
+                                                                autoSelectCompany: compToPass,
+                                                                whatsappNumber: whatsappNumber,
+                                                                email: email
                                                             }
                                                         });
                                                     }}

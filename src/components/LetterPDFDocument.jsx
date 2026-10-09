@@ -610,6 +610,13 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData }) 
                     {letterInfo.closingParagraph || ""}
                 </Text>
 
+                {/* ===== NOTE (IF PRESENT) ===== */}
+                {letterInfo.note ? (
+                    <Text style={[styles.bodyText, { marginTop: 6, fontWeight: "bold" }]}>
+                        {letterInfo.note}
+                    </Text>
+                ) : null}
+
                 {/* ===== THANK YOU ===== */}
                 <Text style={styles.thankYou}>
                     {letterInfo.thankYou || ""}

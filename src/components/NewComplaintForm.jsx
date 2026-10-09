@@ -832,7 +832,38 @@ function NewComplaintForm() {
     }
   };
 
-  const uploadDocument = handleDocumentUploadAndScan;
+  const uploadDocument = async (file) => {
+    if (!file) return;
+    try {
+      setIsUploadingDocument(true);
+      setDocumentUploadStatus("Uploading document...");
+      const fileExt = file.name.split('.').pop();
+      const fileName = `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+
+      let uploadRes = await supabase.storage.from("vendor_tracker").upload(fileName, file, { upsert: true });
+
+      if (uploadRes.error) {
+        uploadRes = await supabase.storage.from("complaint_documents").upload(fileName, file, { upsert: true });
+        if (uploadRes.error) throw uploadRes.error;
+        const { data } = supabase.storage.from("complaint_documents").getPublicUrl(fileName);
+        setFormData(prev => ({ ...prev, documentUrl: data.publicUrl }));
+        setUploadedDocFileName(file.name);
+        setDocumentUploadStatus(`✓ Uploaded: ${file.name}`);
+        return;
+      }
+
+      const { data } = supabase.storage.from("vendor_tracker").getPublicUrl(fileName);
+      setFormData(prev => ({ ...prev, documentUrl: data.publicUrl }));
+      setUploadedDocFileName(file.name);
+      setDocumentUploadStatus(`✓ Uploaded: ${file.name}`);
+    } catch (err) {
+      console.error("Document upload error:", err);
+      alert("Failed to upload document: " + err.message);
+      setDocumentUploadStatus("Upload failed");
+    } finally {
+      setIsUploadingDocument(false);
+    }
+  };
 
   const uploadUpdateDocument = async (file) => {
     if (!file) return;
@@ -2190,6 +2221,60 @@ function NewComplaintForm() {
                             placeholderText="Select challan date"
                           />
                         </div>
+
+                        {/* Document Upload */}
+                        <div className="col-span-1 md:col-span-2 lg:col-span-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Document Upload (PDF, Images, Word Docs)
+                          </label>
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                            <input
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) uploadDocument(file);
+                              }}
+                              disabled={isUploadingDocument}
+                              className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                            />
+                            {isUploadingDocument && (
+                              <span className="text-xs text-blue-600 font-medium flex items-center gap-1.5 animate-pulse">
+                                <span className="inline-block w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
+                                Uploading document...
+                              </span>
+                            )}
+                            {documentUploadStatus && !isUploadingDocument && (
+                              <span className={`text-xs font-medium ${formData.documentUrl ? "text-emerald-600" : "text-gray-500"}`}>
+                                {documentUploadStatus}
+                              </span>
+                            )}
+                            {formData.documentUrl && (
+                              <div className="flex items-center gap-2 sm:ml-auto">
+                                <a
+                                  href={formData.documentUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 underline font-semibold hover:text-blue-800"
+                                >
+                                  View Current Document ↗
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFormData(prev => ({ ...prev, documentUrl: "" }));
+                                    setDocumentUploadStatus("");
+                                    setUploadedDocFileName("");
+                                  }}
+                                  className="text-xs text-red-500 hover:text-red-700 px-1.5 py-0.5 rounded hover:bg-red-50 cursor-pointer font-medium"
+                                  title="Remove document"
+                                >
+                                  ✕ Remove
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
 
                       {/* Nature of Complaint - Full Width */}
@@ -2727,14 +2812,27 @@ function NewComplaintForm() {
                               </span>
                             )}
                             {updateFormData.documentUrl && (
-                              <a
-                                href={updateFormData.documentUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-blue-600 underline font-semibold hover:text-blue-800 ml-auto"
-                              >
-                                View Current Document ↗
-                              </a>
+                              <div className="flex items-center gap-2 sm:ml-auto">
+                                <a
+                                  href={updateFormData.documentUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 underline font-semibold hover:text-blue-800"
+                                >
+                                  View Current Document ↗
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setUpdateFormData(prev => ({ ...prev, documentUrl: "" }));
+                                    setUpdateDocStatus("");
+                                  }}
+                                  className="text-xs text-red-500 hover:text-red-700 px-1.5 py-0.5 rounded hover:bg-red-50 cursor-pointer font-medium"
+                                  title="Remove document"
+                                >
+                                  ✕ Remove
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>

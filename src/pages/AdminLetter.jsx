@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, Plus, Save, FileText, Mail, Globe, Phone, Trash2, SquarePlus, Download } from "lucide-react";
+import { ArrowLeft, Plus, Save, FileText, Mail, Globe, Phone, Trash2, SquarePlus, Download, X } from "lucide-react";
 import { pdf } from "@react-pdf/renderer";
 import DashboardLayout from "../components/DashboardLayout";
 import LetterPDFDocument from "../components/LetterPDFDocument";
-import RBPLetterPDF from "../components/RBPLetterPDF";
 import supabase from "../utils/supabase";
 
 
@@ -17,8 +16,8 @@ const DEFAULT_COMPANY_PROFILES = [
         phone: "9200012500",
         email: "info@rbpindia.com",
         contact: "T : 9200012500 | Email : info@rbpindia.com | Website : www.rbpindia.com",
-        forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-        designation: "S.N.Sahoo"
+        forCompany: "वास्ते, RBP ENERGY (INDIA) PVT. LTD.",
+        designation: "अधिकृत हस्ताक्षरकर्ता"
     },
     {
         name: "TANAY VIDHYUT (I) PVT. LTD.",
@@ -97,10 +96,8 @@ const getCompanyProfile = (rawName, customOptions = []) => {
             contact: customMatch.phone || customMatch.email
                 ? `Phone No. ${customMatch.phone || ""} | Email : ${customMatch.email || ""}`
                 : "",
-            forCompany: customMatch.name.toUpperCase().includes("RBP")
-                ? "For RBP ENERGY (INDIA) PVT Ltd"
-                : `वास्ते, ${customMatch.name}`,
-            designation: customMatch.name.toUpperCase().includes("RBP") ? "S.N.Sahoo" : "अधिकृत हस्ताक्षरकर्ता"
+            forCompany: `वास्ते, ${customMatch.name}`,
+            designation: "अधिकृत हस्ताक्षरकर्ता"
         };
     }
 
@@ -132,10 +129,8 @@ const getCompanyProfile = (rawName, customOptions = []) => {
         phone: "",
         email: "",
         contact: "",
-        forCompany: clean.toUpperCase().includes("RBP")
-            ? "For RBP ENERGY (INDIA) PVT Ltd"
-            : `वास्ते, ${clean}`,
-        designation: clean.toUpperCase().includes("RBP") ? "S.N.Sahoo" : "अधिकृत हस्ताक्षरकर्ता"
+        forCompany: `वास्ते, ${clean}`,
+        designation: "अधिकृत हस्ताक्षरकर्ता"
     };
 };
 
@@ -167,6 +162,32 @@ const AdminLetter = () => {
     const initialProfile = getCompanyProfile(initialCompanyCandidate) || DEFAULT_COMPANY_PROFILES[1];
 
     const [selectedEmail, setSelectedEmail] = useState(initialProfile.email || "tanay.vidhyut@gmail.com");
+    const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+    const [whatsappNumber, setWhatsappNumber] = useState(location.state?.whatsappNumber || "");
+    const [emailAddress, setEmailAddress] = useState(location.state?.email || initialProfile.email || "tanay.vidhyut@gmail.com");
+
+    useEffect(() => {
+        if (location.state?.whatsappNumber) {
+            setWhatsappNumber(location.state.whatsappNumber);
+        }
+        if (location.state?.email) {
+            setEmailAddress(location.state.email);
+            setSelectedEmail(location.state.email);
+        }
+    }, [location.state]);
+
+    useEffect(() => {
+        if (taskData) {
+            if (!whatsappNumber) {
+                const possible = taskData.assigneeWhatsApp || taskData.technicianContact || taskData.contactNumber || "";
+                if (possible) setWhatsappNumber(possible);
+            }
+            if (taskData.email && !emailAddress) {
+                setEmailAddress(taskData.email);
+                setSelectedEmail(taskData.email);
+            }
+        }
+    }, [taskData]);
 
     // Header Content State
     const [headerInfo, setHeaderInfo] = useState({
@@ -219,196 +240,211 @@ const AdminLetter = () => {
 
         if (profile.email) {
             setSelectedEmail(profile.email);
+            setEmailAddress(profile.email);
         }
 
-        const isRBP = profile.name.toUpperCase().includes("RBP");
-        const isColumnANTrueLocal = taskData?.columnAN === true || taskData?.columnAN === "true" || taskData?.columnAN === "TRUE";
-
-        if ((isColumnANTrueLocal || location.state?.itemType || location.state?.tasks) && isRBP) {
-            if (!location.state?.tasks) {
-                setLetterInfo(prev => ({
-                    ...prev,
-                    letterNo: prev.letterNo && prev.letterNo.startsWith("RBP") ? prev.letterNo : `RBP/SPVPP/SER/25-26/${Math.floor(Math.random() * 900) + 100}`,
-                    officerName: prev.officerName || "The DIST INCHARGE",
-                    department: prev.department || "CREDA DIST OFFICE",
-                    districtOffice: prev.districtOffice || `CREDA DIST OFFICE-${taskData?.district || ""}, DIST:${taskData?.district || ""}`,
-                    subject: prev.subject || "Regarding Rectification of Power Plant Inverter & Battery complaints",
-                    reference: prev.reference?.length ? prev.reference : ["Whatsapp"],
-                    salutation: "Dear Sir,",
-                    introParagraph: prev.introParagraph || `With reference to the above subject Complaints M/s Statcon Powtech Service Engineer visited to ${taskData?.block || ""} sites from ${taskData?.actualDate || ""} against Power plant inverter complaints & rectified the inverters. Now System is working satisfactory. (Service report enclosed for your reference).`,
-                    closingParagraph: prev.closingParagraph || "Note: Request you to update in your record & close the complaints in your Complaint register.",
-                    thankYou: "Thanking you.",
-                    regards: "Yours faithfully,",
-                    forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-                    designation: "S.N.Sahoo",
-                    copiesTo: prev.copiesTo?.length ? prev.copiesTo : [
-                        "Executive Engineer (RE-05), CREDA HO, Raipur",
-                        "Executive Engineer, CREDA ZO, Bilaspur"
-                    ],
-                    companyDetails: {
-                        phone: profile.phone,
-                        email: profile.email,
-                        address: profile.address
-                    }
-                }));
-            } else {
-                setLetterInfo(prev => ({
-                    ...prev,
-                    forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-                    designation: "S.N.Sahoo",
-                    companyDetails: {
-                        phone: profile.phone,
-                        email: profile.email,
-                        address: profile.address
-                    }
-                }));
+        setLetterInfo(prev => ({
+            ...prev,
+            forCompany: profile.forCompany || `वास्ते, ${profile.name}`,
+            designation: profile.designation || prev.designation || "अधिकृत हस्ताक्षरकर्ता",
+            companyDetails: {
+                phone: profile.phone,
+                email: profile.email,
+                address: profile.address
             }
-        } else {
-            setLetterInfo(prev => ({
-                ...prev,
-                forCompany: profile.forCompany || `वास्ते, ${profile.name}`,
-                designation: profile.designation || prev.designation || "अधिकृत हस्ताक्षरकर्ता",
-                companyDetails: {
-                    phone: profile.phone,
-                    email: profile.email,
-                    address: profile.address
-                }
-            }));
-        }
+        }));
     };
 
     useEffect(() => {
         const fetchTaskDetails = async () => {
             setLoading(true);
             try {
-                // Scenario 1: Data passed via navigation state (Multi-row)
+                // Scenario 1: Data passed via navigation state (Multi-row or Single task array)
                 if (location.state?.tasks) {
                     const tasksArr = location.state.tasks;
-                    const itemType = location.state.itemType || "Battery";
                     const task = tasksArr[0]; // Use first task for some header defaults
                     setTaskData(task);
 
                     // Template Configuration
                     const siteNames = tasksArr.map(t => t.village || t.siteName || "-").join(", ");
-                    const blockNames = Array.from(new Set(tasksArr.map(t => t.block))).join(" & ");
+                    const blockNames = Array.from(new Set(tasksArr.map(t => t.block).filter(Boolean))).join(" व ") || task.block || "-";
                     const district = task.district || "-";
-                    const actualDate = task.actualDate || new Date().toLocaleDateString("en-GB");
+                    const actualDate = task.actualDate || task.complaintDate || new Date().toLocaleDateString("en-GB");
+                    const randomNum = Math.floor(Math.random() * 900) + 100;
+                    const companyToUse = location.state.autoSelectCompany || task.companyName || task.company || "RBP ENERGY (INDIA) PVT. LTD.";
 
-                    let columns = ["SR No", "Site Name", "District", "System Rating", "Installation date", "Problem Reported", "RBP Remarks"];
+                    let itemType = location.state.itemType || "";
+                    if (!itemType && task.product) {
+                        const prod = String(task.product).toLowerCase();
+                        if (prod.includes("street light") || prod.includes("sl")) itemType = "Street Light";
+                        else if (prod.includes("inverter")) itemType = "Inverter";
+                        else if (prod.includes("battery")) itemType = "Battery";
+                    }
+
+                    let columns = ["क्र.", "सौर समाधान क्र.", "आई. डी. नं.", "हितग्राही का नाम", "ग्राम/ विकासखण्ड", "दिनांक", "रिमार्क"];
                     let templateData = [];
 
                     if (itemType === "Street Light") {
-                        columns = ["SL NO.", "VILLAGE", "BLOCK", "DIST", "SYSTEM RATING", "PROJECT", "STREET LIGHT RATING", "DATE OF INSTALLATION", "DEFECTIVE QTY", "REPLACED QTY", "STATUS"];
+                        columns = ["क्र.", "ग्राम", "विकासखण्ड", "जिला", "सिस्टम रेटिंग", "प्रोजेक्ट", "स्ट्रीट लाइट रेटिंग", "स्थापना दिनांक", "खराब संख्या", "प्रतिस्थापित संख्या", "स्थिति"];
                         templateData = tasksArr.map((t, idx) => ({
-                            "SL NO.": (idx + 1).toString().padStart(2, '0') + ".",
-                            "VILLAGE": t.village || "-",
-                            "BLOCK": t.block || "-",
-                            "DIST": t.district || "-",
-                            "SYSTEM RATING": t.product || "-",
-                            "PROJECT": "SOUBHAGYA",
-                            "STREET LIGHT RATING": "15W",
-                            "DATE OF INSTALLATION": t.complaintDate || "-",
-                            "DEFECTIVE QTY": "1",
-                            "REPLACED QTY": "1",
-                            "STATUS": "CLOSED"
+                            "क्र.": (idx + 1).toString().padStart(2, '0') + ".",
+                            "ग्राम": t.village || "-",
+                            "विकासखण्ड": t.block || "-",
+                            "जिला": t.district || "-",
+                            "सिस्टम रेटिंग": t.product || "-",
+                            "प्रोजेक्ट": "सौभाग्य",
+                            "स्ट्रीट लाइट रेटिंग": "15W",
+                            "स्थापना दिनांक": t.complaintDate || t.actualDate || "-",
+                            "खराब संख्या": "1",
+                            "प्रतिस्थापित संख्या": "1",
+                            "स्थिति": "पूर्ण (CLOSED)"
                         }));
-                    } else if (itemType === "Inverter") {
-                        templateData = tasksArr.map((t, idx) => ({
-                            "SR No": (idx + 1).toString().padStart(2, '0') + ".",
-                            "Site Name": t.village || "-",
-                            "District": t.district || "-",
-                            "System Rating": t.product || "-",
-                            "Installation date": t.complaintDate || "-",
-                            "Problem Reported": t.natureOfComplaint || "INVERTER FAULTY",
-                            "RBP Remarks": "RECTIFIED THE INVERTER. NOW SYSTEM IS WORKING SATISFACTORY."
-                        }));
-                    } else { // Battery
-                        templateData = tasksArr.map((t, idx) => ({
-                            "SR No": (idx + 1).toString().padStart(2, '0') + ".",
-                            "Site Name": t.village || "-",
-                            "District": t.district || "-",
-                            "System Rating": t.product || "-",
-                            "Installation date": t.complaintDate || "-",
-                            "Problem Reported": t.natureOfComplaint || "BATTERY FAULTY",
-                            "RBP Remarks": "REPLACED Defective Cell. NOW SYSTEM IS WORKING SATISFACTORY."
-                        }));
-                    }
+                        const totalReplacedQty = templateData.reduce((sum, row) => sum + (parseInt(row["प्रतिस्थापित संख्या"]) || 0), 0);
 
-                    setTableColumns(columns);
-                    setTableData(templateData);
-
-                    // Update Letter Info based on Item Type
-                    const randomNum = Math.floor(Math.random() * 900) + 100;
-                   
-                    if (itemType === "Street Light") {
-                        const totalReplacedQty = templateData.reduce((sum, row) => sum + (parseInt(row["REPLACED QTY"]) || 0), 0);
+                        setTableColumns(columns);
+                        setTableData(templateData);
 
                         setLetterInfo(prev => ({
                             ...prev,
-                            letterNo: `RBP/SL/SER/21-22/${randomNum.toString().padStart(2, '0')}`,
+                            letterNo: `RBP/SL/SER/25-26/${randomNum.toString().padStart(2, '0')}`,
                             date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
-                            subject: `Regarding Repair/Maintenance of Street Lights at following Villages of ${blockNames} Blocks, ${district} Dist.`,
-                            reference: [`i) Your Letter Ref No: 1188/CREDA/O&M/${district}/2021-2022/${task.block || "Baikunthpur"} Dt:${actualDate}`],
-                            officerName: "THE DIST INCHARGE",
-                            department: `DIST OFFICE-${task.block === "Bharatpur" ? "BAIKUNTHPUR" : task.block?.toUpperCase() || "BAIKUNTHPUR"}, DIST:${district.toUpperCase()}`,
-                            districtOffice: "CHHATTISGARH",
-                            salutation: "Dear Sir,",
-                            introParagraph: `With reference to the above subject Complaints, We have received Letter regarding Repair/Maintenance of Street Lights at Following villages of ${blockNames} Blocks, Dist: ${district}. Today we have received the faulty materials along with this Letter. We have dispatched ${totalReplacedQty}nos of ${templateData[0]["STREET LIGHT RATING"]} Working Street Lights against DC No:4716 Dt:${actualDate} for replacement against defective.`,
-                            closingParagraph: "Request you to update in your records & close the complaints in your complaint register.",
-                            thankYou: "Thanking you.",
-                            regards: "Yours faithfully,",
-                            forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-                            designation: "S.N.Sahoo",
+                            subject: `जिला ${district} के विकासखण्ड ${blockNames} के अंतर्गत विभिन्न ग्रामों में स्थापित स्ट्रीट लाइट के सुधार / संधारण कार्य के संबंध में।`,
+                            reference: [`पत्र क्र. 1188/क्रेडा/O&M/${district}/2024-25/${task.block || "बैकुंठपुर"} दिनांक: ${actualDate}`],
+                            officerName: "जिला प्रभारी,",
+                            department: "छत्तीसगढ़ राज्य अक्षय ऊर्जा विकास अभिकरण (क्रेडा)",
+                            districtOffice: district && district !== "-" ? `जिला कार्यालय, ${district} (छ०ग०)` : "जिला कार्यालय, छत्तीसगढ़",
+                            salutation: "महोदय,",
+                            introParagraph: `उपरोक्त विषयांतर्गत लेख है कि, जिला ${district} के विकासखण्ड ${blockNames} के अंतर्गत विभिन्न ग्रामों में स्थापित स्ट्रीट लाइट के सुधार / संधारण कार्य हेतु पत्र प्राप्त हुआ था। प्राप्त पत्र के साथ खराब सामग्रियों के विरुद्ध कुल ${totalReplacedQty} नग कार्यशील स्ट्रीट लाइट चालान क्र. 4716 दिनांक ${actualDate} के माध्यम से प्रतिस्थापन हेतु प्रेषित कर दिया गया है।`,
+                            closingParagraph: "आपसे अनुरोध है कि कृपया अपने रिकॉर्ड में अद्यतन कर शिकायत पंजी में शिकायत बंद करने का कष्ट करें।",
+                            thankYou: "सधन्यवाद !",
+                            regards: "भवदीय,",
+                            forCompany: `वास्ते, ${companyToUse}`,
+                            designation: "अधिकृत हस्ताक्षरकर्ता",
                             copiesTo: [
-                                "Superintending Engineer, CREDA Zonal Office, Sarguja",
-                                "Executive Engineer, CREDA RO, Sarguja"
+                                "अधीक्षण अभियंता महोदय, क्रेडा जोनल कार्यालय, सरगुजा को सादर सूचनार्थ प्रेषित।",
+                                "कार्यपालन अभियंता महोदय, क्रेडा संभागीय कार्यालय, सरगुजा को सादर सूचनार्थ प्रेषित।"
                             ],
-                            note: "Note: Request you to update in your record & close the complaints in your Complaint register.",
+                            note: "टीप: कृपया अपने रिकॉर्ड में अद्यतन कर शिकायत पंजी में शिकायत बंद करने का कष्ट करें।",
                             totalQty: totalReplacedQty,
                             rbpTableRows: templateData
                         }));
 
                     } else if (itemType === "Inverter") {
+                        columns = ["क्र.", "साइट का नाम / ग्राम", "विकासखण्ड", "जिला", "सिस्टम रेटिंग", "स्थापना दिनांक", "शिकायत विवरण", "रिमार्क"];
+                        templateData = tasksArr.map((t, idx) => ({
+                            "क्र.": (idx + 1).toString().padStart(2, '0') + ".",
+                            "साइट का नाम / ग्राम": t.village || "-",
+                            "विकासखण्ड": t.block || "-",
+                            "जिला": t.district || "-",
+                            "सिस्टम रेटिंग": t.product || "-",
+                            "स्थापना दिनांक": t.complaintDate || t.actualDate || "-",
+                            "शिकायत विवरण": t.natureOfComplaint || "इन्वर्टर खराब",
+                            "रिमार्क": "इन्वर्टर का सुधार कार्य पूर्ण। वर्तमान में संयंत्र संतोषप्रद रूप से कार्यशील है।"
+                        }));
+
+                        setTableColumns(columns);
+                        setTableData(templateData);
+
                         setLetterInfo(prev => ({
                             ...prev,
-                            letterNo: `RBP/SPVPP/SER/24-25/${randomNum}`,
+                            letterNo: `RBP/SPVPP/SER/25-26/${randomNum}`,
                             date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
-                            subject: `Regarding Rectification of Power plant Inverter complaints of ${siteNames} sites, Block-${task.block || ""}, Dist: ${district}`,
-                            reference: [`i) 392/CREDA/SPVPP/2024-25/${district.toUpperCase().replace(/ /g, "_")} Dt:${actualDate}`],
-                            officerName: "The ASSISTANT ENGINEER",
-                            department: "CREDA DIST OFFICE",
-                            districtOffice: `CREDA DIST OFFICE- ${district}, DIST: ${district}`,
-                            salutation: "Dear Sir,",
-                            introParagraph: `With reference to the above subject Complaints, M/s Statcon Powtech service Engineer visited to ${siteNames} sites against inverter complaints & rectified the inverter. (M/s Statcon Powtech Service report enclosed for your reference). Now system is working satisfactory.`,
-                            closingParagraph: "Request you to update in your record & close the complaints in your complaint register.",
-                            thankYou: "Thanking you.",
-                            regards: "Yours faithfully,",
-                            forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-                            designation: "S.N.Sahoo",
-                            copiesTo: ["Executive Engineer, CREDA ZO, RAIPUR"],
-                            note: "Note: Request you to update in your record & close the complaints in your Complaint register.",
+                            subject: `जिला ${district}, विकासखण्ड ${task.block || ""} के अंतर्गत ${siteNames} स्थलों में स्थापित सोलर पावर प्लांट के इन्वर्टर सुधार के संबंध में।`,
+                            reference: [`पत्र क्र. 392/क्रेडा/SPVPP/2024-25/${district.toUpperCase()} दिनांक: ${actualDate}`],
+                            officerName: "सहायक अभियंता महोदय,",
+                            department: "छत्तीसगढ़ राज्य अक्षय ऊर्जा विकास अभिकरण (क्रेडा)",
+                            districtOffice: district && district !== "-" ? `जिला कार्यालय, ${district} (छ०ग०)` : "जिला कार्यालय, छत्तीसगढ़",
+                            salutation: "महोदय,",
+                            introParagraph: `उपरोक्त विषयांतर्गत लेख है कि, संदर्भित इन्वर्टर शिकायतों के निराकरण हेतु सर्विस इंजीनियर द्वारा विकासखण्ड ${task.block || ""} अंतर्गत ${siteNames} स्थलों का निरीक्षण कर इन्वर्टर का सुधार कार्य पूर्ण कर दिया गया है। (सर्विस रिपोर्ट संदर्भ हेतु संलग्न है)। वर्तमान में संयंत्र संतोषप्रद रूप से कार्यशील है।`,
+                            closingParagraph: "आपसे अनुरोध है कि कृपया अपने रिकॉर्ड में अद्यतन कर शिकायत पंजी में शिकायत बंद करने का कष्ट करें।",
+                            thankYou: "सधन्यवाद !",
+                            regards: "भवदीय,",
+                            forCompany: `वास्ते, ${companyToUse}`,
+                            designation: "अधिकृत हस्ताक्षरकर्ता",
+                            copiesTo: [
+                                "कार्यपालन अभियंता महोदय, क्रेडा जोनल कार्यालय, रायपुर को सादर सूचनार्थ प्रेषित।"
+                            ],
+                            note: "टीप: कृपया अपने रिकॉर्ड में अद्यतन कर शिकायत पंजी में शिकायत बंद करने का कष्ट करें।",
                             rbpTableRows: templateData
                         }));
 
-                    } else { // Battery
+                    } else if (itemType === "Battery") {
+                        columns = ["क्र.", "साइट का नाम / ग्राम", "विकासखण्ड", "जिला", "सिस्टम रेटिंग", "स्थापना दिनांक", "शिकायत विवरण", "रिमार्क"];
+                        templateData = tasksArr.map((t, idx) => ({
+                            "क्र.": (idx + 1).toString().padStart(2, '0') + ".",
+                            "साइट का नाम / ग्राम": t.village || "-",
+                            "विकासखण्ड": t.block || "-",
+                            "जिला": t.district || "-",
+                            "सिस्टम रेटिंग": t.product || "-",
+                            "स्थापना दिनांक": t.complaintDate || t.actualDate || "-",
+                            "शिकायत विवरण": t.natureOfComplaint || "बैटरी खराब",
+                            "रिमार्क": "खराब सेल प्रतिस्थापित कर सुधार कार्य पूर्ण। वर्तमान में संयंत्र संतोषप्रद रूप से कार्यशील है।"
+                        }));
+
+                        setTableColumns(columns);
+                        setTableData(templateData);
+
                         setLetterInfo(prev => ({
                             ...prev,
-                            letterNo: `RBP/SPVPP/SER/24-25/${randomNum}`,
+                            letterNo: `RBP/SPVPP/SER/25-26/${randomNum}`,
                             date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
-                            subject: `Regarding Rectification of Power Plant Battery complaint of ${siteNames}, Block-${task.block || ""}, Dist:${district}`,
-                            reference: [`i) Your Letter Ref No:1245/J.K/2024-25/${district.toUpperCase().replace(/ /g, "_")} Dt:${actualDate}`],
-                            officerName: "THE DIST INCHARGE",
-                            department: "CREDA DIST OFFICE",
-                            districtOffice: `CREDA DIST OFFICE- ${district}, DIST:${district}`,
-                            salutation: "Dear Sir,",
-                            introParagraph: `With reference to the above subject Complaints of ${siteNames} site, Block-${task.block || ""}, Dist-${district} , M/s HBL Engineer visited site on Dt:${actualDate} against Battery complaint & replaced 3nos cell against defective. Now System is working satisfactory(Service reports enclosed for your reference).`,
-                            closingParagraph: "Request you to update in your record & close the complaints in your complaint register.",
-                            thankYou: "Thanking you.",
-                            regards: "Yours faithfully,",
-                            forCompany: "For RBP ENERGY (INDIA) PVT Ltd",
-                            designation: "S.N.Sahoo",
-                            copiesTo: ["Superintending Engineer(RE-05), CREDA HO, RAIPUR"],
-                            note: "Note: Request you to update in your record & close the complaints in your Complaint register.",
+                            subject: `जिला ${district}, विकासखण्ड ${task.block || ""} के अंतर्गत ${siteNames} में स्थापित सोलर पावर प्लांट की बैटरी सुधार के संबंध में।`,
+                            reference: [`पत्र क्र. 1245/J.K/2024-25/${district.toUpperCase()} दिनांक: ${actualDate}`],
+                            officerName: "जिला प्रभारी,",
+                            department: "छत्तीसगढ़ राज्य अक्षय ऊर्जा विकास अभिकरण (क्रेडा)",
+                            districtOffice: district && district !== "-" ? `जिला कार्यालय, ${district} (छ०ग०)` : "जिला कार्यालय, छत्तीसगढ़",
+                            salutation: "महोदय,",
+                            introParagraph: `उपरोक्त विषयांतर्गत लेख है कि, जिला ${district}, विकासखण्ड ${task.block || ""} अंतर्गत ${siteNames} स्थल पर बैटरी की शिकायत के परिप्रेक्ष्य में सर्विस इंजीनियर द्वारा दिनांक ${actualDate} को स्थल का निरीक्षण कर खराब सेल के स्थान पर नए सेल प्रतिस्थापित कर दिए गए हैं। वर्तमान में संयंत्र संतोषप्रद रूप से कार्यशील है। (सर्विस रिपोर्ट अवलोकनार्थ संलग्न है)।`,
+                            closingParagraph: "आपसे अनुरोध है कि कृपया अपने रिकॉर्ड में अद्यतन कर शिकायत पंजी में शिकायत बंद करने का कष्ट करें।",
+                            thankYou: "सधन्यवाद !",
+                            regards: "भवदीय,",
+                            forCompany: `वास्ते, ${companyToUse}`,
+                            designation: "अधिकृत हस्ताक्षरकर्ता",
+                            copiesTo: [
+                                "अधीक्षण अभियंता महोदय (RE-05), क्रेडा प्रधान कार्यालय, रायपुर को सादर सूचनार्थ प्रेषित।"
+                            ],
+                            note: "टीप: कृपया अपने रिकॉर्ड में अद्यतन कर शिकायत पंजी में शिकायत बंद करने का कष्ट करें।",
+                            rbpTableRows: templateData
+                        }));
+
+                    } else {
+                        // Standard Beneficiary Complaint / Solar Pump / Saur Sujla Letter
+                        templateData = tasksArr.map((t, idx) => ({
+                            "क्र.": (idx + 1).toString().padStart(2, '0') + ".",
+                            "सौर समाधान क्र.": t.complaintId || "-",
+                            "आई. डी. नं.": t.idNumber || "-",
+                            "हितग्राही का नाम": t.beneficiaryName || "-",
+                            "ग्राम/ विकासखण्ड": `${t.village || ""}/ ${t.block || ""}`,
+                            "दिनांक": t.actualDate || t.complaintDate || new Date().toLocaleDateString("en-GB"),
+                            "रिमार्क": t.natureOfComplaint ? "संयंत्र सुधार उपरांत कार्यशील है।" : "संयंत्र कार्य शील हैं।"
+                        }));
+
+                        setTableColumns(columns);
+                        setTableData(templateData);
+
+                        setLetterInfo(prev => ({
+                            ...prev,
+                            letterNo: `SSY/2025/${randomNum}`,
+                            date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
+                            subject: district && district !== "-" ? `जिला ${district} में सौर सुजला योजनांतर्गत स्थापित सिंचाई सोलर पंप के संबंध में ।` : "सौर सुजला योजनांतर्गत स्थापित सिंचाई सोलर पंप के संबंध में ।",
+                            reference: [
+                                `पत्र क्र. 2386/क्रेडा/जि.का./SSY/O&M/F-04/2024-25 ${district && district !== "-" ? district : "क्रेडा"}, दिनांक ${actualDate},`,
+                                `जिला कार्यालय ${district && district !== "-" ? district : ""} का संदर्भित पत्र क्रमांक / दिनांक |`
+                            ],
+                            officerName: "जिला प्रभारी,",
+                            department: "छत्तीसगढ़ राज्य अक्षय ऊर्जा विकास अभिकरण (क्रेडा)",
+                            districtOffice: district && district !== "-" ? `जिला कार्यालय, ${district} (छ०ग०)` : "जिला कार्यालय, छत्तीसगढ़",
+                            salutation: "महोदय,",
+                            introParagraph: district && district !== "-" ? `उपरोक्त विषयांतर्गत लेख है कि, जिला ${district} अंतर्गत हमारे द्वारा विभिन्न स्थलों में सोलर पंपों स्थापित किया गया है। जिसकी अकार्य शीलता की सूचना हमें आपके संदर्भित पत्र के माध्यम से प्राप्त हुआ। जिसका विवरण निम्नानुसार है-` : "उपरोक्त विषयांतर्गत लेख है कि, हमारे द्वारा विभिन्न स्थलों में सोलर पंपों स्थापित किया गया है। जिसकी अकार्य शीलता की सूचना हमें आपके संदर्भित पत्र के माध्यम से प्राप्त हुआ। जिसका विवरण निम्नानुसार है-",
+                            closingParagraph: "उपरोक्त साईट के संयंत्र का सुधार कार्य हमारे द्वारा कर दिया गया है, तथा संयंत्र वर्तमान में कार्य शील है। इस पत्र के साथ साईट की संपुष्टि पत्र संलग्न है। पत्र आपकी ओर सादर सूचनार्थ हेतु प्रेषित।",
+                            thankYou: "सधन्यवाद !",
+                            regards: "भवदीय",
+                            forCompany: `वास्ते, ${companyToUse}`,
+                            designation: "अधिकृत हस्ताक्षरकर्ता",
+                            copiesTo: [
+                                "कार्यपालन अभियंता महोदय, (RE-05) क्रेडा प्रधान कार्यालय, रायपुर को सादर सूचनार्थ प्रेषित।",
+                                "कार्यपालन अभियंता महोदय,क्रेडा जोनल कार्यालय को सादर सूचनार्थ प्रेषित।"
+                            ],
                             rbpTableRows: templateData
                         }));
                     }
@@ -662,22 +698,15 @@ const AdminLetter = () => {
         setIsSavingPDF(true);
 
         try {
-            // 🔥 STEP 2: condition check
-            const isColumnANTrue =
-                taskData?.columnAN === true ||
-                taskData?.columnAN === "true" ||
-                taskData?.columnAN === "TRUE" ||
-                Boolean(location.state?.itemType) ||
-                Boolean(location.state?.tasks);
-
-            const isRBP = (headerInfo?.companyName || "").toUpperCase().includes("RBP");
-
-            console.log("STEP2 CHECK 👉", { columnAN: taskData?.columnAN, company: headerInfo?.companyName, isColumnANTrue, isRBP });
-
-            // 🔥 STEP 3: decide PDF component
-            const PdfComponent = isColumnANTrue && isRBP
-                ? (<RBPLetterPDF headerInfo={headerInfo} letterInfo={letterInfo} tableColumns={tableColumns} tableData={tableData} />)
-                : (<LetterPDFDocument headerInfo={headerInfo} letterInfo={letterInfo} tableColumns={tableColumns} tableData={tableData} />);
+            // 🔥 STEP 3: generate Hindi PDF component
+            const PdfComponent = (
+                <LetterPDFDocument
+                    headerInfo={headerInfo}
+                    letterInfo={letterInfo}
+                    tableColumns={tableColumns}
+                    tableData={tableData}
+                />
+            );
 
             // 🔥 STEP 4: generate PDF blob
             const pdfBlob = await pdf(PdfComponent).toBlob();
@@ -700,15 +729,20 @@ const AdminLetter = () => {
             // 🔥 STEP 6: Update FMS table in Supabase (non-blocking if fails)
             try {
                 const currentDate = new Date().toISOString().split('T')[0];
+                const updatePayload = {
+                    pdf: pdfUrl,
+                    company: headerInfo.companyName,
+                    company_name: headerInfo.companyName,
+                    email: emailAddress || selectedEmail,
+                    actual1: currentDate
+                };
+                if (whatsappNumber) {
+                    updatePayload.assignee_whatsapp_number = whatsappNumber;
+                }
+
                 const { error: updateError } = await supabase
                     .from("FMS")
-                    .update({
-                        pdf: pdfUrl,
-                        company: headerInfo.companyName,
-                        company_name: headerInfo.companyName,
-                        email: selectedEmail,
-                        actual1: currentDate
-                    })
+                    .update(updatePayload)
                     .eq("complaint_id", complaintId);
 
                 if (updateError) {
@@ -723,6 +757,7 @@ const AdminLetter = () => {
             }
 
             setIsSavingPDF(false);
+            setIsSaveModalOpen(false);
             navigate(-1);
 
         } catch (error) {
@@ -736,18 +771,14 @@ const AdminLetter = () => {
         setIsDownloadingPDF(true);
 
         try {
-            const isColumnANTrue =
-                taskData?.columnAN === true ||
-                taskData?.columnAN === "true" ||
-                taskData?.columnAN === "TRUE" ||
-                Boolean(location.state?.itemType) ||
-                Boolean(location.state?.tasks);
-
-            const isRBP = (headerInfo?.companyName || "").toUpperCase().includes("RBP");
-
-            const PdfComponent = isColumnANTrue && isRBP
-                ? (<RBPLetterPDF headerInfo={headerInfo} letterInfo={letterInfo} tableColumns={tableColumns} tableData={tableData} />)
-                : (<LetterPDFDocument headerInfo={headerInfo} letterInfo={letterInfo} tableColumns={tableColumns} tableData={tableData} />);
+            const PdfComponent = (
+                <LetterPDFDocument
+                    headerInfo={headerInfo}
+                    letterInfo={letterInfo}
+                    tableColumns={tableColumns}
+                    tableData={tableData}
+                />
+            );
 
             const pdfBlob = await pdf(PdfComponent).toBlob();
             const blobUrl = URL.createObjectURL(pdfBlob);
@@ -765,7 +796,6 @@ const AdminLetter = () => {
             setIsDownloadingPDF(false);
         }
     };
-
 
 
     if (loading) {
@@ -801,7 +831,7 @@ const AdminLetter = () => {
                         </button>
 
                         <button
-                            onClick={handleSavePDF}
+                            onClick={() => setIsSaveModalOpen(true)}
                             className={`flex items-center gap-2 px-4 py-2 ${isSavingPDF ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'} text-white rounded-lg transition-colors shadow-md`}
                             disabled={isSaving || isSavingPDF || isDownloadingPDF}
                         >
@@ -949,220 +979,224 @@ const AdminLetter = () => {
                         )}
                     </div>
 
-                    {/* Letter Body */}
-                    {((taskData?.columnAN === true || taskData?.columnAN === "true" || taskData?.columnAN === "TRUE" || Boolean(location.state?.itemType) || Boolean(location.state?.tasks)) && (headerInfo.companyName || "").toUpperCase().includes("RBP")) ? (
-                        /* ======== RBP ENGLISH FORMAT ======== */
-                        <div className="text-sm text-gray-800 leading-relaxed" style={{ fontFamily: 'Georgia, serif' }}>
-
-                            {/* Letter No + Date */}
-                            <div className="flex justify-between items-center mb-5">
+                    {/* Letter Body - Hindi Format */}
+                    <div className="space-y-6 text-base text-gray-800 leading-relaxed font-serif">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="flex gap-2 items-center">
+                                <span>पत्र क्र.</span>
                                 <input
                                     type="text"
                                     value={letterInfo.letterNo}
                                     onChange={(e) => handleLetterEdit("letterNo", e.target.value)}
-                                    className="border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent font-bold w-72 text-sm"
+                                    className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold w-64 text-sm"
                                 />
-                                <div className="flex gap-1 items-center">
-                                    <span className="font-bold">Dt:</span>
-                                    <input
-                                        type="text"
-                                        value={letterInfo.date}
-                                        onChange={(e) => handleLetterEdit("date", e.target.value)}
-                                        className="border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent font-bold w-28 text-sm"
-                                    />
-                                </div>
                             </div>
-
-                            {/* To Section */}
-                            <div className="mb-4 space-y-0.5">
-                                <p className="font-bold">To</p>
+                            <div className="flex gap-2 items-center">
+                                <span>दिनांक</span>
                                 <input
-                                    className="w-full font-bold border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm py-0.5"
+                                    type="text"
+                                    value={letterInfo.date}
+                                    onChange={(e) => handleLetterEdit("date", e.target.value)}
+                                    className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold w-32 text-sm"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="mt-4">
+                            <p className="font-bold">प्रति,</p>
+                            <div className="pl-12 space-y-1">
+                                <input
+                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-semibold"
                                     value={letterInfo.officerName}
                                     onChange={(e) => handleLetterEdit("officerName", e.target.value)}
                                 />
                                 <input
-                                    className="w-full font-bold border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm py-0.5"
+                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
                                     value={letterInfo.department}
                                     onChange={(e) => handleLetterEdit("department", e.target.value)}
                                 />
                                 <input
-                                    className="w-full font-bold border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm py-0.5"
+                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
                                     value={letterInfo.districtOffice}
                                     onChange={(e) => handleLetterEdit("districtOffice", e.target.value)}
                                 />
                             </div>
+                        </div>
 
-                            {/* Subject */}
-                            <div className="mb-2 flex gap-1 items-start">
-                                <span className="font-bold whitespace-nowrap">(Sub:</span>
-                                <textarea
-                                    className="flex-1 font-bold border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent resize-none text-sm leading-snug"
-                                    rows="2"
-                                    value={letterInfo.subject}
-                                    onChange={(e) => handleLetterEdit("subject", e.target.value)}
-                                />
-                                <span className="font-bold">)</span>
+                        <div className="mt-6 flex gap-2">
+                            <span className="font-bold whitespace-nowrap min-w-[60px]">विषय:-</span>
+                            <textarea
+                                className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none font-bold align-top pt-0"
+                                rows="2"
+                                value={letterInfo.subject}
+                                onChange={(e) => handleLetterEdit("subject", e.target.value)}
+                            />
+                        </div>
+
+                        <div className="mt-4 flex gap-2">
+                            <span className="font-bold whitespace-nowrap min-w-[60px]">संदर्भ:-</span>
+                            <div className="w-full space-y-2">
+                                {letterInfo.reference?.map((ref, idx) => (
+                                    <div key={idx} className="flex gap-2">
+                                        <span className="min-w-[20px]">{idx + 1})</span>
+                                        <textarea
+                                            className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none align-top pt-0"
+                                            rows="2"
+                                            value={ref}
+                                            onChange={(e) => {
+                                                const newRefs = [...letterInfo.reference];
+                                                newRefs[idx] = e.target.value;
+                                                handleLetterEdit("reference", newRefs);
+                                            }}
+                                        />
+                                    </div>
+                                ))}
                             </div>
+                        </div>
 
-                            {/* Reference */}
-                            <div className="mb-4 flex gap-1 items-start">
-                                <span className="font-bold whitespace-nowrap">Ref:</span>
-                                <div className="flex-1 space-y-1">
-                                    {letterInfo.reference?.map((ref, idx) => (
-                                        <div key={idx} className="flex gap-1 items-center">
-                                            <span className="text-xs shrink-0">{["i", "ii", "iii", "iv", "v"][idx] || idx + 1})</span>
-                                            <input
-                                                className="flex-1 border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
-                                                value={ref}
-                                                onChange={(e) => {
-                                                    const newRefs = [...letterInfo.reference];
-                                                    newRefs[idx] = e.target.value;
-                                                    handleLetterEdit("reference", newRefs);
-                                                }}
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
+                        <div className="mt-6">
+                            <input
+                                className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold"
+                                value={letterInfo.salutation}
+                                onChange={(e) => handleLetterEdit("salutation", e.target.value)}
+                            />
+                        </div>
 
-                            {/* Salutation */}
-                            <div className="mb-3">
-                                <input
-                                    className="font-bold border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
-                                    value={letterInfo.salutation}
-                                    onChange={(e) => handleLetterEdit("salutation", e.target.value)}
-                                />
-                            </div>
+                        <div className="mt-2 text-justify">
+                            <textarea
+                                className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none leading-8"
+                                rows="3"
+                                value={letterInfo.introParagraph}
+                                onChange={(e) => handleLetterEdit("introParagraph", e.target.value)}
+                            />
+                        </div>
 
-                            {/* Intro Paragraph */}
-                            <div className="mb-3">
-                                <textarea
-                                    className="w-full border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent resize-none text-sm leading-relaxed"
-                                    rows="4"
-                                    value={letterInfo.introParagraph}
-                                    onChange={(e) => handleLetterEdit("introParagraph", e.target.value)}
-                                />
-                            </div>
-
-                            {/* Closing Para (before table) */}
-                            <div className="mb-4">
-                                <textarea
-                                    className="w-full border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent resize-none text-sm"
-                                    rows="2"
-                                    value={letterInfo.closingParagraph}
-                                    onChange={(e) => handleLetterEdit("closingParagraph", e.target.value)}
-                                />
-                            </div>
-
-                            {/* ===== RBP TABLE - Fully Editable ===== */}
-                            <div className="my-4 border border-black overflow-x-auto">
-                                <table className="w-full border-collapse text-xs">
-                                    <thead>
-                                        <tr className="bg-gray-100">
-                                            {tableColumns.map((col, i) => (
-                                                <th key={i} className={`border border-black p-1.5 font-bold text-center ${col === "Site Name" ? "min-w-[180px]" :
-                                                        col === "Problem Reported" ? "min-w-[200px]" :
-                                                            col === "RBP Remarks" ? "min-w-[180px]" : "min-w-[80px]"
-                                                    }`}>{col}</th>
-                                            ))}
-                                            <th className="border border-black p-1 bg-gray-200 w-8 no-print"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(letterInfo.rbpTableRows || tableData).map((row, rowIdx) => (
-                                            <tr key={rowIdx} className="border-b border-black">
-                                                {tableColumns.map((col, colIdx) => (
-                                                    <td key={colIdx} className="border border-black p-0">
-                                                        <textarea
-                                                            className="w-full text-left p-1.5 bg-transparent focus:outline-none focus:bg-blue-50 resize-none text-[11px] leading-tight"
-                                                            rows={col === "Problem Reported" ? 2 : 1}
-                                                            value={row[col] || ""}
-                                                            onChange={(e) => {
-                                                                const newRows = [...(letterInfo.rbpTableRows || tableData)];
-                                                                newRows[rowIdx] = { ...newRows[rowIdx], [col]: e.target.value };
-                                                                handleLetterEdit("rbpTableRows", newRows);
-                                                                setTableData(newRows);
-                                                            }}
-                                                        />
-                                                    </td>
-                                                ))}
-                                                <td className="border border-black p-1 text-center no-print">
-                                                    <button
-                                                        onClick={() => {
-                                                            const newRows = (letterInfo.rbpTableRows || tableData).filter((_, i) => i !== rowIdx);
-                                                            handleLetterEdit("rbpTableRows", newRows);
-                                                            setTableData(newRows);
-                                                        }}
-                                                        className="text-red-400 hover:text-red-600 text-xs"
-                                                    >✕</button>
-                                                </td>
-                                            </tr>
+                        {/* Dynamic Table */}
+                        <div className="my-8 overflow-hidden rounded-md border border-black relative">
+                            <table className="w-full border-collapse">
+                                <thead>
+                                    <tr className="bg-gray-50 border-b border-black">
+                                        {tableColumns.map((col, idx) => (
+                                            <th key={idx} className="border-r border-black p-2 text-center text-sm font-bold last:border-r-0">
+                                                <input
+                                                    type="text"
+                                                    value={col}
+                                                    onChange={(e) => {
+                                                        const oldName = col;
+                                                        const newName = e.target.value;
+                                                        const newCols = [...tableColumns];
+                                                        newCols[idx] = newName;
+                                                        setTableColumns(newCols);
+                                                        setTableData(tableData.map(row => {
+                                                            const newRow = { ...row };
+                                                            newRow[newName] = row[oldName];
+                                                            if (newName !== oldName) delete newRow[oldName];
+                                                            return newRow;
+                                                        }));
+                                                    }}
+                                                    className="w-full text-center focus:outline-none border-none bg-transparent font-bold"
+                                                />
+                                            </th>
                                         ))}
-                                    </tbody>
-                                </table>
-                                <button
-                                    className="w-full py-1 text-xs text-blue-600 hover:bg-blue-50 border-t border-black no-print"
-                                    onClick={() => {
-                                        const currentRows = letterInfo.rbpTableRows || tableData;
-                                        const newRow = {};
-                                        tableColumns.forEach(col => {
-                                            if (col === "SR No") {
-                                                newRow[col] = (currentRows.length + 1).toString().padStart(2, '0') + ".";
-                                            } else {
-                                                newRow[col] = "-";
-                                            }
-                                        });
-                                        handleLetterEdit("rbpTableRows", [...currentRows, newRow]);
-                                        setTableData([...currentRows, newRow]);
-                                    }}
-                                >+ Add Row</button>
-                            </div>
+                                        {/* Action Header Column for Add Row */}
+                                        <th className="p-2 text-center text-sm font-bold bg-gray-100 no-print w-10 border-l border-black">
+                                            <button
+                                                onClick={addRow}
+                                                className="text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
+                                                title="Add Row"
+                                            >
+                                                <SquarePlus size={20} />
+                                            </button>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {tableData.map((row, rowIndex) => (
+                                        <tr key={rowIndex} className="border-b border-black last:border-b-0 group">
+                                            {tableColumns.map((col, colIndex) => (
+                                                <td key={colIndex} className="border-r border-black p-2 text-center text-sm last:border-r-0">
+                                                    <input
+                                                        type="text"
+                                                        value={row[col] || ""}
+                                                        onChange={(e) => handleTableEdit(rowIndex, col, e.target.value)}
+                                                        className="w-full text-center focus:outline-none border-none bg-transparent font-semibold"
+                                                    />
+                                                </td>
+                                            ))}
+                                            {/* Action Column for Delete Row */}
+                                            <td className="p-2 text-center text-sm no-print border-l border-black bg-gray-50/50 w-10">
+                                                <button
+                                                    onClick={() => removeRow(rowIndex)}
+                                                    className="text-red-400 hover:text-red-600 transition-colors cursor-pointer"
+                                                    title="Remove Row"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
 
-                            {/* Note Section */}
-                            <div className="mb-3">
+                        <div className="mt-6 text-justify">
+                            <textarea
+                                className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none leading-8"
+                                rows="3"
+                                value={letterInfo.closingParagraph}
+                                onChange={(e) => handleLetterEdit("closingParagraph", e.target.value)}
+                            />
+                        </div>
+
+                        {/* Note (if present) */}
+                        {letterInfo.note && (
+                            <div className="mt-3">
                                 <textarea
-                                    className="w-full border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent resize-none text-sm"
+                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent resize-none text-sm font-medium"
                                     rows="2"
-                                    value={letterInfo.note || "Note: Request you to update in your record & close the complaints in your Complaint register."}
+                                    value={letterInfo.note}
                                     onChange={(e) => handleLetterEdit("note", e.target.value)}
                                 />
                             </div>
+                        )}
 
-                            {/* Thank You */}
-                            <div className="mb-4">
-                                <input
-                                    className="border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
-                                    value={letterInfo.thankYou || "Thanking you."}
-                                    onChange={(e) => handleLetterEdit("thankYou", e.target.value)}
-                                />
-                            </div>
+                        <div className="mt-10">
+                            <input
+                                className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left"
+                                value={letterInfo.thankYou || "सधन्यवाद !"}
+                                onChange={(e) => handleLetterEdit("thankYou", e.target.value)}
+                            />
+                        </div>
 
-                            {/* Signature Section */}
-                            <div className="mb-1 mt-8">
-                                <input
-                                    className="font-bold border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
-                                    value={letterInfo.forCompany || "For RBP ENERGY (INDIA) PVT Ltd"}
-                                    onChange={(e) => handleLetterEdit("forCompany", e.target.value)}
-                                />
-                            </div>
-                            <div className="h-12"></div>
-                            <div className="mb-6">
-                                <input
-                                    className="font-bold border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
-                                    value={letterInfo.designation || "S.N.Sahoo"}
-                                    onChange={(e) => handleLetterEdit("designation", e.target.value)}
-                                />
-                            </div>
+                        {/* Signature Section */}
+                        <div className="mt-12 flex flex-col items-start space-y-1">
+                            <input
+                                className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-40"
+                                value={letterInfo.regards || "भवदीय"}
+                                onChange={(e) => handleLetterEdit("regards", e.target.value)}
+                            />
+                            <div className="h-10"></div> {/* Space for signature */}
+                            <input
+                                className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-80"
+                                value={letterInfo.forCompany || (headerInfo.companyName ? `वास्ते, ${headerInfo.companyName}` : "वास्ते, तनय विद्युत (ई०) प्रा.लि.")}
+                                onChange={(e) => handleLetterEdit("forCompany", e.target.value)}
+                            />
+                            <input
+                                className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-64"
+                                value={letterInfo.designation || "अधिकृत हस्ताक्षरकर्ता"}
+                                onChange={(e) => handleLetterEdit("designation", e.target.value)}
+                            />
+                        </div>
 
-                            {/* CC Section */}
-                            <div className="text-sm mt-2 space-y-1">
-                                <p className="font-bold">CC:</p>
+                        {/* CC Section */}
+                        <div className="mt-10 text-sm space-y-2 italic">
+                            <p className="font-bold">प्रतिलिपि:—</p>
+                            <div className="pl-0 space-y-1">
                                 {letterInfo.copiesTo?.map((copy, idx) => (
-                                    <div key={idx} className="flex gap-2 items-center">
-                                        <span className="shrink-0">{idx + 1})</span>
+                                    <div key={idx} className="flex gap-2">
+                                        <span className="min-w-[20px]">{idx + 1})</span>
                                         <input
-                                            className="flex-1 border-b border-transparent focus:border-blue-400 focus:outline-none bg-transparent text-sm"
+                                            className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
                                             value={copy}
                                             onChange={(e) => {
                                                 const newCopies = [...letterInfo.copiesTo];
@@ -1173,227 +1207,8 @@ const AdminLetter = () => {
                                     </div>
                                 ))}
                             </div>
-
                         </div>
-                    ) : (
-                        <div className="space-y-6 text-base text-gray-800 leading-relaxed font-serif">
-                            <div className="flex justify-between items-start mb-4">
-                                <div className="flex gap-2 items-center">
-                                    <span>पत्र क्र.</span>
-                                    <input
-                                        type="text"
-                                        value={letterInfo.letterNo}
-                                        onChange={(e) => handleLetterEdit("letterNo", e.target.value)}
-                                        className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold w-40"
-                                    />
-                                </div>
-                                <div className="flex gap-2 items-center">
-                                    <span>दिनांक</span>
-                                    <input
-                                        type="text"
-                                        value={letterInfo.date}
-                                        onChange={(e) => handleLetterEdit("date", e.target.value)}
-                                        className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold w-32"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="mt-4">
-                                <p className="font-bold">प्रति,</p>
-                                <div className="pl-12 space-y-1">
-                                    <input
-                                        className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
-                                        value={letterInfo.officerName}
-                                        onChange={(e) => handleLetterEdit("officerName", e.target.value)}
-                                    />
-                                    <input
-                                        className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
-                                        value={letterInfo.department}
-                                        onChange={(e) => handleLetterEdit("department", e.target.value)}
-                                    />
-                                    <input
-                                        className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
-                                        value={letterInfo.districtOffice}
-                                        onChange={(e) => handleLetterEdit("districtOffice", e.target.value)}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="mt-6 flex gap-2">
-                                <span className="font-bold whitespace-nowrap min-w-[60px]">विषय:-</span>
-                                <textarea
-                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none font-bold align-top pt-0"
-                                    rows="2"
-                                    value={letterInfo.subject}
-                                    onChange={(e) => handleLetterEdit("subject", e.target.value)}
-                                />
-                            </div>
-
-                            <div className="mt-4 flex gap-2">
-                                <span className="font-bold whitespace-nowrap min-w-[60px]">संदर्भ:-</span>
-                                <div className="w-full space-y-2">
-                                    {letterInfo.reference?.map((ref, idx) => (
-                                        <div key={idx} className="flex gap-2">
-                                            <span className="min-w-[20px]">{idx + 1})</span>
-                                            <textarea
-                                                className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none align-top pt-0"
-                                                rows="2"
-                                                value={ref}
-                                                onChange={(e) => {
-                                                    const newRefs = [...letterInfo.reference];
-                                                    newRefs[idx] = e.target.value;
-                                                    handleLetterEdit("reference", newRefs);
-                                                }}
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="mt-6">
-                                <input
-                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold"
-                                    value={letterInfo.salutation}
-                                    onChange={(e) => handleLetterEdit("salutation", e.target.value)}
-                                />
-                            </div>
-
-                            <div className="mt-2 text-justify">
-                                <textarea
-                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none leading-8"
-                                    rows="3"
-                                    value={letterInfo.introParagraph}
-                                    onChange={(e) => handleLetterEdit("introParagraph", e.target.value)}
-                                />
-                            </div>
-
-                            {/* Dynamic Table */}
-                            <div className="my-8 overflow-hidden rounded-md border border-black relative">
-                                <table className="w-full border-collapse">
-                                    <thead>
-                                        <tr className="bg-gray-50 border-b border-black">
-                                            {tableColumns.map((col, idx) => (
-                                                <th key={idx} className="border-r border-black p-2 text-center text-sm font-bold last:border-r-0">
-                                                    <input
-                                                        type="text"
-                                                        value={col}
-                                                        onChange={(e) => {
-                                                            const oldName = col;
-                                                            const newName = e.target.value;
-                                                            const newCols = [...tableColumns];
-                                                            newCols[idx] = newName;
-                                                            setTableColumns(newCols);
-                                                            setTableData(tableData.map(row => {
-                                                                const newRow = { ...row };
-                                                                newRow[newName] = row[oldName];
-                                                                if (newName !== oldName) delete newRow[oldName];
-                                                                return newRow;
-                                                            }));
-                                                        }}
-                                                        className="w-full text-center focus:outline-none border-none bg-transparent font-bold"
-                                                    />
-                                                </th>
-                                            ))}
-                                            {/* Action Header Column for Add Row */}
-                                            <th className="p-2 text-center text-sm font-bold bg-gray-100 no-print w-10 border-l border-black">
-                                                <button
-                                                    onClick={addRow}
-                                                    className="text-blue-600 hover:text-blue-800 transition-colors"
-                                                    title="Add Row"
-                                                >
-                                                    <SquarePlus size={20} />
-                                                </button>
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {tableData.map((row, rowIndex) => (
-                                            <tr key={rowIndex} className="border-b border-black last:border-b-0 group">
-                                                {tableColumns.map((col, colIndex) => (
-                                                    <td key={colIndex} className="border-r border-black p-2 text-center text-sm last:border-r-0">
-                                                        <input
-                                                            type="text"
-                                                            value={row[col] || ""}
-                                                            onChange={(e) => handleTableEdit(rowIndex, col, e.target.value)}
-                                                            className="w-full text-center focus:outline-none border-none bg-transparent font-semibold"
-                                                        />
-                                                    </td>
-                                                ))}
-                                                {/* Action Column for Delete Row */}
-                                                <td className="p-2 text-center text-sm no-print border-l border-black bg-gray-50/50 w-10">
-                                                    <button
-                                                        onClick={() => removeRow(rowIndex)}
-                                                        className="text-red-400 hover:text-red-600 transition-colors"
-                                                        title="Remove Row"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            <div className="mt-6 text-justify">
-                                <textarea
-                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none leading-8"
-                                    rows="3"
-                                    value={letterInfo.closingParagraph}
-                                    onChange={(e) => handleLetterEdit("closingParagraph", e.target.value)}
-                                />
-                            </div>
-
-                            <div className="mt-10">
-                                <input
-                                    className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left"
-                                    value={letterInfo.thankYou}
-                                    onChange={(e) => handleLetterEdit("thankYou", e.target.value)}
-                                />
-                            </div>
-
-                            {/* Signature Section - MOVED TO LEFT AS REQUESTED */}
-                            <div className="mt-12 flex flex-col items-start space-y-1">
-                                <input
-                                    className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-40"
-                                    value={letterInfo.regards}
-                                    onChange={(e) => handleLetterEdit("regards", e.target.value)}
-                                />
-                                <div className="h-10"></div> {/* Space for signature */}
-                                <input
-                                    className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-64"
-                                    value={letterInfo.forCompany}
-                                    onChange={(e) => handleLetterEdit("forCompany", e.target.value)}
-                                />
-                                <input
-                                    className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-64"
-                                    value={letterInfo.designation}
-                                    onChange={(e) => handleLetterEdit("designation", e.target.value)}
-                                />
-                            </div>
-
-                            {/* CC Section */}
-                            <div className="mt-10 text-sm space-y-2 italic">
-                                <p className="font-bold">प्रतिलिपि:—</p>
-                                <div className="pl-0 space-y-1">
-                                    {letterInfo.copiesTo?.map((copy, idx) => (
-                                        <div key={idx} className="flex gap-2">
-                                            <span className="min-w-[20px]">{idx + 1})</span>
-                                            <input
-                                                className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
-                                                value={copy}
-                                                onChange={(e) => {
-                                                    const newCopies = [...letterInfo.copiesTo];
-                                                    newCopies[idx] = e.target.value;
-                                                    handleLetterEdit("copiesTo", newCopies);
-                                                }}
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                    </div>
                     {/* Dynamic Footer Section */}
                     {(headerInfo.companyName.toLowerCase().includes("suraj") || headerInfo.companyName.toLowerCase().includes("tanay")) ? null : (
                         <div id="letter-footer" className="mt-20 border-t border-black pt-4 text-center text-[10px] leading-tight">
@@ -1554,6 +1369,138 @@ const AdminLetter = () => {
               `}</style>
                 </div>
             </div>
+
+            {/* Modal for Save Letter (WhatsApp & Email options) */}
+            {isSaveModalOpen && (
+                <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-100 transform transition-all">
+                        {/* Modal Header */}
+                        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-6 py-4 text-white flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-white/20 rounded-lg">
+                                    <FileText size={20} className="text-white" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-white">Save Letter</h3>
+                                    <p className="text-xs text-blue-100 font-medium">
+                                        शिकायत क्र.: {complaintId || taskData?.complaintId || "-"}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsSaveModalOpen(false)}
+                                className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                                disabled={isSavingPDF}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Modal Form Body */}
+                        <div className="p-6 space-y-4">
+                            <p className="text-xs text-gray-600">
+                                पत्र सुरक्षित करने के लिए कृपया WhatsApp नंबर एवं Email विवरण दर्ज करें:
+                            </p>
+
+                            {/* Option 1: WhatsApp Number */}
+                            <div className="space-y-1.5">
+                                <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
+                                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-600">
+                                        <Phone size={12} />
+                                    </span>
+                                    <span>1) WhatsApp Number / व्हाट्सएप नंबर</span>
+                                </label>
+                                <div className="relative rounded-lg shadow-xs">
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">+91</span>
+                                    </div>
+                                    <input
+                                        type="tel"
+                                        maxLength={10}
+                                        placeholder="उदा. 9876543210"
+                                        value={whatsappNumber}
+                                        onChange={(e) => {
+                                            const val = e.target.value.replace(/\D/g, "");
+                                            setWhatsappNumber(val);
+                                        }}
+                                        className="block w-full pl-16 pr-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white placeholder-gray-400 font-medium"
+                                    />
+                                </div>
+                                <p className="text-[11px] text-gray-500">
+                                    पत्र की प्रति इस व्हाट्सएप नंबर पर साझा की जाएगी।
+                                </p>
+                            </div>
+
+                            {/* Option 2: Email Address */}
+                            <div className="space-y-1.5">
+                                <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
+                                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-600">
+                                        <Mail size={12} />
+                                    </span>
+                                    <span>2) Email Address / ईमेल आईडी</span>
+                                </label>
+                                <div className="relative rounded-lg shadow-xs">
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                                        <Mail size={16} />
+                                    </div>
+                                    <input
+                                        type="email"
+                                        placeholder="उदा. vendor@company.com"
+                                        value={emailAddress}
+                                        onChange={(e) => {
+                                            setEmailAddress(e.target.value);
+                                            setSelectedEmail(e.target.value);
+                                        }}
+                                        className="block w-full pl-10 pr-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white placeholder-gray-400 font-medium"
+                                    />
+                                </div>
+                                <p className="text-[11px] text-gray-500">
+                                    पत्र की प्रति इस ईमेल आईडी पर भेजी जाएगी।
+                                </p>
+                            </div>
+
+                            {/* Information Note */}
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+                                <span className="text-amber-600 text-xs mt-0.5">ℹ️</span>
+                                <p className="text-xs text-amber-800 leading-relaxed">
+                                    <strong className="font-semibold">नोट:</strong> वर्तमान में WhatsApp व Email इंटीग्रेशन केवल UI प्रीव्यू है। सहेजने पर यह विवरण सुरक्षित हो जाएगा।
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer Actions */}
+                        <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-100">
+                            <button
+                                type="button"
+                                onClick={() => setIsSaveModalOpen(false)}
+                                disabled={isSavingPDF}
+                                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors cursor-pointer"
+                            >
+                                रद्द करें (Cancel)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSavePDF}
+                                disabled={isSavingPDF}
+                                className="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-sm font-semibold shadow-md flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                            >
+                                {isSavingPDF ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        <span>Saving...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <FileText size={16} />
+                                        <span>Save Letter</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </DashboardLayout>
     );
 };
