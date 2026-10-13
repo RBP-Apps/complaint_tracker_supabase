@@ -91,19 +91,29 @@ function AssignToVendorForm() {
       setTableLoading(true);
       setDataError(null);
 
+      // Query complaints marked for vendor, ordered newest first by id
       const { data, error } = await supabase
         .from("FMS")
         .select("*")
-        .order("created_at", { ascending: false });
+        .eq("assign_to_vendor", true)
+        .order("id", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        // Fallback query in case of type differences
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("FMS")
+          .select("*")
+          .order("id", { ascending: false });
 
-      // Filter complaints where assign_to_vendor === true
-      const filteredData = (data || []).filter(
-        (row) => String(row.assign_to_vendor).toLowerCase() === "true"
-      );
+        if (fallbackError) throw fallbackError;
 
-      setTableData(filteredData);
+        const filteredData = (fallbackData || []).filter(
+          (row) => String(row.assign_to_vendor).toLowerCase() === "true"
+        );
+        setTableData(filteredData);
+      } else {
+        setTableData(data || []);
+      }
     } catch (error) {
       console.error("❌ Error fetching complaints:", error);
       setDataError(error.message);
@@ -435,6 +445,41 @@ function AssignToVendorForm() {
       ]);
 
       if (error) throw error;
+
+      // ✅ WHATSAPP NOTIFICATION TO VENDOR
+      try {
+        if (formData.vendorMobile) {
+          const { data: whatsappData, error: whatsappError } = await supabase.functions.invoke(
+            "send-whatsapp-vendor",
+            {
+              body: {
+                vendorMobile: formData.vendorMobile,
+                vendorName: formData.vendorName,
+                complaintId: selectedComplaint?.complaint_id || "",
+                vendorComplaintId: formData.vendorComplaintId || "",
+                beneficiaryName: selectedComplaint?.beneficiary_name || "",
+                contactNumber: selectedComplaint?.contact_number || "",
+                district: selectedComplaint?.district || "",
+                block: selectedComplaint?.block || "",
+                village: selectedComplaint?.village || "",
+                productType: formData.productType || selectedComplaint?.product || "",
+                assignmentDate: vendorDate
+                  ? vendorDate.toLocaleDateString("en-GB")
+                  : new Date().toLocaleDateString("en-GB"),
+                documentUrl: uploadedFileUrl || "",
+              },
+            }
+          );
+
+          if (whatsappError) {
+            console.error("WhatsApp Vendor Notification Error:", whatsappError);
+          } else {
+            console.log("WhatsApp Vendor Notification Sent:", whatsappData);
+          }
+        }
+      } catch (wsErr) {
+        console.error("WhatsApp Invoke Error:", wsErr);
+      }
 
       alert("Vendor Assignment successfully created! ✅");
       handleBackToTable();

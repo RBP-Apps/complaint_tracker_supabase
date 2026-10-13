@@ -1874,7 +1874,7 @@ function NewComplaintForm() {
                         </div >
 
                         {/* Contact Number */}
-                        <div>
+                        {/* <div>
                           <div className="flex items-center justify-between mb-2">
                             <label className="block text-sm font-medium text-gray-700">
                               Contact Number {!formData.isReferenceName && <span className="text-red-500">*</span>}
@@ -1926,7 +1926,70 @@ function NewComplaintForm() {
                               />
                             </div>
                           )}
-                        </div>
+                        </div> */}
+                        <div>
+  <div className="flex items-center justify-between mb-2">
+    <label className="block text-sm font-medium text-gray-700">
+      Contact Number{" "}
+      {!formData.isReferenceName && (
+        <span className="text-red-500"></span>
+      )}
+    </label>
+
+    <label className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded cursor-pointer transition">
+      <input
+        type="checkbox"
+        name="isReferenceName"
+        checked={formData.isReferenceName || false}
+        onChange={(e) => {
+          const checked = e.target.checked;
+          setFormData((prev) => ({
+            ...prev,
+            isReferenceName: checked,
+            contactNumber: checked ? "" : prev.contactNumber,
+          }));
+        }}
+        className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+      />
+      <span className="font-semibold">Reference name</span>
+    </label>
+  </div>
+
+  <input
+    type="tel"
+    name="contactNumber"
+    value={formData.contactNumber || ""}
+    maxLength={10}
+    disabled={formData.isReferenceName}
+    onChange={(e) => {
+      const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+      setFormData((prev) => ({ ...prev, contactNumber: digits }));
+    }}
+    className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition ${
+      formData.isReferenceName
+        ? "bg-gray-100 cursor-not-allowed text-gray-400"
+        : ""
+    }`}
+    placeholder={
+      formData.isReferenceName
+        ? "Disabled (Reference Selected)"
+        : "Enter 10-digit Contact Number"
+    }
+  />
+
+  {formData.isReferenceName && (
+    <div className="mt-2">
+      <input
+        type="text"
+        name="referenceName"
+        value={formData.referenceName || ""}
+        onChange={handleChange}
+        className="w-full px-3 py-1.5 text-xs border border-blue-300 bg-blue-50/50 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder="Enter Reference Person's Name"
+      />
+    </div>
+  )}
+</div>
 
                         {/* Village */}
                         < div >

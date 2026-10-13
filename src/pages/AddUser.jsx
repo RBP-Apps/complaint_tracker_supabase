@@ -41,6 +41,7 @@ const MODULE_PAGES = [
   { key: "draft-letter", label: "Draft Letter" },
   { key: "assign-vendor-letter", label: "Vendor Letter" },
   { key: "tracker-history", label: "Tracker History" },
+  { key: "report", label: "Generate Report" },
   { key: "master-page", label: "Master Data" },
   { key: "user-add", label: "User Management" },
 ];

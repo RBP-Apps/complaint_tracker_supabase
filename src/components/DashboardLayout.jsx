@@ -22,7 +22,8 @@ import {
   Shield,
   Wrench,
   User as UserIcon,
-  Sparkles
+  Sparkles,
+  FileSpreadsheet
 } from "lucide-react";
 import { getUserPermissions, getUserRole, hasPageAccess, clearAuth } from "../utils/auth";
 
@@ -73,6 +74,12 @@ function DashboardLayout({ children }) {
       href: "/dashboard",
       icon: LayoutDashboard,
       permissionKey: "dashboard",
+    },
+     {
+      name: "Generate Report",
+      href: "/dashboard/generate-report",
+      icon: FileSpreadsheet,
+      permissionKey: "report",
     },
     {
       name: "New Complaint",
@@ -127,6 +134,7 @@ function DashboardLayout({ children }) {
       icon: History,
       permissionKey: "tracker-history",
     },
+   
     {
       name: "Master Data",
       href: "/dashboard/master-page",

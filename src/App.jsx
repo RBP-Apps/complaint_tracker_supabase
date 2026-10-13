@@ -13,6 +13,7 @@ import VerificationPage from "./pages/VerificationPage";
 import DocumentVerificationPage from "./pages/DocumentVerficationPage";
 import PetrolExpensesPage from "./pages/PetrolExpensesPage";
 import Reportpage from "./pages/Reportpage";
+import GenerateReportPage from "./pages/GenerateReportPage";
 import TechnicianDashboard from "./pages/TechnicianDashboard";
 import TechnicianTracker from "./pages/TechnicianTracker";
 import Approved from "./pages/Approved";
@@ -94,10 +95,26 @@ function App() {
           }
         />
         <Route
+          path="/dashboard/generate-report"
+          element={
+            <ProtectedRoute permissionKey="report">
+              <GenerateReportPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/dashboard/Report"
           element={
             <ProtectedRoute permissionKey="report">
-              <Reportpage />
+              <GenerateReportPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/report"
+          element={
+            <ProtectedRoute permissionKey="report">
+              <GenerateReportPage />
             </ProtectedRoute>
           }
         />

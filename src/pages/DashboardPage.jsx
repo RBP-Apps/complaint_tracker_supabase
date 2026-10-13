@@ -63,16 +63,7 @@ function DashboardPage() {
               </p>
             </div>
 
-            {/* Quick Actions */}
-            <div className="flex items-center gap-3 self-start md:self-auto">
-              <Link
-                to="/dashboard/new-complaint"
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer active:scale-98"
-              >
-                <Plus className="h-4 w-4" />
-                <span>Add Complaint</span>
-              </Link>
-            </div>
+          
           </div>
         </div>
 

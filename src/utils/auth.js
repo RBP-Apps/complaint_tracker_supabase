@@ -51,7 +51,13 @@ export const hasPageAccess = (permissionKey) => {
   // Check specific permissions
   return permissions.some(p => {
     if (!p) return false;
-    return safeLower(p) === targetKey;
+    const userPerm = safeLower(p);
+    if (userPerm === targetKey) return true;
+    if ((targetKey === "report" || targetKey === "generate-report") && 
+        (userPerm === "report" || userPerm === "generate-report" || userPerm === "generate report")) {
+      return true;
+    }
+    return false;
   });
 };
 

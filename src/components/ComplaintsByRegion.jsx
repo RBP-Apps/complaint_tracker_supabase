@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { MapPin, BarChart3, CheckCircle2, AlertCircle, Search, X, ChevronRight, Phone, MessageSquare, ExternalLink } from "lucide-react"
+import { MapPin, BarChart3, CheckCircle2, AlertCircle, Search, X, ChevronRight, Phone, MessageSquare, ExternalLink, FolderKanban, Briefcase } from "lucide-react"
 import supabase from "../utils/supabase";
 
 function ComplaintsByRegion() {
@@ -11,6 +11,12 @@ function ComplaintsByRegion() {
   const [searchTerm, setSearchTerm] = useState("")
   const [user, setUser] = useState(null)
   const [userRole, setUserRole] = useState(null)
+
+  // Project detail modal state & search
+  const [projectSearchTerm, setProjectSearchTerm] = useState("")
+  const [selectedProject, setSelectedProject] = useState(null)
+  const [modalProjectSearch, setModalProjectSearch] = useState("")
+  const [modalProjectStatusFilter, setModalProjectStatusFilter] = useState("all") // 'all' | 'pending' | 'resolved'
 
   // District detail modal state
   const [selectedDistrict, setSelectedDistrict] = useState(null)
@@ -29,9 +35,10 @@ function ComplaintsByRegion() {
     const handleKeyDown = (e) => {
       if (e.key === "Escape") {
         setSelectedDistrict(null)
+        setSelectedProject(null)
       }
     }
-    if (selectedDistrict) {
+    if (selectedDistrict || selectedProject) {
       window.addEventListener("keydown", handleKeyDown)
       document.body.style.overflow = "hidden"
     } else {
@@ -41,7 +48,7 @@ function ComplaintsByRegion() {
       window.removeEventListener("keydown", handleKeyDown)
       document.body.style.overflow = ""
     }
-  }, [selectedDistrict])
+  }, [selectedDistrict, selectedProject])
 
   const formatDateString = (dateValue) => {
     if (!dateValue) return ""
@@ -233,6 +240,125 @@ useEffect(() => {
     )
   }, [districtSummary])
 
+  // Project performance summary
+  const projectSummary = useMemo(() => {
+    const map = new Map()
+
+    filteredComplaints.forEach((c) => {
+      const rawProject = (c.projectName || "").trim()
+      const key = rawProject ? rawProject.toLowerCase() : "unspecified"
+
+      if (!map.has(key)) {
+        const formatted = rawProject
+          ? rawProject
+              .split(/\s+/)
+              .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+              .join(" ")
+          : "Not Specified / General"
+
+        map.set(key, {
+          project: formatted,
+          projectKey: key,
+          total: 0,
+          resolved: 0,
+          pending: 0,
+        })
+      }
+
+      const entry = map.get(key)
+      entry.total += 1
+
+      const s = String(c.status || "").toUpperCase()
+      if (s.includes("APPROVED-CLOSE") || s.includes("COMPLETED")) {
+        entry.resolved += 1
+      } else {
+        entry.pending += 1
+      }
+    })
+
+    return Array.from(map.values()).sort((a, b) => b.total - a.total || a.project.localeCompare(b.project))
+  }, [filteredComplaints])
+
+  const filteredProjectSummary = useMemo(() => {
+    if (!projectSearchTerm.trim()) return projectSummary
+    const q = projectSearchTerm.toLowerCase().trim()
+    return projectSummary.filter((p) =>
+      p.project.toLowerCase().includes(q)
+    )
+  }, [projectSummary, projectSearchTerm])
+
+  const projectGrandTotals = useMemo(() => {
+    return projectSummary.reduce(
+      (acc, p) => {
+        acc.total += p.total
+        acc.resolved += p.resolved
+        acc.pending += p.pending
+        return acc
+      },
+      { total: 0, resolved: 0, pending: 0 }
+    )
+  }, [projectSummary])
+
+  // Selected project statistics
+  const selectedProjectStats = useMemo(() => {
+    if (!selectedProject) return null
+    return (
+      projectSummary.find(
+        (p) => p.project.toLowerCase() === selectedProject.toLowerCase()
+      ) || null
+    )
+  }, [projectSummary, selectedProject])
+
+  // Complaints belonging to selected project
+  const projectComplaints = useMemo(() => {
+    if (!selectedProject) return []
+    const target = selectedProject.trim().toLowerCase()
+    return filteredComplaints.filter((c) => {
+      const raw = (c.projectName || "").trim().toLowerCase()
+      const formatted = raw
+        ? raw
+            .split(/\s+/)
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+            .join(" ")
+        : "not specified / general"
+
+      return (
+        raw === target ||
+        formatted.toLowerCase() === target ||
+        (target.includes("not specified") && !raw) ||
+        (target === "unspecified" && !raw)
+      )
+    })
+  }, [filteredComplaints, selectedProject])
+
+  // Filtered complaints within project modal (by status & search)
+  const filteredProjectComplaints = useMemo(() => {
+    return projectComplaints.filter((c) => {
+      const isResolved =
+        String(c.status || "").toUpperCase().includes("APPROVED-CLOSE") ||
+        String(c.status || "").toUpperCase().includes("COMPLETED")
+
+      if (modalProjectStatusFilter === "resolved" && !isResolved) return false
+      if (modalProjectStatusFilter === "pending" && isResolved) return false
+
+      if (!modalProjectSearch.trim()) return true
+      const q = modalProjectSearch.toLowerCase().trim()
+      return (
+        String(c.complaintId || "").toLowerCase().includes(q) ||
+        String(c.beneficiaryName || "").toLowerCase().includes(q) ||
+        String(c.village || "").toLowerCase().includes(q) ||
+        String(c.block || "").toLowerCase().includes(q) ||
+        String(c.district || "").toLowerCase().includes(q) ||
+        String(c.product || "").toLowerCase().includes(q) ||
+        String(c.make || "").toLowerCase().includes(q) ||
+        String(c.rating || "").toLowerCase().includes(q) ||
+        String(c.natureOfComplaint || "").toLowerCase().includes(q) ||
+        String(c.technicianName || "").toLowerCase().includes(q) ||
+        String(c.contactNumber || "").includes(q)
+      )
+    })
+  }, [projectComplaints, modalProjectStatusFilter, modalProjectSearch])
+
   // Selected district statistics
   const selectedDistrictStats = useMemo(() => {
     if (!selectedDistrict) return null
@@ -309,7 +435,182 @@ useEffect(() => {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-xs border border-slate-200/80 p-5 sm:p-6 transition-all">
+    <div className="space-y-6">
+      {/* ======================================================== */}
+      {/* 1. PROJECT PERFORMANCE & BREAKDOWN (UPER / ABOVE)        */}
+      {/* ======================================================== */}
+      <div className="bg-white rounded-2xl shadow-xs border border-slate-200/80 p-5 sm:p-6 transition-all">
+        {/* PROJECT HEADER */}
+        <div className="mb-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
+                <FolderKanban className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  <span>Project Performance & Summary Breakdown</span>
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    {projectSummary.length} Projects
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Distribution of total, resolved, and pending complaints across projects & schemes
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <div className="relative flex-1 md:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="search"
+                placeholder="Filter project..."
+                className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50/80 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
+                value={projectSearchTerm}
+                onChange={(e) => setProjectSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* PROJECT DASHBOARD - STICKY TABLE */}
+        <div className="mb-4 max-h-[340px] overflow-y-auto border border-slate-200/90 rounded-xl overflow-hidden shadow-2xs">
+          <table className="min-w-full divide-y divide-slate-200 text-left">
+            <thead className="bg-slate-50/90 sticky top-0 z-10 text-xs font-bold text-slate-600 uppercase tracking-wider backdrop-blur-xs border-b border-slate-200">
+              <tr>
+                <th className="px-4 py-3 whitespace-nowrap">Project Name</th>
+                <th className="px-4 py-3 whitespace-nowrap text-center">Total Complaints</th>
+                <th className="px-4 py-3 whitespace-nowrap text-center">Resolved</th>
+                <th className="px-4 py-3 whitespace-nowrap text-center">Pending</th>
+                <th className="px-4 py-3 whitespace-nowrap text-center">Resolution Rate</th>
+                <th className="px-4 py-3 whitespace-nowrap text-center">Action</th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-slate-100 bg-white text-xs sm:text-sm">
+              {filteredProjectSummary.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="p-8 text-center text-slate-400">
+                    No project records found matching "{projectSearchTerm}"
+                  </td>
+                </tr>
+              ) : (
+                filteredProjectSummary.map((p) => {
+                  const resolutionRate = p.total > 0 ? Math.round((p.resolved / p.total) * 100) : 0
+                  return (
+                    <tr
+                      key={p.project}
+                      onClick={() => {
+                        setSelectedProject(p.project)
+                        setModalProjectSearch("")
+                        setModalProjectStatusFilter("all")
+                      }}
+                      className="hover:bg-emerald-50/70 transition-all cursor-pointer group active:scale-[0.998]"
+                      title={`Click to view all complaints in ${p.project}`}
+                    >
+                      <td className="px-4 py-3 font-semibold text-slate-800 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 group-hover:scale-125 transition-transform" />
+                          <span className="group-hover:text-emerald-700 transition-colors font-medium">{p.project}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-flex items-center justify-center min-w-[32px] rounded-lg bg-slate-100 text-xs font-bold text-slate-800 px-2.5 py-1 font-mono">
+                          {p.total}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-flex items-center justify-center min-w-[32px] rounded-lg bg-emerald-50 text-xs font-bold text-emerald-700 border border-emerald-200 px-2.5 py-1 font-mono">
+                          {p.resolved}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-flex items-center justify-center min-w-[32px] rounded-lg bg-amber-50 text-xs font-bold text-amber-700 border border-amber-200 px-2.5 py-1 font-mono">
+                          {p.pending}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-16 bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                resolutionRate >= 80
+                                  ? "bg-emerald-500"
+                                  : resolutionRate >= 50
+                                  ? "bg-blue-500"
+                                  : "bg-amber-500"
+                              }`}
+                              style={{ width: `${resolutionRate}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-bold text-slate-700 font-mono w-8 text-right">
+                            {resolutionRate}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedProject(p.project)
+                            setModalProjectSearch("")
+                            setModalProjectStatusFilter("all")
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white border border-emerald-200 transition-all cursor-pointer shadow-2xs group-hover:bg-emerald-600 group-hover:text-white"
+                        >
+                          <span>View Details</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* PROJECT EXECUTIVE TOTALS KPI BAR */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 border border-slate-200/90 rounded-xl text-xs sm:text-sm font-semibold">
+          <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200/70 shadow-2xs">
+            <div className="flex items-center gap-2 text-slate-600">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
+              <span>Total Project Complaints</span>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold font-mono">
+              {projectGrandTotals.total}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200/70 shadow-2xs">
+            <div className="flex items-center gap-2 text-slate-600">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
+              <span>Closed / Resolved</span>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold font-mono">
+              {projectGrandTotals.resolved}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200/70 shadow-2xs">
+            <div className="flex items-center gap-2 text-slate-600">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-600" />
+              <span>Pending Resolution</span>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-bold font-mono">
+              {projectGrandTotals.pending}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ======================================================== */}
+      {/* 2. DISTRICT PERFORMANCE & REGIONAL BREAKDOWN (ORIGINAL)  */}
+      {/* ======================================================== */}
+      <div className="bg-white rounded-2xl shadow-xs border border-slate-200/80 p-5 sm:p-6 transition-all">
       {/* HEADER */}
       <div className="mb-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -717,6 +1018,257 @@ useEffect(() => {
               <button
                 type="button"
                 onClick={() => setSelectedDistrict(null)}
+                className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium cursor-pointer transition shadow-xs"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+
+    {/* PROJECT COMPLAINTS DETAILS MODAL */}
+    {selectedProject && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-5 animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedProject(null)
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-slate-200 animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-emerald-50/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-emerald-600 text-white shadow-xs">
+                  <FolderKanban className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                      {selectedProject} Project
+                    </h3>
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 font-mono">
+                      {projectComplaints.length} Total Complaints
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Complete complaints directory, current status, and resolution details for {selectedProject}
+                  </p>
+                </div>
+              </div>
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setSelectedProject(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer ml-auto sm:ml-0 flex items-center gap-1 text-xs"
+                title="Close modal (Esc)"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Quick KPI stats in modal */}
+            {selectedProjectStats && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-4 bg-slate-50/70 border-b border-slate-200 text-xs">
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <span className="text-slate-500 text-[11px] font-medium block">Total Complaints</span>
+                  <span className="text-lg font-bold text-slate-900 font-mono">{selectedProjectStats.total}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <span className="text-slate-500 text-[11px] font-medium block">Resolved</span>
+                  <span className="text-lg font-bold text-emerald-600 font-mono">{selectedProjectStats.resolved}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <span className="text-slate-500 text-[11px] font-medium block">Pending</span>
+                  <span className="text-lg font-bold text-amber-600 font-mono">{selectedProjectStats.pending}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <span className="text-slate-500 text-[11px] font-medium block">Resolution Rate</span>
+                  <span className="text-lg font-bold text-emerald-600 font-mono">
+                    {selectedProjectStats.total > 0
+                      ? Math.round((selectedProjectStats.resolved / selectedProjectStats.total) * 100)
+                      : 0}%
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Filter and Search Bar inside modal */}
+            <div className="p-3 sm:p-4 border-b border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-white">
+              {/* Search input */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search by beneficiary, district, village, phone, product, technician..."
+                  value={modalProjectSearch}
+                  onChange={(e) => setModalProjectSearch(e.target.value)}
+                  className="w-full pl-8 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white"
+                />
+                {modalProjectSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setModalProjectSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    title="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Status filter buttons */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setModalProjectStatusFilter("all")}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition cursor-pointer ${
+                    modalProjectStatusFilter === "all"
+                      ? "bg-slate-900 text-white shadow-xs font-semibold"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  All ({projectComplaints.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalProjectStatusFilter("pending")}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition cursor-pointer ${
+                    modalProjectStatusFilter === "pending"
+                      ? "bg-amber-600 text-white shadow-xs font-semibold"
+                      : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+                  }`}
+                >
+                  Pending ({selectedProjectStats?.pending || 0})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalProjectStatusFilter("resolved")}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition cursor-pointer ${
+                    modalProjectStatusFilter === "resolved"
+                      ? "bg-emerald-600 text-white shadow-xs font-semibold"
+                      : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+                  }`}
+                >
+                  Resolved ({selectedProjectStats?.resolved || 0})
+                </button>
+              </div>
+            </div>
+
+            {/* Complaints Table inside Modal */}
+            <div className="overflow-y-auto flex-1 max-h-[50vh]">
+              {filteredProjectComplaints.length === 0 ? (
+                <div className="p-12 text-center">
+                  <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-700">No matching complaints found</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {modalProjectSearch ? `No complaints match "${modalProjectSearch}" in this filter` : "No complaints recorded under this status"}
+                  </p>
+                  {modalProjectSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setModalProjectSearch("")}
+                      className="mt-3 px-3 py-1 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
+                    >
+                      Clear Search
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
+                  <thead className="bg-slate-100 sticky top-0 z-10 font-semibold text-slate-700 uppercase tracking-wider">
+                    <tr>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Complaint ID</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Beneficiary & Location</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Product Details</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Nature of Complaint</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Technician</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Date</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {filteredProjectComplaints.map((c, i) => {
+                      const isResolved =
+                        String(c.status || "").toUpperCase().includes("APPROVED-CLOSE") ||
+                        String(c.status || "").toUpperCase().includes("COMPLETED");
+
+                      return (
+                        <tr key={c.complaintId || i} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-3.5 py-2.5 font-bold font-mono text-emerald-600 whitespace-nowrap">
+                            {c.complaintId}
+                          </td>
+                          <td className="px-3.5 py-2.5">
+                            <div className="font-semibold text-slate-900">{c.beneficiaryName || "—"}</div>
+                            <div className="text-[11px] text-slate-500">
+                              {[c.district, c.block, c.village].filter(Boolean).join(", ") || "—"}
+                            </div>
+                            {c.contactNumber && (
+                              <a
+                                href={`tel:${c.contactNumber}`}
+                                className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline font-mono mt-0.5"
+                                title="Call beneficiary"
+                              >
+                                <Phone className="w-3 h-3" />
+                                {c.contactNumber}
+                              </a>
+                            )}
+                          </td>
+                          <td className="px-3.5 py-2.5">
+                            <div className="font-medium text-slate-800">{c.product || "—"}</div>
+                            <div className="text-[11px] text-slate-500">
+                              {[c.make, c.rating, c.qty ? `Qty: ${c.qty}` : ""].filter(Boolean).join(" • ") || "—"}
+                            </div>
+                          </td>
+                          <td className="px-3.5 py-2.5 max-w-[220px]">
+                            <p className="line-clamp-2 text-slate-700 text-[11px]" title={c.natureOfComplaint}>
+                              {c.natureOfComplaint || "—"}
+                            </p>
+                          </td>
+                          <td className="px-3.5 py-2.5 whitespace-nowrap">
+                            <div className="font-medium text-slate-800">{c.technicianName || "Unassigned"}</div>
+                            {c.technicianContact && (
+                              <div className="text-[11px] text-slate-500 font-mono">
+                                {c.technicianContact}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3.5 py-2.5 whitespace-nowrap text-slate-600 font-mono text-[11px]">
+                            <div>{c.complaintDate || "—"}</div>
+                            {c.closeDate && (
+                              <div className="text-[10px] text-emerald-600">Closed: {c.closeDate}</div>
+                            )}
+                          </td>
+                          <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono ${
+                                isResolved
+                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                  : "bg-amber-100 text-amber-800 border border-amber-200"
+                              }`}
+                            >
+                              {c.status || "Open"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 sm:p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
+              <span>
+                Showing <strong className="text-slate-700">{filteredProjectComplaints.length}</strong> of{" "}
+                <strong className="text-slate-700">{projectComplaints.length}</strong> complaints in {selectedProject}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedProject(null)}
                 className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium cursor-pointer transition shadow-xs"
               >
                 Close
