@@ -602,6 +602,8 @@ function AssignToVendorForm() {
         vendorDetailsMap[formData.vendorName]?.email?.trim() ||
         "";
 
+      let emailStatusMessage = "";
+
       if (targetVendorEmail) {
         try {
           const formattedDate = vendorDate
@@ -627,17 +629,21 @@ function AssignToVendorForm() {
 
           if (emailResult.success) {
             console.log("✅ Email notification sent to vendor:", targetVendorEmail);
+            emailStatusMessage = `\n📧 Email: Sent to ${targetVendorEmail}`;
           } else {
             console.warn("⚠️ EmailJS notification error:", emailResult.error);
+            emailStatusMessage = `\n⚠️ Email: Failed (${emailResult.error})`;
           }
         } catch (emailErr) {
           console.error("❌ EmailJS vendor send error:", emailErr);
+          emailStatusMessage = `\n⚠️ Email Error: ${emailErr.message}`;
         }
       } else {
         console.log("ℹ️ No vendor email available, skipping email notification.");
+        emailStatusMessage = "\nℹ️ Email: Vendor email was blank (skipped)";
       }
 
-      alert("Vendor Assignment successfully created! ✅");
+      alert(`Vendor Assignment successfully created! ✅${emailStatusMessage}`);
       handleBackToTable();
       await fetchComplaintsForVendor();
       await fetchAssignToVendorData();

@@ -7,10 +7,10 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.SUPABASE_URL;
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const WHATSAPP_PHONE_ID = process.env.WHATSAPP_PHONE_ID;
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
+const WHATSAPP_PHONE_ID = process.env.VITE_META_PHONE_ID || process.env.WHATSAPP_PHONE_ID || process.env.META_PHONE_ID;
+const WHATSAPP_TOKEN = process.env.VITE_META_TOKEN || process.env.WHATSAPP_TOKEN || process.env.META_TOKEN;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !WHATSAPP_PHONE_ID || !WHATSAPP_TOKEN) {
   console.error("❌ Missing required environment variables: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, WHATSAPP_PHONE_ID, or WHATSAPP_TOKEN");

@@ -8,6 +8,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  envPrefix: ['VITE_', 'SUPABASE_', 'META_', 'EMAILJS_', 'LETTER_'],
   base: "/", // Changed from "./" to "/"
   build: {
     outDir: "dist",
