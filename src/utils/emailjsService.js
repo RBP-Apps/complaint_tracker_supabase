@@ -15,15 +15,15 @@ export const sendEmailViaEmailJS = async ({
   district = "",
   beneficiary_name = ""
 }) => {
-  const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-  const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
-  const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || import.meta.env.VITE_EMAILJS_USER_ID;
+  const serviceId = import.meta.env.EMAILJS_SERVICE_ID;
+  const templateId = import.meta.env.EMAILJS_TEMPLATE_ID;
+  const publicKey = import.meta.env.EMAILJS_PUBLIC_KEY || import.meta.env.EMAILJS_USER_ID;
 
   if (!serviceId || !templateId || !publicKey) {
     const missing = [];
-    if (!serviceId) missing.push("VITE_EMAILJS_SERVICE_ID");
-    if (!templateId) missing.push("VITE_EMAILJS_TEMPLATE_ID");
-    if (!publicKey) missing.push("VITE_EMAILJS_PUBLIC_KEY");
+    if (!serviceId) missing.push("EMAILJS_SERVICE_ID");
+    if (!templateId) missing.push("EMAILJS_TEMPLATE_ID");
+    if (!publicKey) missing.push("EMAILJS_PUBLIC_KEY");
     console.warn(`[EmailJS] Missing environment variables: ${missing.join(", ")}`);
     return {
       success: false,
@@ -95,13 +95,13 @@ export const sendVendorAssignmentEmailViaEmailJS = async ({
   document_url = "",
   company_name = "",
 }) => {
-  const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+  const serviceId = import.meta.env.EMAILJS_SERVICE_ID;
   const templateId =
-    import.meta.env.VITE_EMAILJS_VENDOR_TEMPLATE_ID ||
-    import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+    import.meta.env.EMAILJS_VENDOR_TEMPLATE_ID ||
+    import.meta.env.EMAILJS_TEMPLATE_ID;
   const publicKey =
-    import.meta.env.VITE_EMAILJS_PUBLIC_KEY ||
-    import.meta.env.VITE_EMAILJS_USER_ID;
+    import.meta.env.EMAILJS_PUBLIC_KEY ||
+    import.meta.env.EMAILJS_USER_ID;
 
   if (!to_email) {
     return { success: false, error: "Recipient vendor email is required" };
@@ -109,9 +109,9 @@ export const sendVendorAssignmentEmailViaEmailJS = async ({
 
   if (!serviceId || !templateId || !publicKey) {
     const missing = [];
-    if (!serviceId) missing.push("VITE_EMAILJS_SERVICE_ID");
-    if (!templateId) missing.push("VITE_EMAILJS_VENDOR_TEMPLATE_ID / VITE_EMAILJS_TEMPLATE_ID");
-    if (!publicKey) missing.push("VITE_EMAILJS_PUBLIC_KEY");
+    if (!serviceId) missing.push("EMAILJS_SERVICE_ID");
+    if (!templateId) missing.push("EMAILJS_VENDOR_TEMPLATE_ID / EMAILJS_TEMPLATE_ID");
+    if (!publicKey) missing.push("EMAILJS_PUBLIC_KEY");
     console.warn(`[EmailJS] Missing environment variables: ${missing.join(", ")}`);
     return {
       success: false,
