@@ -5,6 +5,8 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import DashboardLayout from "../components/DashboardLayout";
 import supabase from "../utils/supabase";
+import { formatDateDisplay } from "../utils/dateUtils";
+import { sendVendorAssignmentEmailViaEmailJS } from "../utils/emailjsService";
 import {
   Search,
   Filter,
@@ -52,6 +54,7 @@ function AssignToVendorForm() {
   const [activeTab, setActiveTab] = useState("pending");
   const [assignToVendorData, setAssignToVendorData] = useState([]);
   const [assignToVendorLoading, setAssignToVendorLoading] = useState(false);
+  const [fmsLookup, setFmsLookup] = useState({});
 
   // Filter States
   const [searchTerm, setSearchTerm] = useState("");
@@ -75,10 +78,17 @@ function AssignToVendorForm() {
       const { data, error } = await supabase
         .from("AssignToVendor")
         .select("*")
-        .order("created_at", { ascending: false });
+        .order("id", { ascending: false });
 
-      if (error) throw error;
-      setAssignToVendorData(data || []);
+      if (error) {
+        const { data: fallback, error: fbErr } = await supabase
+          .from("AssignToVendor")
+          .select("*");
+        if (fbErr) throw fbErr;
+        setAssignToVendorData(fallback || []);
+      } else {
+        setAssignToVendorData(data || []);
+      }
     } catch (error) {
       console.error("❌ Error fetching AssignToVendor:", error);
     } finally {
@@ -91,28 +101,51 @@ function AssignToVendorForm() {
       setTableLoading(true);
       setDataError(null);
 
-      // Query complaints marked for vendor, ordered newest first by id
+      // Query complaints from FMS
       const { data, error } = await supabase
         .from("FMS")
         .select("*")
-        .eq("assign_to_vendor", true)
         .order("id", { ascending: false });
 
       if (error) {
-        // Fallback query in case of type differences
+        // Fallback query in case of differences
         const { data: fallbackData, error: fallbackError } = await supabase
           .from("FMS")
           .select("*")
+          .eq("assign_to_vendor", true)
           .order("id", { ascending: false });
 
         if (fallbackError) throw fallbackError;
 
+        const fmsMap = {};
+        (fallbackData || []).forEach((row) => {
+          if (row.complaint_id) {
+            fmsMap[row.complaint_id] = row;
+          }
+        });
+        setFmsLookup(fmsMap);
+
         const filteredData = (fallbackData || []).filter(
-          (row) => String(row.assign_to_vendor).toLowerCase() === "true"
+          (row) =>
+            String(row.assign_to_vendor).toLowerCase() === "true" ||
+            row.assign_to_vendor === true
         );
         setTableData(filteredData);
       } else {
-        setTableData(data || []);
+        const fmsMap = {};
+        (data || []).forEach((row) => {
+          if (row.complaint_id) {
+            fmsMap[row.complaint_id] = row;
+          }
+        });
+        setFmsLookup(fmsMap);
+
+        const filteredData = (data || []).filter(
+          (row) =>
+            String(row.assign_to_vendor).toLowerCase() === "true" ||
+            row.assign_to_vendor === true
+        );
+        setTableData(filteredData);
       }
     } catch (error) {
       console.error("❌ Error fetching complaints:", error);
@@ -170,6 +203,34 @@ function AssignToVendorForm() {
     fetchAssignToVendorData();
   }, []);
 
+  // Ensure all complaints in history have their FMS data loaded
+  useEffect(() => {
+    const missingIds = (assignToVendorData || [])
+      .map((r) => r.complaint_id)
+      .filter((id) => id && !fmsLookup[id]);
+
+    if (missingIds.length > 0) {
+      supabase
+        .from("FMS")
+        .select("*")
+        .in("complaint_id", missingIds)
+        .then(({ data, error }) => {
+          if (!error && data && data.length > 0) {
+            setFmsLookup((prev) => {
+              const updated = { ...prev };
+              data.forEach((row) => {
+                if (row.complaint_id) updated[row.complaint_id] = row;
+              });
+              return updated;
+            });
+          }
+        })
+        .catch((err) => {
+          console.error("Error fetching missing FMS records:", err);
+        });
+    }
+  }, [assignToVendorData, fmsLookup]);
+
   // Compute pending vs history datasets
   const existingComplaintIds = useMemo(() => {
     return new Set(
@@ -206,6 +267,11 @@ function AssignToVendorForm() {
     rawHistoryList.forEach((r) => {
       if (r.vendor_name) vendorsSet.add(r.vendor_name.trim());
       if (r.product_type) productsSet.add(r.product_type.trim());
+      const c = fmsLookup[r.complaint_id];
+      if (c?.district) districtsSet.add(c.district.trim());
+      if (c?.product) productsSet.add(c.product.trim());
+      const comp = c?.company_name || c?.company;
+      if (comp) vendorsSet.add(comp.trim());
     });
 
     // From pending
@@ -222,11 +288,11 @@ function AssignToVendorForm() {
     });
 
     return {
-      vendors: Array.from(vendorsSet).sort(),
-      districts: Array.from(districtsSet).sort(),
-      products: Array.from(productsSet).sort(),
+      vendors: Array.from(vendorsSet).filter(Boolean).sort(),
+      districts: Array.from(districtsSet).filter(Boolean).sort(),
+      products: Array.from(productsSet).filter(Boolean).sort(),
     };
-  }, [rawHistoryList, rawPendingList, vendorNameOptions]);
+  }, [rawHistoryList, rawPendingList, vendorNameOptions, fmsLookup]);
 
   // Vendor summary counts (How many records per vendor)
   const vendorBreakdown = useMemo(() => {
@@ -261,7 +327,16 @@ function AssignToVendorForm() {
       // Vendor Filter
       if (selectedVendorFilter !== "all") {
         if (activeTab === "history") {
-          if ((item.vendor_name || "").trim().toLowerCase() !== selectedVendorFilter.toLowerCase()) {
+          const vName = (item.vendor_name || "").trim().toLowerCase();
+          const compName = (
+            fmsLookup[item.complaint_id]?.company_name ||
+            fmsLookup[item.complaint_id]?.company ||
+            ""
+          ).trim().toLowerCase();
+          if (
+            vName !== selectedVendorFilter.toLowerCase() &&
+            compName !== selectedVendorFilter.toLowerCase()
+          ) {
             return false;
           }
         } else {
@@ -272,17 +347,22 @@ function AssignToVendorForm() {
         }
       }
 
-      // District Filter (Pending tab has district)
-      if (selectedDistrictFilter !== "all" && activeTab === "pending") {
-        if ((item.district || "").trim().toLowerCase() !== selectedDistrictFilter.toLowerCase()) {
+      // District Filter (works for both pending and history)
+      if (selectedDistrictFilter !== "all") {
+        const dist = activeTab === "history"
+          ? (fmsLookup[item.complaint_id]?.district || "")
+          : (item.district || "");
+        if (dist.trim().toLowerCase() !== selectedDistrictFilter.toLowerCase()) {
           return false;
         }
       }
 
       // Product Filter
       if (selectedProductFilter !== "all") {
-        const prod = activeTab === "history" ? item.product_type : item.product;
-        if ((prod || "").trim().toLowerCase() !== selectedProductFilter.toLowerCase()) {
+        const prod = activeTab === "history"
+          ? (item.product_type || fmsLookup[item.complaint_id]?.product || "")
+          : (item.product || "");
+        if (prod.trim().toLowerCase() !== selectedProductFilter.toLowerCase()) {
           return false;
         }
       }
@@ -291,11 +371,42 @@ function AssignToVendorForm() {
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase().trim();
         if (activeTab === "history") {
+          const complaint = fmsLookup[item.complaint_id] || {};
+          const vendorDetails = vendorDetailsMap[item.vendor_name] || {};
+          const vPhone = item.vendor_mobile || vendorDetails.phone || "";
+          const vEmail = item.vendor_email || vendorDetails.email || "";
+
           const matchComplaintId = String(item.complaint_id || "").toLowerCase().includes(q);
           const matchVendor = String(item.vendor_name || "").toLowerCase().includes(q);
           const matchVendorId = String(item.vendor_complaint_id || "").toLowerCase().includes(q);
-          const matchProduct = String(item.product_type || "").toLowerCase().includes(q);
-          if (!matchComplaintId && !matchVendor && !matchVendorId && !matchProduct) {
+          const matchProductType = String(item.product_type || "").toLowerCase().includes(q);
+          const matchBeneficiary = String(complaint.beneficiary_name || "").toLowerCase().includes(q);
+          const matchCompany = String(complaint.company_name || complaint.company || "").toLowerCase().includes(q);
+          const matchContact = String(complaint.contact_number || "").toLowerCase().includes(q);
+          const matchDistrict = String(complaint.district || "").toLowerCase().includes(q);
+          const matchVillage = String(complaint.village || "").toLowerCase().includes(q);
+          const matchBlock = String(complaint.block || "").toLowerCase().includes(q);
+          const matchProduct = String(complaint.product || "").toLowerCase().includes(q);
+          const matchNature = String(complaint.nature_of_complaint || "").toLowerCase().includes(q);
+          const matchVendorPhone = String(vPhone).toLowerCase().includes(q);
+          const matchVendorEmail = String(vEmail).toLowerCase().includes(q);
+
+          if (
+            !matchComplaintId &&
+            !matchVendor &&
+            !matchVendorId &&
+            !matchProductType &&
+            !matchBeneficiary &&
+            !matchCompany &&
+            !matchContact &&
+            !matchDistrict &&
+            !matchVillage &&
+            !matchBlock &&
+            !matchProduct &&
+            !matchNature &&
+            !matchVendorPhone &&
+            !matchVendorEmail
+          ) {
             return false;
           }
         } else {
@@ -305,13 +416,15 @@ function AssignToVendorForm() {
           const matchContact = String(item.contact_number || "").toLowerCase().includes(q);
           const matchDistrict = String(item.district || "").toLowerCase().includes(q);
           const matchProduct = String(item.product || "").toLowerCase().includes(q);
+          const matchNature = String(item.nature_of_complaint || "").toLowerCase().includes(q);
           if (
             !matchComplaintId &&
             !matchBeneficiary &&
             !matchCompany &&
             !matchContact &&
             !matchDistrict &&
-            !matchProduct
+            !matchProduct &&
+            !matchNature
           ) {
             return false;
           }
@@ -328,6 +441,8 @@ function AssignToVendorForm() {
     selectedDistrictFilter,
     selectedProductFilter,
     searchTerm,
+    fmsLookup,
+    vendorDetailsMap,
   ]);
 
   const handleClearFilters = () => {
@@ -479,6 +594,47 @@ function AssignToVendorForm() {
         }
       } catch (wsErr) {
         console.error("WhatsApp Invoke Error:", wsErr);
+      }
+
+      // ✅ EMAIL NOTIFICATION TO VENDOR (EmailJS)
+      const targetVendorEmail =
+        formData.vendorEmail?.trim() ||
+        vendorDetailsMap[formData.vendorName]?.email?.trim() ||
+        "";
+
+      if (targetVendorEmail) {
+        try {
+          const formattedDate = vendorDate
+            ? vendorDate.toLocaleDateString("en-GB")
+            : new Date().toLocaleDateString("en-GB");
+
+          const emailResult = await sendVendorAssignmentEmailViaEmailJS({
+            to_email: targetVendorEmail,
+            vendor_name: formData.vendorName,
+            complaint_id: selectedComplaint?.complaint_id || "",
+            vendor_complaint_id: formData.vendorComplaintId || "",
+            beneficiary_name: selectedComplaint?.beneficiary_name || "",
+            contact_number: selectedComplaint?.contact_number || "",
+            district: selectedComplaint?.district || "",
+            block: selectedComplaint?.block || "",
+            village: selectedComplaint?.village || "",
+            product_type: formData.productType || selectedComplaint?.product || "",
+            nature_of_complaint: selectedComplaint?.nature_of_complaint || "",
+            assignment_date: formattedDate,
+            document_url: uploadedFileUrl || "",
+            company_name: selectedComplaint?.company_name || selectedComplaint?.company || "",
+          });
+
+          if (emailResult.success) {
+            console.log("✅ Email notification sent to vendor:", targetVendorEmail);
+          } else {
+            console.warn("⚠️ EmailJS notification error:", emailResult.error);
+          }
+        } catch (emailErr) {
+          console.error("❌ EmailJS vendor send error:", emailErr);
+        }
+      } else {
+        console.log("ℹ️ No vendor email available, skipping email notification.");
       }
 
       alert("Vendor Assignment successfully created! ✅");
@@ -721,8 +877,8 @@ function AssignToVendorForm() {
                 </select>
               </div>
 
-              {/* District Dropdown (Pending tab) */}
-              {activeTab === "pending" && filterOptions.districts.length > 0 && (
+              {/* District Dropdown */}
+              {filterOptions.districts.length > 0 && (
                 <div className="w-full sm:w-auto min-w-[140px]">
                   <select
                     value={selectedDistrictFilter}
@@ -780,18 +936,26 @@ function AssignToVendorForm() {
                   </p>
                 </div>
               ) : filteredData.length > 0 ? (
-                <div className="overflow-x-auto max-h-[520px]">
+                <div className="overflow-x-auto max-h-[400px]">
                   <table className="w-full text-left border-collapse">
                     <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200 shadow-2xs">
                       {activeTab === "history" ? (
                         <tr>
-                          <th className="py-3 px-4">Date</th>
-                          <th className="py-3 px-4">Complaint ID</th>
-                          <th className="py-3 px-4">Vendor Name</th>
-                          <th className="py-3 px-4">Product Type</th>
-                          <th className="py-3 px-4 text-center">Details Sent</th>
-                          <th className="py-3 px-4">Vendor Complaint ID</th>
-                          <th className="py-3 px-4 text-center">Attachment</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Assignment Date</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Complaint ID</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Company Name</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Beneficiary Name</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Contact Number</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Location / District</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Product & Make</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Nature of Complaint</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Vendor Name</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Product Type</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Vendor Mobile</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Vendor Email</th>
+                          <th className="py-3 px-4 whitespace-nowrap">Vendor Complaint ID</th>
+                          <th className="py-3 px-4 whitespace-nowrap text-center">Details Sent</th>
+                          <th className="py-3 px-4 whitespace-nowrap text-center">Attachment</th>
                         </tr>
                       ) : (
                         <tr>
@@ -809,41 +973,143 @@ function AssignToVendorForm() {
                     <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
                       {filteredData.map((row, index) => {
                         if (activeTab === "history") {
+                          const complaint = fmsLookup[row.complaint_id] || {};
+                          const vDetails = vendorDetailsMap[row.vendor_name] || {};
+                          const vendorPhone =
+                            row.vendor_mobile || row.phone_no || vDetails.phone || "-";
+                          const vendorEmail =
+                            row.vendor_email || row.email_id || vDetails.email || "-";
+                          const locationText = [
+                            complaint.village,
+                            complaint.block,
+                            complaint.district,
+                          ]
+                            .filter(Boolean)
+                            .join(", ");
+
                           return (
                             <tr
-                              key={row.id || index}
+                              key={row.id || row.complaint_id || index}
                               className="hover:bg-blue-50/40 transition-colors"
                             >
-                              {/* Date */}
-                              <td className="py-3 px-4 whitespace-nowrap text-slate-500">
-                                {row.date
-                                  ? new Date(row.date).toLocaleDateString("en-GB")
-                                  : row.timestamp
-                                  ? new Date(row.timestamp).toLocaleDateString("en-GB")
-                                  : "-"}
+                              {/* 1. Assignment Date */}
+                              <td className="py-3 px-4 whitespace-nowrap text-slate-600">
+                                <div className="inline-flex items-center gap-1.5 font-medium">
+                                  <Calendar size={13} className="text-slate-400 shrink-0" />
+                                  <span>{formatDateDisplay(row.date || row.timestamp)}</span>
+                                </div>
                               </td>
 
-                              {/* Complaint ID */}
+                              {/* 2. Complaint ID */}
                               <td className="py-3 px-4 whitespace-nowrap font-mono font-bold text-blue-600">
                                 {row.complaint_id || "-"}
                               </td>
 
-                              {/* Vendor Name */}
+                              {/* 3. Company Name */}
+                              <td className="py-3 px-4 whitespace-nowrap font-medium text-slate-800">
+                                {complaint.company_name || complaint.company || "-"}
+                              </td>
+
+                              {/* 4. Beneficiary Name */}
+                              <td className="py-3 px-4 whitespace-nowrap font-medium text-slate-800">
+                                {complaint.beneficiary_name || "-"}
+                              </td>
+
+                              {/* 5. Contact Number */}
+                              <td className="py-3 px-4 whitespace-nowrap font-mono text-slate-600">
+                                {complaint.contact_number ? (
+                                  <div className="inline-flex items-center gap-1">
+                                    <Phone size={12} className="text-slate-400 shrink-0" />
+                                    <span>{complaint.contact_number}</span>
+                                  </div>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+
+                              {/* 6. Location / District */}
+                              <td className="py-3 px-4 whitespace-nowrap text-slate-700">
+                                <div className="inline-flex items-center gap-1 font-medium">
+                                  <MapPin size={12} className="text-rose-500 shrink-0" />
+                                  <span>{complaint.district || "-"}</span>
+                                </div>
+                                {(complaint.village || complaint.block) && (
+                                  <div
+                                    className="text-[10px] text-slate-400 truncate max-w-[150px] pl-4"
+                                    title={locationText}
+                                  >
+                                    {[complaint.village, complaint.block]
+                                      .filter(Boolean)
+                                      .join(", ")}
+                                  </div>
+                                )}
+                              </td>
+
+                              {/* 7. Product & Make */}
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-700 font-medium">
+                                  {complaint.product || row.product_type || "-"}
+                                </span>
+                                {complaint.make && (
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    Make: {complaint.make}
+                                  </div>
+                                )}
+                              </td>
+
+                              {/* 8. Nature of Complaint */}
+                              <td
+                                className="py-3 px-4 max-w-xs truncate text-slate-600"
+                                title={complaint.nature_of_complaint}
+                              >
+                                {complaint.nature_of_complaint || "-"}
+                              </td>
+
+                              {/* 9. Vendor Name */}
                               <td className="py-3 px-4 whitespace-nowrap font-semibold text-slate-800">
                                 <div className="inline-flex items-center gap-1.5">
-                                  <Building2 size={13} className="text-blue-600" />
+                                  <Building2 size={13} className="text-blue-600 shrink-0" />
                                   <span>{row.vendor_name || "-"}</span>
                                 </div>
                               </td>
 
-                              {/* Product Type */}
+                              {/* 10. Product Type */}
                               <td className="py-3 px-4 whitespace-nowrap">
-                                <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-700 font-medium">
+                                <span className="px-2 py-0.5 bg-blue-50 border border-blue-200 text-blue-700 rounded text-xs font-medium">
                                   {row.product_type || "-"}
                                 </span>
                               </td>
 
-                              {/* Details Sent */}
+                              {/* 11. Vendor Mobile */}
+                              <td className="py-3 px-4 whitespace-nowrap font-mono text-slate-600">
+                                {vendorPhone !== "-" ? (
+                                  <div className="inline-flex items-center gap-1 text-slate-700">
+                                    <Phone size={12} className="text-teal-600 shrink-0" />
+                                    <span>{vendorPhone}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                              </td>
+
+                              {/* 12. Vendor Email */}
+                              <td className="py-3 px-4 whitespace-nowrap text-slate-600">
+                                {vendorEmail !== "-" ? (
+                                  <div className="inline-flex items-center gap-1 text-slate-700">
+                                    <Mail size={12} className="text-blue-500 shrink-0" />
+                                    <span>{vendorEmail}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                              </td>
+
+                              {/* 13. Vendor Complaint ID */}
+                              <td className="py-3 px-4 whitespace-nowrap font-mono text-slate-600">
+                                {row.vendor_complaint_id || "-"}
+                              </td>
+
+                              {/* 14. Details Sent */}
                               <td className="py-3 px-4 whitespace-nowrap text-center">
                                 <span
                                   className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -856,12 +1122,7 @@ function AssignToVendorForm() {
                                 </span>
                               </td>
 
-                              {/* Vendor Complaint ID */}
-                              <td className="py-3 px-4 whitespace-nowrap font-mono text-slate-600">
-                                {row.vendor_complaint_id || "-"}
-                              </td>
-
-                              {/* Attachment */}
+                              {/* 15. Attachment */}
                               <td className="py-3 px-4 whitespace-nowrap text-center">
                                 {row.upload_file ? (
                                   <a

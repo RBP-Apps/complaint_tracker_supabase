@@ -639,16 +639,11 @@ function NewComplaintForm() {
       setProjectNameOptions([...new Set(projectNames)])
       setModeOfLetterOptions([...new Set(modeOfLetters)])
 
-      // LOGIN TABLE
-      const { data: loginData, error: loginError } = await supabase
-        .from("Login")
-        .select("*")
-
-      if (loginError) throw loginError
-
+      // MASTER DATA MANAGEMENT -> TECHNICIAN (From Master Table)
       const technicianNames = []
       const technicianContacts = []
       const technicianMapping = []
+      const seenTechNames = new Set()
 
       const currentUser = localStorage.getItem('currentUser')
       const userRole = localStorage.getItem('userRole')
@@ -661,38 +656,67 @@ function NewComplaintForm() {
         }))
       }
 
-      loginData.forEach(row => {
-        if (row.username && row.contact_no) {
-          if (userRole === 'admin' || userRole === 'user') {
-            technicianNames.push(row.username)
-            technicianContacts.push(row.contact_no)
-            technicianMapping.push({
-              name: row.username,
-              contact: row.contact_no
-            })
-          } else if (
-            userRole === 'tech' &&
-            row.username.toLowerCase() === currentUser?.toLowerCase()
-          ) {
-            technicianNames.push(row.username)
-            technicianContacts.push(row.contact_no)
-            technicianMapping.push({
-              name: row.username,
-              contact: row.contact_no
-            })
+      // Extract technician records from Master data (Master Data Management -> technician)
+      (masterData || []).forEach(row => {
+        const tName = (row.technician_name || "").toString().trim()
+        const tContact = (row.technician_contact || "").toString().trim()
 
-            setFormData(prev => ({
-              ...prev,
-              technicianName: row.username,
-              technicianContact: row.contact_no
-            }))
+        if (tName) {
+          const lowerName = tName.toLowerCase()
+          if (!seenTechNames.has(lowerName)) {
+            seenTechNames.add(lowerName)
+            technicianMapping.push({
+              name: tName,
+              contact: tContact
+            })
+          } else if (tContact) {
+            // Update contact if not previously set
+            const existing = technicianMapping.find(t => t.name.toLowerCase() === lowerName)
+            if (existing && !existing.contact) {
+              existing.contact = tContact
+            }
           }
         }
       })
 
-      console.log(loginData)
+      if (userRole === 'tech') {
+        const matchedTech = technicianMapping.find(
+          t => t.name.toLowerCase() === currentUser?.toLowerCase() ||
+               t.name.toLowerCase() === loggedInUsername?.toLowerCase()
+        )
 
-      setTechnicianNameOptions([...new Set(technicianNames)])
+        if (matchedTech) {
+          technicianNames.push(matchedTech.name)
+          if (matchedTech.contact) technicianContacts.push(matchedTech.contact)
+          setFormData(prev => ({
+            ...prev,
+            technicianName: matchedTech.name,
+            technicianContact: matchedTech.contact
+          }))
+        } else {
+          // If logged-in technician is not found in Master, keep username as fallback
+          const fallbackName = currentUser || loggedInUsername
+          if (fallbackName) {
+            technicianNames.push(fallbackName)
+            technicianMapping.push({ name: fallbackName, contact: "" })
+            setFormData(prev => ({
+              ...prev,
+              technicianName: fallbackName,
+              technicianContact: ""
+            }))
+          }
+        }
+      } else {
+        // Admin, User, or other roles: load all technicians from Master
+        technicianMapping.forEach(tech => {
+          technicianNames.push(tech.name)
+          if (tech.contact) {
+            technicianContacts.push(tech.contact)
+          }
+        })
+      }
+
+      setTechnicianNameOptions([...new Set(technicianNames)].sort())
       setTechnicianContactOptions([...new Set(technicianContacts)])
       setTechnicianMapping(technicianMapping)
 
@@ -1103,13 +1127,23 @@ function NewComplaintForm() {
   const handleSelectChange = (name, value) => {
     setFormData((prev) => ({ ...prev, [name]: value }))
 
-    if (name === 'technicianName' && value) {
-      const selectedTechnician = technicianMapping.find(tech => tech.name === value)
-      if (selectedTechnician) {
+    if (name === 'technicianName') {
+      if (value) {
+        const selectedTechnician = technicianMapping.find(
+          tech => tech.name === value || tech.name.toLowerCase() === value.toLowerCase()
+        )
+        if (selectedTechnician) {
+          setFormData((prev) => ({
+            ...prev,
+            [name]: value,
+            technicianContact: selectedTechnician.contact || ""
+          }))
+        }
+      } else {
         setFormData((prev) => ({
           ...prev,
-          [name]: value,
-          technicianContact: selectedTechnician.contact
+          [name]: "",
+          technicianContact: ""
         }))
       }
     }
@@ -1126,6 +1160,11 @@ function NewComplaintForm() {
     console.log('Opening update modal for row:', currentRow)
 
     const actualRowIndex = tableData.findIndex(r => r.id === currentRow.id)
+
+    const techFromMaster = technicianMapping.find(
+      t => t.name.toLowerCase() === (currentRow.technician_name || "").toLowerCase()
+    )
+    const resolvedTechContact = currentRow.technician_contact || (techFromMaster ? techFromMaster.contact : "")
 
     // Pre-fill all form data with correct Supabase column names
     setUpdateFormData({
@@ -1149,8 +1188,9 @@ function NewComplaintForm() {
       qty: currentRow.qty || "",
       insuranceType: currentRow.insurance_type || "",
       natureOfComplaint: currentRow.nature_of_complaint || "",
+      assignToVendor: Boolean(currentRow.assign_to_vendor),
       technicianName: currentRow.technician_name || "",
-      technicianContact: currentRow.technician_contact || "",
+      technicianContact: resolvedTechContact,
       assigneeWhatsapp: currentRow.assignee_whatsapp_number || "",
       controllerRidNo: currentRow.controller_rid_no || "",
       productSlNo: currentRow.product_sl_no || "",
@@ -1182,13 +1222,23 @@ function NewComplaintForm() {
   const handleUpdateSelectChange = (name, value) => {
     setUpdateFormData((prev) => ({ ...prev, [name]: value }))
 
-    if (name === 'technicianName' && value) {
-      const selectedTechnician = technicianMapping.find(tech => tech.name === value)
-      if (selectedTechnician) {
+    if (name === 'technicianName') {
+      if (value) {
+        const selectedTechnician = technicianMapping.find(
+          tech => tech.name === value || tech.name.toLowerCase() === value.toLowerCase()
+        )
+        if (selectedTechnician) {
+          setUpdateFormData((prev) => ({
+            ...prev,
+            [name]: value,
+            technicianContact: selectedTechnician.contact || ""
+          }))
+        }
+      } else {
         setUpdateFormData((prev) => ({
           ...prev,
-          [name]: value,
-          technicianContact: selectedTechnician.contact
+          [name]: "",
+          technicianContact: ""
         }))
       }
     }
@@ -1223,6 +1273,7 @@ function NewComplaintForm() {
           qty: updateFormData.qty,
           insurance_type: updateFormData.insuranceType,
           nature_of_complaint: updateFormData.natureOfComplaint,
+          assign_to_vendor: Boolean(updateFormData.assignToVendor),
           technician_name: updateFormData.technicianName,
           technician_contact: updateFormData.technicianContact,
           assignee_whatsapp_number: updateFormData.assigneeWhatsapp,
@@ -2378,18 +2429,26 @@ function NewComplaintForm() {
                 </div>
               )}
 
-            {/* ✅ UPDATE MODAL - POPUP FORM WITH PRE-FILLED DATA */}
+            {/* ✅ UPDATE MODAL - POPUP FORM WITH PRE-FILLED DATA (MATCHING NEW COMPLAINT FORM) */}
             {
               showUpdateModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                  <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-                    <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-                      <h2 className="text-xl font-semibold text-gray-900">
-                        Update Complaint - {updateFormData.complaintId}
-                      </h2>
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
+                  <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                    <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <h2 className="text-xl font-semibold text-gray-900">
+                          Update Complaint Form
+                        </h2>
+                        {updateFormData.complaintId && (
+                          <span className="text-xs font-semibold bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full font-mono">
+                            {updateFormData.complaintId}
+                          </span>
+                        )}
+                      </div>
                       <button
+                        type="button"
                         onClick={() => setShowUpdateModal(false)}
-                        className="text-gray-400 hover:text-gray-600"
+                        className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                       >
                         <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -2398,8 +2457,96 @@ function NewComplaintForm() {
                     </div>
 
                     <form onSubmit={handleUpdateSubmit} className="p-6 space-y-6">
-                      {/* Grid Layout - Same as Create Form */}
+                      {/* Grid Layout */}
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+                        {/* ✅ 1. FIRST FIELD: DOCUMENT UPLOAD & AUTO-FILL */}
+                        <div className="col-span-1 md:col-span-2 lg:col-span-3">
+                          <div className="border border-blue-200 bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-white rounded-xl p-4 sm:p-5 shadow-xs transition-all">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                </div>
+                                <div>
+                                  <label className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                                    Document Upload (Auto-Fill Form)
+                                    <span className="text-[11px] font-semibold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-full">
+                                      Field #1
+                                    </span>
+                                  </label>
+                                  <p className="text-xs text-gray-500">
+                                    Upload government complaint document (PDF, JPG, PNG, Word) to view or update complaint document.
+                                  </p>
+                                </div>
+                              </div>
+
+                              {updateFormData.documentUrl && (
+                                <a
+                                  href={updateFormData.documentUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-white hover:bg-blue-50 px-2.5 py-1.5 rounded-md border border-blue-200 transition shadow-xs"
+                                >
+                                  <span>View Document</span>
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                </a>
+                              )}
+                            </div>
+
+                            {/* File Input & Upload Bar */}
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                              <label className="flex-1 cursor-pointer">
+                                <input
+                                  type="file"
+                                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                                  disabled={isUploadingUpdateDoc}
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) uploadUpdateDocument(file);
+                                  }}
+                                  className="hidden"
+                                />
+                                <div className={`w-full flex items-center justify-between px-4 py-2.5 bg-white border-2 border-dashed rounded-lg transition-all ${
+                                  isUploadingUpdateDoc
+                                    ? "border-blue-400 bg-blue-50/50 cursor-wait"
+                                    : updateFormData.documentUrl
+                                      ? "border-emerald-300 hover:border-emerald-400"
+                                      : "border-blue-300 hover:border-blue-500 hover:bg-blue-50/30"
+                                }`}>
+                                  <div className="flex items-center gap-2.5 truncate">
+                                    <svg className={`w-5 h-5 flex-shrink-0 ${updateFormData.documentUrl ? "text-emerald-600" : "text-blue-500"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                    </svg>
+                                    <span className="text-xs sm:text-sm font-medium text-gray-700 truncate">
+                                      {updateDocStatus || (updateFormData.documentUrl ? "Document attached (Click Browse to replace)..." : "Choose document to attach (PDF, JPG, PNG, Word)...")}
+                                    </span>
+                                  </div>
+                                  <span className="text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md shadow-xs flex-shrink-0 ml-2">
+                                    Browse
+                                  </span>
+                                </div>
+                              </label>
+
+                              {updateFormData.documentUrl && !isUploadingUpdateDoc && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setUpdateFormData(prev => ({ ...prev, documentUrl: "" }));
+                                    setUpdateDocStatus("");
+                                  }}
+                                  className="text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition border border-gray-200 self-center"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
 
                         {/* Company Name */}
                         <div>
@@ -2473,7 +2620,7 @@ function NewComplaintForm() {
                           <input
                             type="text"
                             name="idNumber"
-                            value={updateFormData.idNumber}
+                            value={updateFormData.idNumber || ""}
                             onChange={handleUpdateFormChange}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter ID Number"
@@ -2483,10 +2630,11 @@ function NewComplaintForm() {
                         {/* Project Name */}
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Project Name
+                            Project Name *
                           </label>
                           <SearchableSelect
                             name="projectName"
+                            required
                             options={projectNameOptions}
                             value={updateFormData.projectName}
                             onChange={(val) => handleUpdateSelectChange('projectName', val)}
@@ -2502,7 +2650,7 @@ function NewComplaintForm() {
                           <input
                             type="text"
                             name="complaintNumber"
-                            value={updateFormData.complaintNumber}
+                            value={updateFormData.complaintNumber || ""}
                             onChange={handleUpdateFormChange}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter Complaint Number"
@@ -2532,7 +2680,7 @@ function NewComplaintForm() {
                           <input
                             type="text"
                             name="beneficiaryName"
-                            value={updateFormData.beneficiaryName}
+                            value={updateFormData.beneficiaryName || ""}
                             onChange={handleUpdateFormChange}
                             required
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -2544,7 +2692,7 @@ function NewComplaintForm() {
                         <div>
                           <div className="flex items-center justify-between mb-2">
                             <label className="block text-sm font-medium text-gray-700">
-                              Contact Number {!updateFormData.isReferenceName && <span className="text-red-500">*</span>}
+                              Contact Number {!updateFormData.isReferenceName && <span className="text-red-500"></span>}
                             </label>
                             <label className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded cursor-pointer transition">
                               <input
@@ -2553,7 +2701,7 @@ function NewComplaintForm() {
                                 checked={updateFormData.isReferenceName || false}
                                 onChange={(e) => {
                                   const checked = e.target.checked;
-                                  setUpdateFormData(prev => ({
+                                  setUpdateFormData((prev) => ({
                                     ...prev,
                                     isReferenceName: checked,
                                     contactNumber: checked ? "" : prev.contactNumber,
@@ -2564,6 +2712,7 @@ function NewComplaintForm() {
                               <span className="font-semibold">Reference name</span>
                             </label>
                           </div>
+
                           <input
                             type="tel"
                             name="contactNumber"
@@ -2572,12 +2721,14 @@ function NewComplaintForm() {
                             disabled={updateFormData.isReferenceName}
                             onChange={(e) => {
                               const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
-                              setUpdateFormData(prev => ({ ...prev, contactNumber: digits }));
+                              setUpdateFormData((prev) => ({ ...prev, contactNumber: digits }));
                             }}
-                            required={!updateFormData.isReferenceName}
-                            className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition ${updateFormData.isReferenceName ? "bg-gray-100 cursor-not-allowed text-gray-400" : ""
-                              }`}
-                            placeholder={updateFormData.isReferenceName ? "Disabled (Reference Selected)" : "Enter 10-digit Contact Number"}
+                            className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition ${
+                              updateFormData.isReferenceName ? "bg-gray-100 cursor-not-allowed text-gray-400" : ""
+                            }`}
+                            placeholder={
+                              updateFormData.isReferenceName ? "Disabled (Reference Selected)" : "Enter 10-digit Contact Number"
+                            }
                           />
 
                           {updateFormData.isReferenceName && (
@@ -2587,9 +2738,8 @@ function NewComplaintForm() {
                                 name="referenceName"
                                 value={updateFormData.referenceName || ""}
                                 onChange={handleUpdateFormChange}
-                                required={updateFormData.isReferenceName}
                                 className="w-full px-3 py-1.5 text-xs border border-blue-300 bg-blue-50/50 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="Enter Reference Person's Name *"
+                                placeholder="Enter Reference Person's Name"
                               />
                             </div>
                           )}
@@ -2603,7 +2753,7 @@ function NewComplaintForm() {
                           <input
                             type="text"
                             name="village"
-                            value={updateFormData.village}
+                            value={updateFormData.village || ""}
                             onChange={handleUpdateFormChange}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter Village"
@@ -2618,7 +2768,7 @@ function NewComplaintForm() {
                           <input
                             type="text"
                             name="block"
-                            value={updateFormData.block}
+                            value={updateFormData.block || ""}
                             onChange={handleUpdateFormChange}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter Block"
@@ -2648,7 +2798,7 @@ function NewComplaintForm() {
                           <input
                             type="text"
                             name="product"
-                            value={updateFormData.product}
+                            value={updateFormData.product || ""}
                             onChange={handleUpdateFormChange}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter Product"
@@ -2663,7 +2813,7 @@ function NewComplaintForm() {
                           <input
                             type="text"
                             name="make"
-                            value={updateFormData.make}
+                            value={updateFormData.make || ""}
                             onChange={handleUpdateFormChange}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter Make"
@@ -2678,7 +2828,7 @@ function NewComplaintForm() {
                           <input
                             type="text"
                             name="rating"
-                            value={updateFormData.rating}
+                            value={updateFormData.rating || ""}
                             onChange={handleUpdateFormChange}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter Rating"
@@ -2693,7 +2843,7 @@ function NewComplaintForm() {
                           <input
                             type="text"
                             name="qty"
-                            value={updateFormData.qty}
+                            value={updateFormData.qty || ""}
                             onChange={handleUpdateFormChange}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter Quantity"
@@ -2708,7 +2858,7 @@ function NewComplaintForm() {
                           <input
                             type="text"
                             name="controllerRidNo"
-                            value={updateFormData.controllerRidNo}
+                            value={updateFormData.controllerRidNo || ""}
                             onChange={handleUpdateFormChange}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter Controller RID No"
@@ -2723,7 +2873,7 @@ function NewComplaintForm() {
                           <input
                             type="text"
                             name="productSlNo"
-                            value={updateFormData.productSlNo}
+                            value={updateFormData.productSlNo || ""}
                             onChange={handleUpdateFormChange}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter Product SL No"
@@ -2765,12 +2915,41 @@ function NewComplaintForm() {
                           </label>
                           <input
                             type="text"
+                            disabled
                             name="reporterName"
-                            value={updateFormData.reporterName}
+                            value={updateFormData.reporterName || ""}
                             onChange={handleUpdateFormChange}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="Enter Reporter Name"
                           />
+                        </div>
+
+                        {/* Assign to Vendor Checkbox */}
+                        <div className="col-span-1 md:col-span-2 lg:col-span-3">
+                          <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-md border border-gray-200">
+                            <input
+                              type="checkbox"
+                              id="updateAssignToVendor"
+                              name="assignToVendor"
+                              checked={Boolean(updateFormData.assignToVendor)}
+                              onChange={(e) => {
+                                const isChecked = e.target.checked;
+                                setUpdateFormData(prev => ({
+                                  ...prev,
+                                  assignToVendor: isChecked,
+                                  technicianName: isChecked ? "" : prev.technicianName,
+                                  technicianContact: isChecked ? "" : prev.technicianContact,
+                                  assigneeWhatsapp: isChecked ? "" : prev.assigneeWhatsapp,
+                                  challanNo: isChecked ? "" : prev.challanNo,
+                                  challanDate: isChecked ? null : prev.challanDate
+                                }));
+                              }}
+                              className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <label htmlFor="updateAssignToVendor" className="text-sm font-medium text-red-700">
+                              Assign To: 👤 Technician by default — ☑️ Check the box to assign to Vendor.
+                            </label>
+                          </div>
                         </div>
 
                         {/* Technician Name */}
@@ -2783,6 +2962,7 @@ function NewComplaintForm() {
                             options={technicianNameOptions}
                             value={updateFormData.technicianName}
                             onChange={(val) => handleUpdateSelectChange('technicianName', val)}
+                            disabled={Boolean(updateFormData.assignToVendor)}
                             placeholder="Select Technician"
                           />
                         </div>
@@ -2795,9 +2975,12 @@ function NewComplaintForm() {
                           <input
                             type="text"
                             name="technicianContact"
-                            value={updateFormData.technicianContact}
+                            value={updateFormData.technicianContact || ""}
                             onChange={handleUpdateFormChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-700"
+                            disabled={Boolean(updateFormData.assignToVendor)}
+                            className={`w-full px-3 py-2 border border-gray-300 rounded-md ${
+                              updateFormData.assignToVendor ? 'bg-gray-100 cursor-not-allowed' : 'bg-gray-100'
+                            } text-gray-700`}
                             placeholder="Auto-filled from technician selection"
                             readOnly
                           />
@@ -2811,9 +2994,12 @@ function NewComplaintForm() {
                           <input
                             type="text"
                             name="assigneeWhatsapp"
-                            value={updateFormData.assigneeWhatsapp}
+                            value={updateFormData.assigneeWhatsapp || ""}
                             onChange={handleUpdateFormChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            disabled={Boolean(updateFormData.assignToVendor)}
+                            className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                              updateFormData.assignToVendor ? 'bg-gray-100 cursor-not-allowed' : ''
+                            }`}
                             placeholder="Enter WhatsApp Number"
                           />
                         </div>
@@ -2826,9 +3012,12 @@ function NewComplaintForm() {
                           <input
                             type="text"
                             name="challanNo"
-                            value={updateFormData.challanNo}
+                            value={updateFormData.challanNo || ""}
                             onChange={handleUpdateFormChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            disabled={Boolean(updateFormData.assignToVendor)}
+                            className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                              updateFormData.assignToVendor ? 'bg-gray-100 cursor-not-allowed' : ''
+                            }`}
                             placeholder="Enter Challan Number"
                           />
                         </div>
@@ -2839,10 +3028,13 @@ function NewComplaintForm() {
                             Challan Date
                           </label>
                           <DatePicker
-                            selected={isValidDate(updateFormData.challanDate) ? updateFormData.challanDate : null}
-                            onChange={(date) => setUpdateFormData(prev => ({ ...prev, challanDate: date }))}
+                            selected={updateFormData.assignToVendor ? null : (isValidDate(updateFormData.challanDate) ? updateFormData.challanDate : null)}
+                            onChange={(date) => !updateFormData.assignToVendor && setUpdateFormData(prev => ({ ...prev, challanDate: date }))}
                             dateFormat="dd/MM/yyyy"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            disabled={Boolean(updateFormData.assignToVendor)}
+                            className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                              updateFormData.assignToVendor ? 'bg-gray-100 cursor-not-allowed' : ''
+                            }`}
                             placeholderText="Select challan date"
                           />
                         </div>
@@ -2909,7 +3101,7 @@ function NewComplaintForm() {
                         </label>
                         <textarea
                           name="natureOfComplaint"
-                          value={updateFormData.natureOfComplaint}
+                          value={updateFormData.natureOfComplaint || ""}
                           onChange={handleUpdateFormChange}
                           required
                           rows={4}
@@ -2919,18 +3111,18 @@ function NewComplaintForm() {
                       </div>
 
                       {/* Modal Form Buttons */}
-                      <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                      <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
                         <button
                           type="button"
                           onClick={() => setShowUpdateModal(false)}
-                          className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                         >
                           Cancel
                         </button>
                         <button
                           type="submit"
                           disabled={isSubmitting}
-                          className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm"
                         >
                           {isSubmitting ? 'Updating...' : 'Update Complaint'}
                         </button>
