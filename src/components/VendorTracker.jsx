@@ -246,6 +246,15 @@ function VendorTracker() {
     return map;
   }, [assignToVendorData, tableData]);
 
+  // Set of complaint IDs assigned in AssignToVendor
+  const assignedComplaintIds = useMemo(() => {
+    return new Set(
+      (assignToVendorData || [])
+        .map((row) => row[6]?.toString().trim())
+        .filter(Boolean)
+    );
+  }, [assignToVendorData]);
+
   // Base raw lists for Pending and History
   const rawHistoryList = useMemo(() => {
     return (vendorTrackerData || []).filter((row) => {
@@ -258,14 +267,18 @@ function VendorTracker() {
     if (!tableData || !vendorTrackerData) return [];
     return tableData.filter((row) => {
       const complaintId = row[2]?.toString().trim();
-      const match = vendorTrackerData.find(
+      // Must be assigned to a vendor in Assign To Vendor first
+      if (!assignedComplaintIds.has(complaintId)) return false;
+
+      const matches = vendorTrackerData.filter(
         (v) => v[2]?.toString().trim() === complaintId
       );
-      if (!match) return true;
-      const status = match[4]?.toString().toLowerCase().trim();
+      if (matches.length === 0) return true;
+      // vendorTrackerData is ordered newest first by created_at desc
+      const status = matches[0][4]?.toString().toLowerCase().trim();
       return status !== "completed";
     });
-  }, [tableData, vendorTrackerData]);
+  }, [tableData, vendorTrackerData, assignedComplaintIds]);
 
   // Tab counts
   const tabCounts = useMemo(() => {
@@ -581,7 +594,7 @@ function VendorTracker() {
           };
           if (formData.status?.toLowerCase() === "completed") {
             fmsUpdate.status = "APPROVED-CLOSE";
-            fmsUpdate.actual1 = nowIso;
+            fmsUpdate.actual = nowIso;
             fmsUpdate.close_date = formattedDate;
           }
           const { error: fmsErr } = await supabase

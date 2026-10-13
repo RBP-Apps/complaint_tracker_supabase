@@ -9,6 +9,7 @@ import "react-datepicker/dist/react-datepicker.css"
 import DashboardLayout from "../components/DashboardLayout"
 import supabase from "../utils/supabase"
 import SearchableSelect from "./SearchableSelect"
+import { formatDateDot } from "../utils/dateUtils"
 
 const DEFAULT_COMPANY_OPTIONS = [
     {
@@ -94,8 +95,9 @@ function DraftLetter() {
             task.product?.toLowerCase().includes("street") ? "Street Light" :
             task.product?.toLowerCase().includes("inverter") ? "Inverter" : "Battery"
         );
-        setWhatsappNumber(task.assigneeWhatsApp || task.technicianContact || task.contactNumber || "");
-        setEmail(task.email || "");
+        // Do NOT autofill - user will manually enter WhatsApp number & Email
+        setWhatsappNumber("");
+        setEmail("");
         setIsGenerateModalOpen(true);
     };
 
@@ -131,17 +133,28 @@ function DraftLetter() {
             try {
                 console.log("[DEBUG] Fetching FMS from Supabase...")
 
+                let fmsRows = []
                 const { data, error } = await supabase
                     .from("FMS")
                     .select("*")
-                    .eq("assign_to_vendor", "true")
+                    .eq("assign_to_vendor", true)
 
-                if (error) throw error
+                if (error || !data || data.length === 0) {
+                    const { data: fallbackData, error: fallbackError } = await supabase
+                        .from("FMS")
+                        .select("*")
+                    if (fallbackError && error) throw error
+                    fmsRows = (fallbackData || []).filter(
+                        (row) => String(row.assign_to_vendor).toLowerCase() === "true"
+                    )
+                } else {
+                    fmsRows = data || []
+                }
 
                 const pendingData = []
                 const historyData = []
 
-                data.forEach((row, index) => {
+                fmsRows.forEach((row, index) => {
 
                     let statusValue = row.status ? String(row.status).trim() : ""
                     const lastAttend = row.last_attend_status ? String(row.last_attend_status).trim().toLowerCase() : ""
@@ -175,11 +188,11 @@ function DraftLetter() {
                         product: row.product || "",
                         make: row.make || "",
                         natureOfComplaint: row.nature_of_complaint || "",
-                        complaintDate: row.complaint_date || "",
+                        complaintDate: formatDateDot(row.complaint_date) || "",
                         status: statusValue,
                         trackerStatus: statusValue,
-                        columnV: planned1,
-                        actualDate: actual1,
+                        columnV: formatDateDot(planned1) || "",
+                        actualDate: formatDateDot(actual1) || "",
                         companyName: row.company_name || row.company || "",
                         email: row.email || "",
                         pdfUrl: row.pdf || "",
@@ -191,14 +204,11 @@ function DraftLetter() {
 
                     const hasPlanned1 = planned1 !== null && planned1 !== ""
                     const hasActual1 = actual1 !== null && actual1 !== ""
+                    const hasPdf = Boolean(row.pdf && String(row.pdf).trim() !== "")
 
-                    if (hasPlanned1 && !hasActual1) {
-                        pendingData.push(task)
-                    }
-                    else if (hasPlanned1 && hasActual1) {
+                    if (hasPdf || (hasActual1 && hasPlanned1)) {
                         historyData.push(task)
-                    }
-                    else if (statusValue === "APPROVED-CLOSE") {
+                    } else {
                         pendingData.push(task)
                     }
                 })
@@ -879,7 +889,7 @@ function DraftLetter() {
                                                     <td className="px-3 py-4 whitespace-nowrap text-sm">{task.trackerStatus}</td>
                                                     {activeTab === "history" && (
                                                         <>
-                                                            <td className="px-3 py-4 whitespace-nowrap text-sm">{task.actualDate}</td>
+                                                            <td className="px-3 py-4 whitespace-nowrap text-sm">{formatDateDot(task.actualDate)}</td>
                                                             <td className="px-3 py-4 whitespace-nowrap text-sm">
                                                                 <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                                                                     {task.checked}
@@ -982,7 +992,7 @@ function DraftLetter() {
                                                     </div>
                                                     <div className="flex justify-between text-xs items-center">
                                                         <span className="text-gray-500">Actual Date</span>
-                                                        <span className="text-gray-900">{task.actualDate}</span>
+                                                        <span className="text-gray-900">{formatDateDot(task.actualDate)}</span>
                                                     </div>
                                                     <div className="flex justify-between text-xs items-center mt-1">
                                                         <span className="text-gray-500">Status</span>

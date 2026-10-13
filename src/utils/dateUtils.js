@@ -132,3 +132,35 @@ export const formatDateTimeDisplay = (dateVal, fallback = '-') => {
   const strHours = String(hours).padStart(2, '0');
   return `${day}/${month}/${year} ${strHours}:${minutes} ${ampm}`;
 };
+
+/**
+ * Formats any date value into DD.MM.YYYY for Official Letters
+ * @param {any} dateVal 
+ * @param {string} fallback 
+ * @returns {string}
+ */
+export const formatDateDot = (dateVal, fallback = '-') => {
+  if (!dateVal || dateVal === '-') return fallback;
+  const str = String(dateVal).trim();
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(str)) return str;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) return str.replace(/\//g, '.');
+
+  const d = parseToDate(dateVal);
+  if (!d) return fallback;
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}.${month}.${year}`;
+};
+
+/**
+ * Replaces any ISO timestamps embedded in text strings (e.g. references) with formatted DD.MM.YYYY
+ * @param {string} text 
+ * @returns {string}
+ */
+export const cleanTextDates = (text) => {
+  if (!text || typeof text !== 'string') return text;
+  return text
+    .replace(/\b\d{4}-\d{2}-\d{2}T[\d:.]+Z?\b/g, (match) => formatDateDot(match))
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, (match) => formatDateDot(match));
+};

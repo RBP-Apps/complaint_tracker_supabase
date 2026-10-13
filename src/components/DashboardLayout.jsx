@@ -117,7 +117,7 @@ function DashboardLayout({ children }) {
       permissionKey: "approved",
       children: [
         {
-          name: "Draft Letter",
+          name: "Draft Letter(technician)",
           href: "/dashboard/draft-letter",
           icon: FileEdit,
         },

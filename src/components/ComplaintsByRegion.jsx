@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { MapPin, BarChart3, CheckCircle2, AlertCircle, Search, X, ChevronRight, Phone, MessageSquare, ExternalLink, FolderKanban, Briefcase } from "lucide-react"
+import { MapPin, BarChart3, CheckCircle2, AlertCircle, Search, X, ChevronRight, Phone, MessageSquare, ExternalLink, FolderKanban, Briefcase, Building2 } from "lucide-react"
 import supabase from "../utils/supabase";
 
 function ComplaintsByRegion() {
@@ -17,6 +17,12 @@ function ComplaintsByRegion() {
   const [selectedProject, setSelectedProject] = useState(null)
   const [modalProjectSearch, setModalProjectSearch] = useState("")
   const [modalProjectStatusFilter, setModalProjectStatusFilter] = useState("all") // 'all' | 'pending' | 'resolved'
+
+  // Vendor detail modal state & search
+  const [vendorSearchTerm, setVendorSearchTerm] = useState("")
+  const [selectedVendor, setSelectedVendor] = useState(null)
+  const [modalVendorSearch, setModalVendorSearch] = useState("")
+  const [modalVendorStatusFilter, setModalVendorStatusFilter] = useState("all") // 'all' | 'pending' | 'resolved'
 
   // District detail modal state
   const [selectedDistrict, setSelectedDistrict] = useState(null)
@@ -36,9 +42,10 @@ function ComplaintsByRegion() {
       if (e.key === "Escape") {
         setSelectedDistrict(null)
         setSelectedProject(null)
+        setSelectedVendor(null)
       }
     }
-    if (selectedDistrict || selectedProject) {
+    if (selectedDistrict || selectedProject || selectedVendor) {
       window.addEventListener("keydown", handleKeyDown)
       document.body.style.overflow = "hidden"
     } else {
@@ -48,7 +55,7 @@ function ComplaintsByRegion() {
       window.removeEventListener("keydown", handleKeyDown)
       document.body.style.overflow = ""
     }
-  }, [selectedDistrict, selectedProject])
+  }, [selectedDistrict, selectedProject, selectedVendor])
 
   const formatDateString = (dateValue) => {
     if (!dateValue) return ""
@@ -86,18 +93,50 @@ useEffect(() => {
     setError(null)
 
     try {
-      const { data, error } = await supabase
-        .from("FMS")
-        .select("*")
+      const [fmsRes, vendorRes] = await Promise.all([
+        supabase.from("FMS").select("*"),
+        supabase.from("AssignToVendor").select("*"),
+      ])
 
-      if (error) throw error
+      if (fmsRes.error) throw fmsRes.error
+
+      const vendorMap = new Map()
+      if (vendorRes.data) {
+        vendorRes.data.forEach((v) => {
+          const cid = (v.complaint_id || "").toString().trim()
+          const vName = (v.vendor_name || "").toString().trim()
+          if (cid && vName) {
+            vendorMap.set(cid.toLowerCase(), vName)
+          }
+        })
+      }
 
       const complaintData = []
 
-      data.forEach((row) => {
+      ;(fmsRes.data || []).forEach((row) => {
+        const cid = (row.complaint_id || "").toString().trim()
+        const assignedVendor = vendorMap.get(cid.toLowerCase()) || ""
+        const isMarkedForVendor =
+          row.assign_to_vendor === true ||
+          String(row.assign_to_vendor).toLowerCase() === "true"
+
+        let resolvedVendor = ""
+        if (assignedVendor) {
+          resolvedVendor = assignedVendor
+        } else if (isMarkedForVendor) {
+          resolvedVendor = "Pending Vendor Assignment"
+        } else if (row.company_name && row.company_name.trim()) {
+          resolvedVendor = row.company_name.trim()
+        } else {
+          resolvedVendor = "Direct / In-House"
+        }
+
         const complaint = {
           complaintId: row.complaint_id || "",
           companyName: row.company_name || "",
+          vendorName: resolvedVendor,
+          isAssignedToVendor: Boolean(assignedVendor || isMarkedForVendor),
+          assignedVendorOfficial: assignedVendor,
           modeOfCall: row.mode_of_call || "",
           idNumber: row.id_number || "",
           projectName: row.project_name || "",
@@ -173,6 +212,8 @@ useEffect(() => {
           .toLowerCase()
           .includes(search) ||
         String(complaint.complaintId || "").toLowerCase().includes(search) ||
+        String(complaint.vendorName || "").toLowerCase().includes(search) ||
+        String(complaint.companyName || "").toLowerCase().includes(search) ||
         String(complaint.village || "").toLowerCase().includes(search) ||
         String(complaint.district || "").toLowerCase().includes(search) ||
         String(complaint.projectName || "").toLowerCase().includes(search) ||
@@ -358,6 +399,110 @@ useEffect(() => {
       )
     })
   }, [projectComplaints, modalProjectStatusFilter, modalProjectSearch])
+
+  // Vendor performance summary
+  const vendorSummary = useMemo(() => {
+    const map = new Map()
+
+    filteredComplaints.forEach((c) => {
+      const rawVendor = (c.vendorName || "").trim()
+      const key = rawVendor ? rawVendor.toLowerCase() : "unassigned"
+
+      if (!map.has(key)) {
+        map.set(key, {
+          vendor: rawVendor || "Direct / In-House",
+          vendorKey: key,
+          total: 0,
+          resolved: 0,
+          pending: 0,
+        })
+      }
+
+      const entry = map.get(key)
+      entry.total += 1
+
+      const s = String(c.status || "").toUpperCase()
+      if (s.includes("APPROVED-CLOSE") || s.includes("COMPLETED")) {
+        entry.resolved += 1
+      } else {
+        entry.pending += 1
+      }
+    })
+
+    return Array.from(map.values()).sort((a, b) => b.total - a.total || a.vendor.localeCompare(b.vendor))
+  }, [filteredComplaints])
+
+  const filteredVendorSummary = useMemo(() => {
+    if (!vendorSearchTerm.trim()) return vendorSummary
+    const q = vendorSearchTerm.toLowerCase().trim()
+    return vendorSummary.filter((v) =>
+      v.vendor.toLowerCase().includes(q)
+    )
+  }, [vendorSummary, vendorSearchTerm])
+
+  const vendorGrandTotals = useMemo(() => {
+    return vendorSummary.reduce(
+      (acc, v) => {
+        acc.total += v.total
+        acc.resolved += v.resolved
+        acc.pending += v.pending
+        return acc
+      },
+      { total: 0, resolved: 0, pending: 0 }
+    )
+  }, [vendorSummary])
+
+  // Selected vendor statistics
+  const selectedVendorStats = useMemo(() => {
+    if (!selectedVendor) return null
+    return (
+      vendorSummary.find(
+        (v) => v.vendor.toLowerCase() === selectedVendor.toLowerCase()
+      ) || null
+    )
+  }, [vendorSummary, selectedVendor])
+
+  // Complaints belonging to selected vendor
+  const vendorComplaints = useMemo(() => {
+    if (!selectedVendor) return []
+    const target = selectedVendor.trim().toLowerCase()
+    return filteredComplaints.filter((c) => {
+      const raw = (c.vendorName || "").trim().toLowerCase()
+      return (
+        raw === target ||
+        (target === "direct / in-house" && (!raw || raw === "unassigned"))
+      )
+    })
+  }, [filteredComplaints, selectedVendor])
+
+  // Filtered complaints within vendor modal (by status & search)
+  const filteredVendorComplaints = useMemo(() => {
+    return vendorComplaints.filter((c) => {
+      const isResolved =
+        String(c.status || "").toUpperCase().includes("APPROVED-CLOSE") ||
+        String(c.status || "").toUpperCase().includes("COMPLETED")
+
+      if (modalVendorStatusFilter === "resolved" && !isResolved) return false
+      if (modalVendorStatusFilter === "pending" && isResolved) return false
+
+      if (!modalVendorSearch.trim()) return true
+      const q = modalVendorSearch.toLowerCase().trim()
+      return (
+        String(c.complaintId || "").toLowerCase().includes(q) ||
+        String(c.beneficiaryName || "").toLowerCase().includes(q) ||
+        String(c.village || "").toLowerCase().includes(q) ||
+        String(c.block || "").toLowerCase().includes(q) ||
+        String(c.district || "").toLowerCase().includes(q) ||
+        String(c.projectName || "").toLowerCase().includes(q) ||
+        String(c.product || "").toLowerCase().includes(q) ||
+        String(c.make || "").toLowerCase().includes(q) ||
+        String(c.rating || "").toLowerCase().includes(q) ||
+        String(c.natureOfComplaint || "").toLowerCase().includes(q) ||
+        String(c.technicianName || "").toLowerCase().includes(q) ||
+        String(c.contactNumber || "").includes(q)
+      )
+    })
+  }, [vendorComplaints, modalVendorStatusFilter, modalVendorSearch])
 
   // Selected district statistics
   const selectedDistrictStats = useMemo(() => {
@@ -608,7 +753,178 @@ useEffect(() => {
       </div>
 
       {/* ======================================================== */}
-      {/* 2. DISTRICT PERFORMANCE & REGIONAL BREAKDOWN (ORIGINAL)  */}
+      {/* 2. VENDOR PERFORMANCE & SUMMARY BREAKDOWN                */}
+      {/* ======================================================== */}
+      <div className="bg-white rounded-2xl shadow-xs border border-slate-200/80 p-5 sm:p-6 transition-all">
+        {/* VENDOR HEADER */}
+        <div className="mb-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  <span>Vendor Performance & Summary Breakdown</span>
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    {vendorSummary.length} Vendors
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Distribution of total, resolved, and pending complaints across vendors & service partners
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <div className="relative flex-1 md:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="search"
+                placeholder="Filter vendor..."
+                className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50/80 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+                value={vendorSearchTerm}
+                onChange={(e) => setVendorSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* VENDOR DASHBOARD - STICKY TABLE */}
+        <div className="mb-4 max-h-[340px] overflow-y-auto border border-slate-200/90 rounded-xl overflow-hidden shadow-2xs">
+          <table className="min-w-full divide-y divide-slate-200 text-left">
+            <thead className="bg-slate-50/90 sticky top-0 z-10 text-xs font-bold text-slate-600 uppercase tracking-wider backdrop-blur-xs border-b border-slate-200">
+              <tr>
+                <th className="px-4 py-3 whitespace-nowrap">Vendor Name</th>
+                <th className="px-4 py-3 whitespace-nowrap text-center">Total Complaints</th>
+                <th className="px-4 py-3 whitespace-nowrap text-center">Resolved</th>
+                <th className="px-4 py-3 whitespace-nowrap text-center">Pending</th>
+                <th className="px-4 py-3 whitespace-nowrap text-center">Resolution Rate</th>
+                <th className="px-4 py-3 whitespace-nowrap text-center">Action</th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-slate-100 bg-white text-xs sm:text-sm">
+              {filteredVendorSummary.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="p-8 text-center text-slate-400">
+                    No vendor records found matching "{vendorSearchTerm}"
+                  </td>
+                </tr>
+              ) : (
+                filteredVendorSummary.map((v) => {
+                  const resolutionRate = v.total > 0 ? Math.round((v.resolved / v.total) * 100) : 0
+                  return (
+                    <tr
+                      key={v.vendor}
+                      onClick={() => {
+                        setSelectedVendor(v.vendor)
+                        setModalVendorSearch("")
+                        setModalVendorStatusFilter("all")
+                      }}
+                      className="hover:bg-indigo-50/70 transition-all cursor-pointer group active:scale-[0.998]"
+                      title={`Click to view all complaints for ${v.vendor}`}
+                    >
+                      <td className="px-4 py-3 font-semibold text-slate-800 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 group-hover:scale-125 transition-transform" />
+                          <span className="group-hover:text-indigo-700 transition-colors font-medium">{v.vendor}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-flex items-center justify-center min-w-[32px] rounded-lg bg-slate-100 text-xs font-bold text-slate-800 px-2.5 py-1 font-mono">
+                          {v.total}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-flex items-center justify-center min-w-[32px] rounded-lg bg-emerald-50 text-xs font-bold text-emerald-700 border border-emerald-200 px-2.5 py-1 font-mono">
+                          {v.resolved}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-flex items-center justify-center min-w-[32px] rounded-lg bg-amber-50 text-xs font-bold text-amber-700 border border-amber-200 px-2.5 py-1 font-mono">
+                          {v.pending}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-16 bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                resolutionRate >= 80
+                                  ? "bg-emerald-500"
+                                  : resolutionRate >= 50
+                                  ? "bg-indigo-500"
+                                  : "bg-amber-500"
+                              }`}
+                              style={{ width: `${resolutionRate}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-bold text-slate-700 font-mono w-8 text-right">
+                            {resolutionRate}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedVendor(v.vendor)
+                            setModalVendorSearch("")
+                            setModalVendorStatusFilter("all")
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white border border-indigo-200 transition-all cursor-pointer shadow-2xs group-hover:bg-indigo-600 group-hover:text-white"
+                        >
+                          <span>View Details</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* VENDOR EXECUTIVE TOTALS KPI BAR */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 border border-slate-200/90 rounded-xl text-xs sm:text-sm font-semibold">
+          <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200/70 shadow-2xs">
+            <div className="flex items-center gap-2 text-slate-600">
+              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
+              <span>Total Vendor Complaints</span>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold font-mono">
+              {vendorGrandTotals.total}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200/70 shadow-2xs">
+            <div className="flex items-center gap-2 text-slate-600">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
+              <span>Closed / Resolved</span>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold font-mono">
+              {vendorGrandTotals.resolved}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200/70 shadow-2xs">
+            <div className="flex items-center gap-2 text-slate-600">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-600" />
+              <span>Pending Resolution</span>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-bold font-mono">
+              {vendorGrandTotals.pending}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ======================================================== */}
+      {/* 3. DISTRICT PERFORMANCE & REGIONAL BREAKDOWN (ORIGINAL)  */}
       {/* ======================================================== */}
       <div className="bg-white rounded-2xl shadow-xs border border-slate-200/80 p-5 sm:p-6 transition-all">
       {/* HEADER */}
@@ -775,6 +1091,7 @@ useEffect(() => {
             {grandTotals.pending}
           </span>
         </div>
+      </div>
       </div>
 
       {/* DISTRICT COMPLAINTS DETAILS MODAL */}
@@ -1026,7 +1343,255 @@ useEffect(() => {
           </div>
         </div>
       )}
-    </div>
+
+      {/* VENDOR COMPLAINTS DETAILS MODAL */}
+      {selectedVendor && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-5 animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedVendor(null)
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-slate-200 animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-indigo-50/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-xs">
+                  <Building2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                      {selectedVendor}
+                    </h3>
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200 font-mono">
+                      {vendorComplaints.length} Total Complaints
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Complete complaints directory, current status, and resolution details for {selectedVendor}
+                  </p>
+                </div>
+              </div>
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setSelectedVendor(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer ml-auto sm:ml-0 flex items-center gap-1 text-xs"
+                title="Close modal (Esc)"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Quick KPI stats in modal */}
+            {selectedVendorStats && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-4 bg-slate-50/70 border-b border-slate-200 text-xs">
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <span className="text-slate-500 text-[11px] font-medium block">Total Complaints</span>
+                  <span className="text-lg font-bold text-slate-900 font-mono">{selectedVendorStats.total}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <span className="text-slate-500 text-[11px] font-medium block">Resolved</span>
+                  <span className="text-lg font-bold text-emerald-600 font-mono">{selectedVendorStats.resolved}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <span className="text-slate-500 text-[11px] font-medium block">Pending</span>
+                  <span className="text-lg font-bold text-amber-600 font-mono">{selectedVendorStats.pending}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <span className="text-slate-500 text-[11px] font-medium block">Resolution Rate</span>
+                  <span className="text-lg font-bold text-indigo-600 font-mono">
+                    {selectedVendorStats.total > 0
+                      ? Math.round((selectedVendorStats.resolved / selectedVendorStats.total) * 100)
+                      : 0}%
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Filter and Search Bar inside modal */}
+            <div className="p-3 sm:p-4 border-b border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-white">
+              {/* Search input */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search by beneficiary, district, village, phone, product, technician..."
+                  value={modalVendorSearch}
+                  onChange={(e) => setModalVendorSearch(e.target.value)}
+                  className="w-full pl-8 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                />
+                {modalVendorSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setModalVendorSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    title="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Status filter buttons */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setModalVendorStatusFilter("all")}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition cursor-pointer ${
+                    modalVendorStatusFilter === "all"
+                      ? "bg-slate-900 text-white shadow-xs font-semibold"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  All ({vendorComplaints.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalVendorStatusFilter("pending")}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition cursor-pointer flex items-center gap-1 ${
+                    modalVendorStatusFilter === "pending"
+                      ? "bg-amber-600 text-white shadow-xs font-semibold"
+                      : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+                  }`}
+                >
+                  <AlertCircle className="w-3 h-3" />
+                  <span>Pending ({selectedVendorStats?.pending || 0})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalVendorStatusFilter("resolved")}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition cursor-pointer flex items-center gap-1 ${
+                    modalVendorStatusFilter === "resolved"
+                      ? "bg-emerald-600 text-white shadow-xs font-semibold"
+                      : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+                  }`}
+                >
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>Resolved ({selectedVendorStats?.resolved || 0})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Table Content */}
+            <div className="overflow-auto flex-1 max-h-[50vh]">
+              {filteredVendorComplaints.length === 0 ? (
+                <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
+                  <AlertCircle className="h-8 w-8 text-slate-300" />
+                  <p className="text-sm font-medium">No complaints found matching criteria</p>
+                  <p className="text-xs text-slate-400">
+                    Try adjusting your search terms or status filter.
+                  </p>
+                </div>
+              ) : (
+                <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
+                  <thead className="bg-slate-50 sticky top-0 z-10 text-[11px] font-bold text-slate-600 uppercase tracking-wider backdrop-blur-xs border-b border-slate-200">
+                    <tr>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Complaint ID</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Beneficiary & Location</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Project</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Product & Specs</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Nature of Complaint</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Technician</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap">Complaint Date</th>
+                      <th className="px-3.5 py-2.5 whitespace-nowrap text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {filteredVendorComplaints.map((c) => {
+                      const isResolved =
+                        String(c.status || "").toUpperCase().includes("APPROVED-CLOSE") ||
+                        String(c.status || "").toUpperCase().includes("COMPLETED");
+
+                      return (
+                        <tr key={c.complaintId} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-3.5 py-2.5 font-bold font-mono text-indigo-600 whitespace-nowrap">
+                            {c.complaintId}
+                          </td>
+                          <td className="px-3.5 py-2.5">
+                            <div className="font-semibold text-slate-900">{c.beneficiaryName || "—"}</div>
+                            <div className="text-[11px] text-slate-500">
+                              {[c.district, c.block, c.village].filter(Boolean).join(", ") || "—"}
+                            </div>
+                            {c.contactNumber && (
+                              <a
+                                href={`tel:${c.contactNumber}`}
+                                className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline font-mono mt-0.5"
+                                title="Call beneficiary"
+                              >
+                                <Phone className="w-3 h-3" />
+                                {c.contactNumber}
+                              </a>
+                            )}
+                          </td>
+                          <td className="px-3.5 py-2.5">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              {c.projectName || "General"}
+                            </span>
+                          </td>
+                          <td className="px-3.5 py-2.5">
+                            <div className="font-medium text-slate-800">{c.product || "—"}</div>
+                            <div className="text-[11px] text-slate-500">
+                              {[c.make, c.rating, c.qty ? `Qty: ${c.qty}` : ""].filter(Boolean).join(" • ") || "—"}
+                            </div>
+                          </td>
+                          <td className="px-3.5 py-2.5 max-w-[220px]">
+                            <p className="line-clamp-2 text-slate-700 text-[11px]" title={c.natureOfComplaint}>
+                              {c.natureOfComplaint || "—"}
+                            </p>
+                          </td>
+                          <td className="px-3.5 py-2.5 whitespace-nowrap">
+                            <div className="font-medium text-slate-800">{c.technicianName || "Unassigned"}</div>
+                            {c.technicianContact && (
+                              <div className="text-[11px] text-slate-500 font-mono">
+                                {c.technicianContact}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3.5 py-2.5 whitespace-nowrap text-slate-600 font-mono text-[11px]">
+                            <div>{c.complaintDate || "—"}</div>
+                            {c.closeDate && (
+                              <div className="text-[10px] text-emerald-600">Closed: {c.closeDate}</div>
+                            )}
+                          </td>
+                          <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono ${
+                                isResolved
+                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                  : "bg-amber-100 text-amber-800 border border-amber-200"
+                              }`}
+                            >
+                              {c.status || "Open"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 sm:p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
+              <span>
+                Showing <strong className="text-slate-700">{filteredVendorComplaints.length}</strong> of{" "}
+                <strong className="text-slate-700">{vendorComplaints.length}</strong> complaints for {selectedVendor}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedVendor(null)}
+                className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium cursor-pointer transition shadow-xs"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     {/* PROJECT COMPLAINTS DETAILS MODAL */}
     {selectedProject && (

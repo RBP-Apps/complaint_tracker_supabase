@@ -12,7 +12,11 @@ import {
   Search,
   Download,
   Eye,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Calendar,
+  CalendarDays,
+  CalendarRange,
+  Hourglass
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import supabase from "../utils/supabase"
@@ -251,6 +255,174 @@ function DashboardStats() {
     },
   ]
 
+  // Robust date parsing for timeline categorization
+  const parseRowDate = (row) => {
+    const rawCandidates = [row?.complaint_date, row?.timestamp, row?.created_at]
+
+    for (const raw of rawCandidates) {
+      if (!raw) continue
+
+      if (raw instanceof Date && !isNaN(raw.getTime())) {
+        return raw
+      }
+
+      if (typeof raw === "number" && raw > 40000 && raw < 60000) {
+        const googleEpoch = new Date(1899, 11, 30)
+        const d = new Date(googleEpoch.getTime() + raw * 24 * 60 * 60 * 1000)
+        if (!isNaN(d.getTime())) return d
+      }
+
+      if (typeof raw === "string") {
+        const trimmed = raw.trim()
+        if (!trimmed) continue
+
+        // DD/MM/YYYY or DD-MM-YYYY
+        const ddmmyyyy = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/)
+        if (ddmmyyyy) {
+          const day = parseInt(ddmmyyyy[1], 10)
+          const month = parseInt(ddmmyyyy[2], 10) - 1
+          const year = parseInt(ddmmyyyy[3], 10)
+          const d = new Date(year, month, day)
+          if (!isNaN(d.getTime())) return d
+        }
+
+        // YYYY-MM-DD
+        const yyyymmdd = trimmed.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/)
+        if (yyyymmdd) {
+          const year = parseInt(yyyymmdd[1], 10)
+          const month = parseInt(yyyymmdd[2], 10) - 1
+          const day = parseInt(yyyymmdd[3], 10)
+          const d = new Date(year, month, day)
+          if (!isNaN(d.getTime())) return d
+        }
+
+        // Date(year, month, day)
+        if (trimmed.startsWith("Date(")) {
+          const match = trimmed.match(/Date\((\d+),(\d+),(\d+)/)
+          if (match) {
+            const d = new Date(parseInt(match[1], 10), parseInt(match[2], 10), parseInt(match[3], 10))
+            if (!isNaN(d.getTime())) return d
+          }
+        }
+
+        const d = new Date(trimmed)
+        if (!isNaN(d.getTime())) return d
+      }
+    }
+
+    return null
+  }
+
+  // Pending complaints grouped by Daily (Today), Weekly (7 Days), Monthly (30 Days), Aging (>30 Days)
+  const pendingTimelineStats = useMemo(() => {
+    if (!pendingComplaintsList || pendingComplaintsList.length === 0) {
+      return {
+        daily: [],
+        weekly: [],
+        monthly: [],
+        aging: [],
+      }
+    }
+
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const oneDayMs = 24 * 60 * 60 * 1000
+    const sevenDaysAgo = startOfToday - (6 * oneDayMs)
+    const thirtyDaysAgo = startOfToday - (29 * oneDayMs)
+
+    const daily = []
+    const weekly = []
+    const monthly = []
+    const aging = []
+
+    pendingComplaintsList.forEach((row) => {
+      const d = parseRowDate(row)
+      if (!d) {
+        aging.push(row)
+        return
+      }
+
+      const time = d.getTime()
+      if (time >= startOfToday) {
+        daily.push(row)
+      }
+      if (time >= sevenDaysAgo) {
+        weekly.push(row)
+      }
+      if (time >= thirtyDaysAgo) {
+        monthly.push(row)
+      } else {
+        aging.push(row)
+      }
+    })
+
+    return { daily, weekly, monthly, aging }
+  }, [pendingComplaintsList])
+
+  // Cards for Pending Timeline Breakdown
+  const pendingCards = [
+    {
+      id: "pending_daily",
+      title: "Daily Pending",
+      badge: "Today",
+      value: isLoading ? "-" : pendingTimelineStats.daily.length,
+      icon: CalendarDays,
+      topBorder: "border-t-rose-500",
+      iconBg: "bg-rose-50 text-rose-600 border-rose-200",
+      hoverBorder: "hover:border-rose-300",
+      accentColor: "text-rose-600",
+      badgeColor: "bg-rose-100 text-rose-800 border-rose-200",
+      data: pendingTimelineStats.daily,
+      description: "Pending complaints registered today awaiting action",
+      shareText: `${pendingComplaintsList.length ? Math.round((pendingTimelineStats.daily.length / pendingComplaintsList.length) * 100) : 0}% of pending`,
+    },
+    {
+      id: "pending_weekly",
+      title: "Weekly Pending",
+      badge: "Last 7 Days",
+      value: isLoading ? "-" : pendingTimelineStats.weekly.length,
+      icon: CalendarRange,
+      topBorder: "border-t-amber-500",
+      iconBg: "bg-amber-50 text-amber-600 border-amber-200",
+      hoverBorder: "hover:border-amber-300",
+      accentColor: "text-amber-600",
+      badgeColor: "bg-amber-100 text-amber-800 border-amber-200",
+      data: pendingTimelineStats.weekly,
+      description: "Pending complaints registered within the last 7 days",
+      shareText: `${pendingComplaintsList.length ? Math.round((pendingTimelineStats.weekly.length / pendingComplaintsList.length) * 100) : 0}% of pending`,
+    },
+    {
+      id: "pending_monthly",
+      title: "Monthly Pending",
+      badge: "Last 30 Days",
+      value: isLoading ? "-" : pendingTimelineStats.monthly.length,
+      icon: Calendar,
+      topBorder: "border-t-indigo-500",
+      iconBg: "bg-indigo-50 text-indigo-600 border-indigo-200",
+      hoverBorder: "hover:border-indigo-300",
+      accentColor: "text-indigo-600",
+      badgeColor: "bg-indigo-100 text-indigo-800 border-indigo-200",
+      data: pendingTimelineStats.monthly,
+      description: "Pending complaints registered within the last 30 days",
+      shareText: `${pendingComplaintsList.length ? Math.round((pendingTimelineStats.monthly.length / pendingComplaintsList.length) * 100) : 0}% of pending`,
+    },
+    {
+      id: "pending_aging",
+      title: "Aging Pending",
+      badge: "30 + Days",
+      value: isLoading ? "-" : pendingTimelineStats.aging.length,
+      icon: Hourglass,
+      topBorder: "border-t-orange-500",
+      iconBg: "bg-orange-50 text-orange-600 border-orange-200",
+      hoverBorder: "hover:border-orange-300",
+      accentColor: "text-orange-600",
+      badgeColor: "bg-orange-100 text-orange-800 border-orange-200",
+      data: pendingTimelineStats.aging,
+      description: "Complaints pending for more than 30 days (aging backlog)",
+      shareText: `${pendingComplaintsList.length ? Math.round((pendingTimelineStats.aging.length / pendingComplaintsList.length) * 100) : 0}% of pending`,
+    },
+  ]
+
   // Open modal handler
   const handleCardClick = (stat) => {
     setActiveModal(stat)
@@ -457,6 +629,93 @@ function DashboardStats() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Pending Complaints Timeline Breakdown Section */}
+      <div className="mt-6 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm sm:text-base font-bold text-slate-800 tracking-tight flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-amber-100 text-amber-700">
+                <AlertTriangle className="h-4 w-4" />
+              </span>
+              <span>Pending Complaints (Timeline Breakdown)</span>
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Daily, Weekly, Monthly, and Aging (&gt;30 days) distribution of unresolved complaints
+            </p>
+          </div>
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 self-start sm:self-auto">
+            <span className="text-slate-500">Total Unresolved:</span>
+            <span className="font-mono font-bold text-slate-900">{pendingComplaintsList.length}</span>
+          </div>
+        </div>
+
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+          {pendingCards.map((card, index) => (
+            <div
+              key={card.id || index}
+              onClick={() => handleCardClick(card)}
+              className={`group cursor-pointer rounded-2xl border border-slate-200 bg-white shadow-xs hover:shadow-lg transition-all duration-300 hover:-translate-y-1 overflow-hidden flex flex-col justify-between border-t-4 ${card.topBorder} ${card.hoverBorder}`}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  handleCardClick(card)
+                }
+              }}
+              title={`Click to view ${card.title}`}
+            >
+              {/* Card Content */}
+              <div className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      Pending Timeline
+                    </span>
+                    <h4 className="text-sm sm:text-base font-bold text-slate-800 tracking-tight mt-0.5">
+                      {card.title}
+                    </h4>
+                  </div>
+                  <div className={`p-2.5 rounded-xl border ${card.iconBg} shadow-2xs group-hover:scale-110 transition-transform duration-200`}>
+                    <card.icon className="h-5 w-5" />
+                  </div>
+                </div>
+
+                {/* Number and Badge */}
+                <div className="mt-4 flex items-baseline justify-between">
+                  <p className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight font-mono">
+                    {isLoading ? (
+                      <span className="inline-block animate-pulse text-slate-300">---</span>
+                    ) : (
+                      card.value
+                    )}
+                  </p>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${card.badgeColor}`}>
+                    {card.badge}
+                  </span>
+                </div>
+
+                <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                  <span>{card.shareText}</span>
+                  <span className="font-semibold text-slate-600">Pending</span>
+                </div>
+              </div>
+
+              {/* Bottom Interactive Bar */}
+              <div className="px-5 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-slate-600 group-hover:text-blue-600 group-hover:bg-blue-50/40 transition-all">
+                <span className="flex items-center gap-1.5">
+                  <Eye className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-600 transition-colors" />
+                  <span>View records</span>
+                </span>
+                <span className="text-slate-400 group-hover:translate-x-1 group-hover:text-blue-600 font-bold transition-transform">
+                  →
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Modal Dialog */}

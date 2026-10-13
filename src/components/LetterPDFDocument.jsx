@@ -9,6 +9,7 @@ import {
     Image,
 } from "@react-pdf/renderer";
 import { LOGO_BASE64, getLogoForCompany } from "../utils/logoBase64";
+import { formatDateDot, cleanTextDates } from "../utils/dateUtils";
 
 // Register Hind (simpler Devanagari font) to avoid rendering crashes
 Font.register({
@@ -43,14 +44,14 @@ Font.register({
 // A4 dimensions: 595.28 x 841.89 points
 const styles = StyleSheet.create({
     page: {
-        paddingTop: 150,
-        paddingBottom: 130,
-        paddingLeft: 40,
-        paddingRight: 40,
+        paddingTop: 136,
+        paddingBottom: 25,
+        paddingLeft: 35,
+        paddingRight: 35,
         fontFamily: "Hind",
-        fontSize: 10,
+        fontSize: 9.5,
         color: "#000000",
-        lineHeight: 1.3,
+        lineHeight: 1.4,
         hyphenation: false,
     },
 
@@ -169,53 +170,53 @@ const styles = StyleSheet.create({
     letterInfoRow: {
         flexDirection: "row",
         justifyContent: "space-between",
-        marginBottom: 6,
-        marginTop: 2,
+        marginBottom: 8,
     },
     letterInfoText: {
-        fontSize: 10,
+        fontSize: 9.5,
         fontWeight: "bold",
     },
 
     // Recipient
     recipientBlock: {
-        marginBottom: 4,
+        marginBottom: 8,
     },
     recipientLabel: {
-        fontSize: 10,
+        fontSize: 9.5,
         fontWeight: "bold",
         marginBottom: 2,
     },
     recipientIndented: {
-        paddingLeft: 30,
-        fontSize: 10,
+        paddingLeft: 20,
+        fontSize: 9.5,
         lineHeight: 1.4,
     },
 
     // Subject & Reference
     sectionBlock: {
-        marginBottom: 4,
+        marginBottom: 8,
     },
     labelBold: {
         fontWeight: "bold",
-        fontSize: 10,
+        fontSize: 9.5,
     },
     bodyText: {
-        fontSize: 10,
+        fontSize: 9.5,
         textAlign: "left",
         lineHeight: 1.4,
         hyphenation: false,
     },
     referenceItem: {
-        fontSize: 10,
-        paddingLeft: 15,
+        fontSize: 9.5,
+        paddingLeft: 12,
         marginBottom: 2,
+        lineHeight: 1.35,
     },
 
     // Table
     tableContainer: {
         marginTop: 6,
-        marginBottom: 6,
+        marginBottom: 8,
         borderWidth: 1,
         borderColor: "#000000",
     },
@@ -239,13 +240,13 @@ const styles = StyleSheet.create({
         textAlign: "center",
         borderRightWidth: 1,
         borderRightColor: "#000000",
-        flex: 1,
+        lineHeight: 1.3,
     },
     tableCellLast: {
         padding: 4,
         fontSize: 8,
         textAlign: "center",
-        flex: 1,
+        lineHeight: 1.3,
     },
     tableHeaderCell: {
         padding: 4,
@@ -254,38 +255,38 @@ const styles = StyleSheet.create({
         textAlign: "center",
         borderRightWidth: 1,
         borderRightColor: "#000000",
-        flex: 1,
+        lineHeight: 1.3,
     },
     tableHeaderCellLast: {
         padding: 4,
         fontSize: 8,
         fontWeight: "bold",
         textAlign: "center",
-        flex: 1,
+        lineHeight: 1.3,
     },
 
     // Closing
     closingText: {
-        fontSize: 10,
+        fontSize: 9.5,
         textAlign: "left",
         lineHeight: 1.4,
-        marginTop: 6,
+        marginTop: 8,
         hyphenation: false,
     },
     thankYou: {
-        fontSize: 10,
+        fontSize: 9.5,
         fontWeight: "bold",
         textAlign: "left",
-        marginTop: 10,
+        marginTop: 8,
     },
 
     // Signature
     signatureBlock: {
-        marginTop: 15,
+        marginTop: 14,
         alignItems: "flex-start",
     },
     signatureText: {
-        fontSize: 10,
+        fontSize: 9.5,
         fontWeight: "bold",
         marginBottom: 2,
     },
@@ -293,27 +294,28 @@ const styles = StyleSheet.create({
     // Copies To
     copiesBlock: {
         marginTop: 10,
-        fontSize: 9,
+        fontSize: 8.5,
     },
     copiesLabel: {
         fontWeight: "bold",
-        marginBottom: 4,
+        marginBottom: 2,
     },
     copyItem: {
-        fontSize: 9,
-        paddingLeft: 15,
+        fontSize: 8.5,
+        paddingLeft: 12,
         marginBottom: 2,
+        lineHeight: 1.35,
     },
 
     // Footer
     footerContainer: {
         position: "absolute",
-        bottom: 20,
-        left: 40,
-        right: 40,
+        bottom: 15,
+        left: 35,
+        right: 35,
         borderTopWidth: 1,
         borderTopColor: "#cccccc",
-        paddingTop: 8,
+        paddingTop: 6,
     },
     footerText: {
         fontSize: 7,
@@ -412,24 +414,72 @@ const styles = StyleSheet.create({
     },
 });
 
-const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData }) => {
-    const logoSrc = getLogoForCompany(headerInfo.companyName);
+const formatCellValue = (val) => {
+    if (val === null || val === undefined) return "";
+    const str = String(val).trim();
+    if (str.includes("T") && !isNaN(Date.parse(str))) {
+        return formatDateDot(str);
+    }
+    return cleanTextDates(str);
+};
+
+const getColumnFlex = (col, isLast) => {
+    const name = String(col).trim();
+    let flex = 1;
+    if (name === "क्र." || name === "क्र" || name === "#" || name === "S.No" || name === "Sr.") {
+        flex = 0.35;
+    } else if (name.includes("आई. डी.") || name.includes("ID") || name.includes("संख्या")) {
+        flex = 0.8;
+    } else if (name.includes("समाधान") || name.includes("शिकायत क्र.")) {
+        flex = 1.0;
+    } else if (name.includes("हितग्राही") || name.includes("लाभार्थी") || (name.includes("नाम") && !name.includes("साइट"))) {
+        flex = 1.6;
+    } else if (name.includes("ग्राम") || name.includes("विकासखण्ड") || name.includes("साइट") || name.includes("जिला")) {
+        flex = 1.4;
+    } else if (name.includes("दिनांक") || name.includes("Date")) {
+        flex = 0.95;
+    } else if (name.includes("रिमार्क") || name.includes("विवरण") || name.includes("स्थिति")) {
+        flex = 1.4;
+    } else if (name.includes("रेटिंग") || name.includes("प्रोजेक्ट")) {
+        flex = 0.85;
+    }
+
+    return {
+        flex,
+        borderRightWidth: isLast ? 0 : 1,
+        borderRightColor: "#000000",
+    };
+};
+
+const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData, logoSrc: customLogoSrc }) => {
     const isSuraj = headerInfo.companyName && headerInfo.companyName.toLowerCase().includes('suraj');
     const isRotomag = headerInfo.companyName && headerInfo.companyName.toLowerCase().includes('rotomag');
     const isSolex = headerInfo.companyName && headerInfo.companyName.toLowerCase().includes('solex');
     const isPremier = headerInfo.companyName && headerInfo.companyName.toLowerCase().includes('premier');
     const isRBP = headerInfo.companyName && headerInfo.companyName.toLowerCase().includes('rbp');
     const isTanay = headerInfo.companyName && headerInfo.companyName.toLowerCase().includes('tanay');
+    const logoSrc = (isRBP && customLogoSrc) ? customLogoSrc : getLogoForCompany(headerInfo.companyName);
 
     return (
         <Document>
             <Page size="A4" style={styles.page}>
                 {/* ===== HEADER - Fixed on every page ===== */}
-                <View style={{ position: "absolute", top: 15, left: 40, right: 40, borderBottomWidth: (isSuraj || isTanay) ? 0 : 2, borderBottomColor: "#000000", paddingBottom: 8 }} fixed>
-                    {isRBP && logoSrc ? (
-                        /* RBP - Centered logo */
-                        <View style={{ alignItems: "center", marginTop: 16, marginBottom: 0 }}>
-                            <Image src={logoSrc} style={{ width: 220, height: 110, objectFit: "contain" }} />
+                <View style={{ position: "absolute", top: 12, left: 35, right: 35, borderBottomWidth: (isSuraj || isTanay) ? 0 : 2, borderBottomColor: "#000000", paddingBottom: 5 }} fixed>
+                    {isRBP ? (
+                        /* RBP - Centered colorful logo + company details (Exact match with screen preview) */
+                        <View style={{ alignItems: "center", marginTop: 2, marginBottom: 0 }}>
+                            {logoSrc && (
+                                <Image src={logoSrc} style={{ width: 130, height: 48, objectFit: "contain", marginBottom: 2 }} />
+                            )}
+                            <Text style={{ fontSize: 12.5, fontWeight: "bold", color: "#111827", textAlign: "center", letterSpacing: 0.5, fontFamily: "NotoSans" }}>
+                                {headerInfo.companyName || "RBP ENERGY (INDIA) PVT. LTD."}
+                            </Text>
+                            <Text style={{ fontSize: 7.2, color: "#374151", textAlign: "center", marginTop: 1.5, fontFamily: "NotoSans" }}>
+                                {headerInfo.address || "303 Guru Ghasidas Plaza, Amapara, G.E Road, Raipur (C.G) 492001"}
+                            </Text>
+                            <Text style={{ fontSize: 7.2, color: "#4b5563", textAlign: "center", marginTop: 1, fontFamily: "NotoSans" }}>
+                                {headerInfo.contact || "T : 9200012500 | Email : info@rbpindia.com | Website : www.rbpindia.com"}
+                            </Text>
                         </View>
                     ) : isRotomag && logoSrc ? (
                         /* Rotomag - Right aligned, h-28 */
@@ -514,10 +564,10 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData }) 
                 {/* ===== LETTER NO & DATE ===== */}
                 <View style={styles.letterInfoRow}>
                     <Text style={styles.letterInfoText}>
-                        पत्र क्र.: {letterInfo.letterNo || ""}
+                        पत्र क्र. {cleanTextDates(letterInfo.letterNo || "")}
                     </Text>
                     <Text style={styles.letterInfoText}>
-                        दिनांक: {letterInfo.date || ""}
+                        दिनांक {formatDateDot(letterInfo.date) || ""}
                     </Text>
                 </View>
 
@@ -535,7 +585,7 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData }) 
                 <View style={styles.sectionBlock}>
                     <Text style={styles.bodyText}>
                         <Text style={styles.labelBold}>विषय:- </Text>
-                        {letterInfo.subject || ""}
+                        {cleanTextDates(letterInfo.subject || "")}
                     </Text>
                 </View>
 
@@ -544,7 +594,7 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData }) 
                     <Text style={styles.labelBold}>संदर्भ:-</Text>
                     {(letterInfo.reference || []).map((ref, idx) => (
                         <Text key={idx} style={styles.referenceItem}>
-                            {idx + 1}. {ref}
+                            {idx + 1}. {cleanTextDates(ref)}
                         </Text>
                     ))}
                 </View>
@@ -554,8 +604,8 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData }) 
                     <Text style={styles.bodyText}>
                         {letterInfo.salutation || ""}
                     </Text>
-                    <Text style={[styles.bodyText, { marginTop: 6 }]}>
-                        {letterInfo.introParagraph || ""}
+                    <Text style={[styles.bodyText, { marginTop: 4 }]}>
+                        {cleanTextDates(letterInfo.introParagraph || "")}
                     </Text>
                 </View>
 
@@ -567,11 +617,12 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData }) 
                             {tableColumns.map((col, idx) => (
                                 <Text
                                     key={idx}
-                                    style={
+                                    style={[
                                         idx === tableColumns.length - 1
                                             ? styles.tableHeaderCellLast
-                                            : styles.tableHeaderCell
-                                    }
+                                            : styles.tableHeaderCell,
+                                        getColumnFlex(col, idx === tableColumns.length - 1)
+                                    ]}
                                 >
                                     {col}
                                 </Text>
@@ -591,13 +642,14 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData }) 
                                 {tableColumns.map((col, colIdx) => (
                                     <Text
                                         key={colIdx}
-                                        style={
+                                        style={[
                                             colIdx === tableColumns.length - 1
                                                 ? styles.tableCellLast
-                                                : styles.tableCell
-                                        }
+                                                : styles.tableCell,
+                                            getColumnFlex(col, colIdx === tableColumns.length - 1)
+                                        ]}
                                     >
-                                        {row[col] || ""}
+                                        {formatCellValue(row[col])}
                                     </Text>
                                 ))}
                             </View>
@@ -607,13 +659,13 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData }) 
 
                 {/* ===== CLOSING PARAGRAPH ===== */}
                 <Text style={styles.closingText}>
-                    {letterInfo.closingParagraph || ""}
+                    {cleanTextDates(letterInfo.closingParagraph || "")}
                 </Text>
 
                 {/* ===== NOTE (IF PRESENT) ===== */}
                 {letterInfo.note ? (
-                    <Text style={[styles.bodyText, { marginTop: 6, fontWeight: "bold" }]}>
-                        {letterInfo.note}
+                    <Text style={[styles.bodyText, { marginTop: 4, fontWeight: "bold" }]}>
+                        {cleanTextDates(letterInfo.note)}
                     </Text>
                 ) : null}
 
@@ -627,7 +679,7 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData }) 
                     <Text style={styles.signatureText}>
                         {letterInfo.regards || ""}
                     </Text>
-                    <Text style={[styles.signatureText, { marginTop: 25 }]}>
+                    <Text style={[styles.signatureText, { marginTop: 22 }]}>
                         {letterInfo.forCompany || ""}
                     </Text>
                     <Text style={styles.signatureText}>
@@ -640,29 +692,14 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData }) 
                     <Text style={styles.copiesLabel}>प्रतिलिपि:—</Text>
                     {(letterInfo.copiesTo || []).map((copy, idx) => (
                         <Text key={idx} style={styles.copyItem}>
-                            {idx + 1}. {copy}
+                            {idx + 1}. {cleanTextDates(copy)}
                         </Text>
                     ))}
                 </View>
 
                 {/* ===== FOOTER - Fixed on every page ===== */}
-                <View style={{ position: "absolute", bottom: 20, left: 40, right: 40, borderTopWidth: (isSuraj || isTanay) ? 0 : 1, borderTopColor: "#000000", paddingTop: 4 }} fixed>
-                    {isRBP ? (
-                        /* RBP Footer */
-                        <View>
-                            <Text style={{ fontSize: 10, fontWeight: "bold", color: "#000000", textAlign: "center", marginBottom: 4, letterSpacing: 1 }}>
-                                RBP ENERGY (INDIA) PVT. LTD.
-                            </Text>
-                            <Text style={{ fontSize: 9, color: "#1f2937", textAlign: "center", marginBottom: 4 }}>
-                                303 Guru Ghasidas Plaza, Amapara, G.E Road, Raipur (C.G) 492001
-                            </Text>
-                            <Text style={{ fontSize: 8, color: "#1f2937", textAlign: "center" }}>
-                                <Text style={{ color: "#00CCCC", fontWeight: "bold" }}>T :</Text> 9200012500{" "}
-                                <Text style={{ color: "#00CCCC", fontWeight: "bold" }}>Email :</Text> info@rbpindia.com, {" "}
-                                <Text style={{ color: "#00CCCC", fontWeight: "bold" }}>Website :</Text> www.rbpindia.com
-                            </Text>
-                        </View>
-                    ) : isRotomag ? (
+                <View style={{ position: "absolute", bottom: 20, left: 40, right: 40, borderTopWidth: (isRBP || isSuraj || isTanay) ? 0 : 1, borderTopColor: "#000000", paddingTop: 4 }} fixed>
+                    {isRBP ? null : isRotomag ? (
                         /* Rotomag Footer */
                         <View>
                             <Text style={{ fontSize: 9, fontWeight: "bold", color: "#1f2937", textAlign: "center", marginBottom: 4 }}>

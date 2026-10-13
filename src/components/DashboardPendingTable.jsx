@@ -66,7 +66,7 @@ function ComplaintsTable() {
     setStatusFilter("All")
   }
 
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(true)
 
   // Active filters counter
   const activeFiltersCount = useMemo(() => {

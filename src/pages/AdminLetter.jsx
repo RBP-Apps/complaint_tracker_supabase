@@ -5,6 +5,71 @@ import { pdf } from "@react-pdf/renderer";
 import DashboardLayout from "../components/DashboardLayout";
 import LetterPDFDocument from "../components/LetterPDFDocument";
 import supabase from "../utils/supabase";
+import { sendEmailViaEmailJS } from "../utils/emailjsService";
+import { formatDateDot, cleanTextDates } from "../utils/dateUtils";
+
+const sendDirectMetaWhatsApp = async ({
+    whatsappNumber,
+    vendorName,
+    letterNo,
+    complaintId,
+    beneficiaryName,
+    pdfUrl,
+    date
+}) => {
+    const token = import.meta.env.VITE_META_TOKEN || import.meta.env.Meta_Token;
+    const phoneId = import.meta.env.VITE_META_PHONE_ID || import.meta.env.Meta_Phone_ID;
+
+    if (!token || !phoneId) {
+        console.warn("Meta credentials missing in frontend environment.");
+        return { success: false, error: { message: "Missing Meta token/phone ID in .env" } };
+    }
+
+    let formattedPhone = whatsappNumber.replace(/\D/g, "");
+    if (formattedPhone.length === 10) formattedPhone = "91" + formattedPhone;
+
+    const templateToUse = import.meta.env.VITE_LETTER_WHATSAPP_TEMPLATE || "vendor_letter_assigned";
+
+    try {
+        const res = await fetch(`https://graph.facebook.com/v19.0/${phoneId}/messages`, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                messaging_product: "whatsapp",
+                to: formattedPhone,
+                type: "template",
+                template: {
+                    name: templateToUse,
+                    language: { code: "en_US" },
+                    components: [
+                        {
+                            type: "body",
+                            parameters: [
+                                { type: "text", text: vendorName || "Vendor" },
+                                { type: "text", text: letterNo || "N/A" },
+                                { type: "text", text: complaintId || "N/A" },
+                                { type: "text", text: beneficiaryName || "N/A" },
+                                { type: "text", text: date || "N/A" },
+                                { type: "text", text: pdfUrl || "N/A" }
+                            ]
+                        }
+                    ]
+                }
+            })
+        });
+
+        const result = await res.json();
+        if (!res.ok) {
+            return { success: false, error: result };
+        }
+        return { success: true, result };
+    } catch (err) {
+        return { success: false, error: err };
+    }
+};
 
 
 const DEFAULT_COMPANY_PROFILES = [
@@ -161,33 +226,35 @@ const AdminLetter = () => {
 
     const initialProfile = getCompanyProfile(initialCompanyCandidate) || DEFAULT_COMPANY_PROFILES[1];
 
-    const [selectedEmail, setSelectedEmail] = useState(initialProfile.email || "tanay.vidhyut@gmail.com");
+    const [selectedEmail, setSelectedEmail] = useState(location.state?.email || "");
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
     const [whatsappNumber, setWhatsappNumber] = useState(location.state?.whatsappNumber || "");
-    const [emailAddress, setEmailAddress] = useState(location.state?.email || initialProfile.email || "tanay.vidhyut@gmail.com");
+    const [emailAddress, setEmailAddress] = useState(location.state?.email || "");
 
     useEffect(() => {
-        if (location.state?.whatsappNumber) {
+        if (location.state?.whatsappNumber !== undefined) {
             setWhatsappNumber(location.state.whatsappNumber);
         }
-        if (location.state?.email) {
+        if (location.state?.email !== undefined) {
             setEmailAddress(location.state.email);
             setSelectedEmail(location.state.email);
         }
     }, [location.state]);
 
+    const [rbpLogoBase64, setRbpLogoBase64] = useState(null);
+
     useEffect(() => {
-        if (taskData) {
-            if (!whatsappNumber) {
-                const possible = taskData.assigneeWhatsApp || taskData.technicianContact || taskData.contactNumber || "";
-                if (possible) setWhatsappNumber(possible);
-            }
-            if (taskData.email && !emailAddress) {
-                setEmailAddress(taskData.email);
-                setSelectedEmail(taskData.email);
-            }
-        }
-    }, [taskData]);
+        fetch("/RBP-Logo.PNG")
+            .then(res => res.blob())
+            .then(blob => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setRbpLogoBase64(reader.result);
+                };
+                reader.readAsDataURL(blob);
+            })
+            .catch(err => console.error("Error loading RBP logo base64:", err));
+    }, []);
 
     // Header Content State
     const [headerInfo, setHeaderInfo] = useState({
@@ -200,7 +267,7 @@ const AdminLetter = () => {
     // Letter Content State (Dynamic)
     const [letterInfo, setLetterInfo] = useState({
         letterNo: `SSY/2025/${Math.floor(Math.random() * 900) + 100}`,
-        date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
+        date: formatDateDot(new Date()),
         subject: "जिला कोण्डागांव में सौर सुजला योजनांतर्गत स्थापित सिंचाई सोलर पंप के संबंध में ।",
         reference: [
             "पत्र क्र. 2386/क्रेडा/जि.का./SSY/O&M/F-04/2024-25 कोण्डागांव, दिनांक 06.11.2025,",
@@ -243,16 +310,25 @@ const AdminLetter = () => {
             setEmailAddress(profile.email);
         }
 
-        setLetterInfo(prev => ({
-            ...prev,
-            forCompany: profile.forCompany || `वास्ते, ${profile.name}`,
-            designation: profile.designation || prev.designation || "अधिकृत हस्ताक्षरकर्ता",
-            companyDetails: {
-                phone: profile.phone,
-                email: profile.email,
-                address: profile.address
-            }
-        }));
+        setLetterInfo(prev => {
+            const isRBP = (profile.name || "").toUpperCase().includes("RBP");
+            const randomNum = Math.floor(Math.random() * 900) + 100;
+            const updatedLetterNo = (isRBP && (!prev.letterNo || prev.letterNo.startsWith("SSY/")))
+                ? `RBP/SPVPP/SER/25-26/${randomNum}`
+                : prev.letterNo;
+
+            return {
+                ...prev,
+                letterNo: updatedLetterNo,
+                forCompany: profile.forCompany || `वास्ते, ${profile.name}`,
+                designation: profile.designation || prev.designation || "अधिकृत हस्ताक्षरकर्ता",
+                companyDetails: {
+                    phone: profile.phone,
+                    email: profile.email,
+                    address: profile.address
+                }
+            };
+        });
     };
 
     useEffect(() => {
@@ -269,7 +345,7 @@ const AdminLetter = () => {
                     const siteNames = tasksArr.map(t => t.village || t.siteName || "-").join(", ");
                     const blockNames = Array.from(new Set(tasksArr.map(t => t.block).filter(Boolean))).join(" व ") || task.block || "-";
                     const district = task.district || "-";
-                    const actualDate = task.actualDate || task.complaintDate || new Date().toLocaleDateString("en-GB");
+                    const actualDate = formatDateDot(task.actualDate || task.complaintDate || new Date());
                     const randomNum = Math.floor(Math.random() * 900) + 100;
                     const companyToUse = location.state.autoSelectCompany || task.companyName || task.company || "RBP ENERGY (INDIA) PVT. LTD.";
 
@@ -294,7 +370,7 @@ const AdminLetter = () => {
                             "सिस्टम रेटिंग": t.product || "-",
                             "प्रोजेक्ट": "सौभाग्य",
                             "स्ट्रीट लाइट रेटिंग": "15W",
-                            "स्थापना दिनांक": t.complaintDate || t.actualDate || "-",
+                            "स्थापना दिनांक": formatDateDot(t.complaintDate || t.actualDate || "-"),
                             "खराब संख्या": "1",
                             "प्रतिस्थापित संख्या": "1",
                             "स्थिति": "पूर्ण (CLOSED)"
@@ -307,7 +383,7 @@ const AdminLetter = () => {
                         setLetterInfo(prev => ({
                             ...prev,
                             letterNo: `RBP/SL/SER/25-26/${randomNum.toString().padStart(2, '0')}`,
-                            date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
+                            date: formatDateDot(new Date()),
                             subject: `जिला ${district} के विकासखण्ड ${blockNames} के अंतर्गत विभिन्न ग्रामों में स्थापित स्ट्रीट लाइट के सुधार / संधारण कार्य के संबंध में।`,
                             reference: [`पत्र क्र. 1188/क्रेडा/O&M/${district}/2024-25/${task.block || "बैकुंठपुर"} दिनांक: ${actualDate}`],
                             officerName: "जिला प्रभारी,",
@@ -337,7 +413,7 @@ const AdminLetter = () => {
                             "विकासखण्ड": t.block || "-",
                             "जिला": t.district || "-",
                             "सिस्टम रेटिंग": t.product || "-",
-                            "स्थापना दिनांक": t.complaintDate || t.actualDate || "-",
+                            "स्थापना दिनांक": formatDateDot(t.complaintDate || t.actualDate || "-"),
                             "शिकायत विवरण": t.natureOfComplaint || "इन्वर्टर खराब",
                             "रिमार्क": "इन्वर्टर का सुधार कार्य पूर्ण। वर्तमान में संयंत्र संतोषप्रद रूप से कार्यशील है।"
                         }));
@@ -348,7 +424,7 @@ const AdminLetter = () => {
                         setLetterInfo(prev => ({
                             ...prev,
                             letterNo: `RBP/SPVPP/SER/25-26/${randomNum}`,
-                            date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
+                            date: formatDateDot(new Date()),
                             subject: `जिला ${district}, विकासखण्ड ${task.block || ""} के अंतर्गत ${siteNames} स्थलों में स्थापित सोलर पावर प्लांट के इन्वर्टर सुधार के संबंध में।`,
                             reference: [`पत्र क्र. 392/क्रेडा/SPVPP/2024-25/${district.toUpperCase()} दिनांक: ${actualDate}`],
                             officerName: "सहायक अभियंता महोदय,",
@@ -376,7 +452,7 @@ const AdminLetter = () => {
                             "विकासखण्ड": t.block || "-",
                             "जिला": t.district || "-",
                             "सिस्टम रेटिंग": t.product || "-",
-                            "स्थापना दिनांक": t.complaintDate || t.actualDate || "-",
+                            "स्थापना दिनांक": formatDateDot(t.complaintDate || t.actualDate || "-"),
                             "शिकायत विवरण": t.natureOfComplaint || "बैटरी खराब",
                             "रिमार्क": "खराब सेल प्रतिस्थापित कर सुधार कार्य पूर्ण। वर्तमान में संयंत्र संतोषप्रद रूप से कार्यशील है।"
                         }));
@@ -387,7 +463,7 @@ const AdminLetter = () => {
                         setLetterInfo(prev => ({
                             ...prev,
                             letterNo: `RBP/SPVPP/SER/25-26/${randomNum}`,
-                            date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
+                            date: formatDateDot(new Date()),
                             subject: `जिला ${district}, विकासखण्ड ${task.block || ""} के अंतर्गत ${siteNames} में स्थापित सोलर पावर प्लांट की बैटरी सुधार के संबंध में।`,
                             reference: [`पत्र क्र. 1245/J.K/2024-25/${district.toUpperCase()} दिनांक: ${actualDate}`],
                             officerName: "जिला प्रभारी,",
@@ -415,17 +491,18 @@ const AdminLetter = () => {
                             "आई. डी. नं.": t.idNumber || "-",
                             "हितग्राही का नाम": t.beneficiaryName || "-",
                             "ग्राम/ विकासखण्ड": `${t.village || ""}/ ${t.block || ""}`,
-                            "दिनांक": t.actualDate || t.complaintDate || new Date().toLocaleDateString("en-GB"),
+                            "दिनांक": formatDateDot(t.actualDate || t.complaintDate || new Date()),
                             "रिमार्क": t.natureOfComplaint ? "संयंत्र सुधार उपरांत कार्यशील है।" : "संयंत्र कार्य शील हैं।"
                         }));
 
                         setTableColumns(columns);
                         setTableData(templateData);
 
+                        const isRBPInitial = (companyToUse || "").toUpperCase().includes("RBP");
                         setLetterInfo(prev => ({
                             ...prev,
-                            letterNo: `SSY/2025/${randomNum}`,
-                            date: new Date().toLocaleDateString("en-GB").replace(/\//g, "."),
+                            letterNo: isRBPInitial ? `RBP/SPVPP/SER/25-26/${randomNum}` : `SSY/2025/${randomNum}`,
+                            date: formatDateDot(new Date()),
                             subject: district && district !== "-" ? `जिला ${district} में सौर सुजला योजनांतर्गत स्थापित सिंचाई सोलर पंप के संबंध में ।` : "सौर सुजला योजनांतर्गत स्थापित सिंचाई सोलर पंप के संबंध में ।",
                             reference: [
                                 `पत्र क्र. 2386/क्रेडा/जि.का./SSY/O&M/F-04/2024-25 ${district && district !== "-" ? district : "क्रेडा"}, दिनांक ${actualDate},`,
@@ -468,7 +545,7 @@ const AdminLetter = () => {
                         "आई. डी. नं.": task.idNumber || "-",
                         "हितग्राही का नाम": task.beneficiaryName || "-",
                         "ग्राम/ विकासखण्ड": `${task.village || ""}/ ${task.block || ""}`,
-                        "दिनांक": task.actualDate || "-",
+                        "दिनांक": formatDateDot(task.actualDate || task.complaintDate || new Date()),
                         "रिमार्क": "संयंत्र कार्य शील हैं।"
                     }]);
                     if (task.district) {
@@ -492,6 +569,23 @@ const AdminLetter = () => {
                 const savedData = localStorage.getItem(`admin_letter_${complaintId}`);
                 if (savedData) {
                     const parsed = JSON.parse(savedData);
+                    if (parsed.letterInfo) {
+                        if (parsed.letterInfo.date) parsed.letterInfo.date = formatDateDot(parsed.letterInfo.date);
+                        if (parsed.letterInfo.reference) {
+                            parsed.letterInfo.reference = parsed.letterInfo.reference.map(r => cleanTextDates(r));
+                        }
+                    }
+                    if (parsed.tableData) {
+                        parsed.tableData = parsed.tableData.map(row => {
+                            const newRow = { ...row };
+                            Object.keys(newRow).forEach(k => {
+                                if (typeof newRow[k] === 'string' && newRow[k].includes('T') && !isNaN(Date.parse(newRow[k]))) {
+                                    newRow[k] = formatDateDot(newRow[k]);
+                                }
+                            });
+                            return newRow;
+                        });
+                    }
                     setLetterInfo(prev => ({ ...prev, ...parsed.letterInfo }));
                     setHeaderInfo(prev => ({ ...prev, ...parsed.headerInfo }));
                     if (parsed.tableColumns) setTableColumns(parsed.tableColumns);
@@ -516,7 +610,7 @@ const AdminLetter = () => {
                         block: row.block || "",
                         district: row.district || "",
                         companyName: row.company_name || row.company || "",
-                        actualDate: row.actual1 || row.actual || new Date().toLocaleDateString("en-GB")
+                        actualDate: formatDateDot(row.actual1 || row.actual || new Date())
                     };
                     setTaskData(task);
 
@@ -526,7 +620,7 @@ const AdminLetter = () => {
                         "आई. डी. नं.": task.idNumber || "-",
                         "हितग्राही का नाम": task.beneficiaryName || "-",
                         "ग्राम/ विकासखण्ड": `${task.village || ""}/ ${task.block || ""}`,
-                        "दिनांक": task.actualDate || "-",
+                        "दिनांक": formatDateDot(task.actualDate || new Date()),
                         "रिमार्क": "संयंत्र कार्य शील हैं."
                     }]);
 
@@ -698,21 +792,22 @@ const AdminLetter = () => {
         setIsSavingPDF(true);
 
         try {
-            // 🔥 STEP 3: generate Hindi PDF component
+            // 🔥 STEP 1: Generate Hindi PDF component
             const PdfComponent = (
                 <LetterPDFDocument
                     headerInfo={headerInfo}
                     letterInfo={letterInfo}
                     tableColumns={tableColumns}
                     tableData={tableData}
+                    logoSrc={rbpLogoBase64}
                 />
             );
 
-            // 🔥 STEP 4: generate PDF blob
+            // 🔥 STEP 2: Generate PDF blob
             const pdfBlob = await pdf(PdfComponent).toBlob();
 
-            // 🔥 STEP 5: Upload to Supabase Storage (vendor_tracker bucket)
-            const fileName = `AdminLetter_${complaintId}_${Date.now()}.pdf`;
+            // 🔥 STEP 3: Upload to Supabase Storage (vendor_tracker bucket)
+            const fileName = `AdminLetter_${complaintId || Date.now()}_${Date.now()}.pdf`;
             const { error: uploadError } = await supabase.storage
                 .from("vendor_tracker")
                 .upload(fileName, pdfBlob, { contentType: "application/pdf", upsert: true });
@@ -726,18 +821,23 @@ const AdminLetter = () => {
             const pdfUrl = urlData.publicUrl;
             console.log("✅ PDF uploaded to Supabase Storage:", pdfUrl);
 
-            // 🔥 STEP 6: Update FMS table in Supabase (non-blocking if fails)
+            const currentDate = new Date().toISOString().split('T')[0];
+            const cleanEmail = (emailAddress || selectedEmail || "").trim();
+            const cleanWhatsapp = (whatsappNumber || "").trim();
+
+            // 🔥 STEP 4: Update FMS table in Supabase
+            // (setting actual1 & planned1 so this letter immediately belongs in History)
             try {
-                const currentDate = new Date().toISOString().split('T')[0];
                 const updatePayload = {
                     pdf: pdfUrl,
                     company: headerInfo.companyName,
                     company_name: headerInfo.companyName,
-                    email: emailAddress || selectedEmail,
-                    actual1: currentDate
+                    email: cleanEmail || null,
+                    actual1: currentDate,
+                    planned1: taskData?.columnV || currentDate
                 };
-                if (whatsappNumber) {
-                    updatePayload.assignee_whatsapp_number = whatsappNumber;
+                if (cleanWhatsapp) {
+                    updatePayload.assignee_whatsapp_number = cleanWhatsapp;
                 }
 
                 const { error: updateError } = await supabase
@@ -746,19 +846,118 @@ const AdminLetter = () => {
                     .eq("complaint_id", complaintId);
 
                 if (updateError) {
-                    console.warn("FMS update failed (non-critical):", updateError.message);
-                    alert(`Letter PDF generated successfully!\n\nPDF Link: ${pdfUrl}\n\n(Note: FMS auto-update failed.)`);
-                } else {
-                    alert("Letter PDF generated and saved successfully!");
+                    console.warn("FMS update warning:", updateError.message);
+                }
+
+                // If multiple tasks/complaints were selected in letter, update all of them
+                if (location.state?.tasks && location.state.tasks.length > 1) {
+                    const extraIds = location.state.tasks.map(t => t.complaintId).filter(Boolean);
+                    if (extraIds.length > 0) {
+                        await supabase.from("FMS").update(updatePayload).in("complaint_id", extraIds);
+                    }
                 }
             } catch (updateErr) {
-                console.warn("FMS save error (non-critical):", updateErr);
-                alert(`Letter PDF generated successfully!\n\nPDF Link: ${pdfUrl}`);
+                console.warn("FMS save error:", updateErr);
             }
+
+            // 🔥 STEP 5: Send WhatsApp Notification (Meta Cloud API)
+            let waStatus = { attempted: false, success: false, note: "" };
+            if (cleanWhatsapp) {
+                waStatus.attempted = true;
+                try {
+                    console.log("[WhatsApp] Sending to:", cleanWhatsapp);
+                    const { data: waData, error: waError } = await supabase.functions.invoke(
+                        "send-whatsapp-vendor-letter",
+                        {
+                            body: {
+                                whatsappNumber: cleanWhatsapp,
+                                vendorName: headerInfo.companyName,
+                                letterNo: letterInfo.letterNo,
+                                complaintId: complaintId || taskData?.complaintId || "",
+                                beneficiaryName: taskData?.beneficiaryName || "Beneficiary",
+                                pdfUrl: pdfUrl,
+                                date: letterInfo.date,
+                                subject: letterInfo.subject
+                            }
+                        }
+                    );
+
+                    if (!waError && (waData?.success || waData?.result)) {
+                        waStatus.success = true;
+                        console.log("[WhatsApp] Sent via Edge Function:", waData);
+                    } else {
+                        console.warn("[WhatsApp] Edge function unready, using direct Meta API fallback...");
+                        const directWa = await sendDirectMetaWhatsApp({
+                            whatsappNumber: cleanWhatsapp,
+                            vendorName: headerInfo.companyName,
+                            letterNo: letterInfo.letterNo,
+                            complaintId: complaintId || taskData?.complaintId || "",
+                            beneficiaryName: taskData?.beneficiaryName || "Beneficiary",
+                            pdfUrl: pdfUrl,
+                            date: letterInfo.date
+                        });
+                        waStatus.success = directWa.success;
+                        if (!directWa.success) {
+                            waStatus.note = directWa.error?.message || "Meta template approval needed";
+                        }
+                    }
+                } catch (waErr) {
+                    console.warn("[WhatsApp] Send error:", waErr);
+                    waStatus.note = waErr.message;
+                }
+            }
+
+            // 🔥 STEP 6: Send Email Notification (EmailJS)
+            let emailStatus = { attempted: false, success: false, note: "" };
+            if (cleanEmail) {
+                emailStatus.attempted = true;
+                try {
+                    console.log("[EmailJS] Sending to:", cleanEmail);
+                    const emailResult = await sendEmailViaEmailJS({
+                        to_email: cleanEmail,
+                        to_name: headerInfo.companyName || "Vendor",
+                        company_name: headerInfo.companyName,
+                        letter_no: letterInfo.letterNo,
+                        complaint_id: complaintId || taskData?.complaintId || "",
+                        subject: letterInfo.subject,
+                        pdf_url: pdfUrl,
+                        date: letterInfo.date,
+                        officer_name: letterInfo.officerName || "District Incharge",
+                        department: letterInfo.department || "CREDA",
+                        district: taskData?.district || "Kondagaon",
+                        beneficiary_name: taskData?.beneficiaryName || "Beneficiary"
+                    });
+
+                    emailStatus.success = emailResult.success;
+                    if (!emailResult.success) {
+                        emailStatus.note = emailResult.error || "Verify EmailJS configuration";
+                    }
+                } catch (emailErr) {
+                    console.warn("[EmailJS] Send error:", emailErr);
+                    emailStatus.note = emailErr.message;
+                }
+            }
+
+            // User notification feedback
+            let feedback = `✅ Letter PDF generated and saved successfully!\n\n📄 PDF Link: ${pdfUrl}`;
+            if (waStatus.attempted) {
+                feedback += waStatus.success
+                    ? `\n\n🟢 WhatsApp: Message sent successfully to +91 ${cleanWhatsapp}`
+                    : `\n\n🟡 WhatsApp: Queued (${waStatus.note || "Verify Meta template approval"})`;
+            }
+            if (emailStatus.attempted) {
+                feedback += emailStatus.success
+                    ? `\n\n🟢 Email: Sent successfully via EmailJS to ${cleanEmail}`
+                    : `\n\n🟡 Email: Queued (${emailStatus.note || "Add EmailJS Template ID in .env"})`;
+            }
+
+            alert(feedback);
 
             setIsSavingPDF(false);
             setIsSaveModalOpen(false);
-            navigate(-1);
+
+            // Navigate directly to History tab in Assign to Vendor Letter
+            navigate("/dashboard/assign-vendor-letter", { state: { tab: "history" } });
 
         } catch (error) {
             console.error("Error saving PDF:", error);
@@ -777,6 +976,7 @@ const AdminLetter = () => {
                     letterInfo={letterInfo}
                     tableColumns={tableColumns}
                     tableData={tableData}
+                    logoSrc={rbpLogoBase64}
                 />
             );
 
@@ -995,7 +1195,7 @@ const AdminLetter = () => {
                                 <span>दिनांक</span>
                                 <input
                                     type="text"
-                                    value={letterInfo.date}
+                                    value={letterInfo.date ? (typeof letterInfo.date === 'string' && letterInfo.date.includes('T') ? formatDateDot(letterInfo.date) : letterInfo.date) : ""}
                                     onChange={(e) => handleLetterEdit("date", e.target.value)}
                                     className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold w-32 text-sm"
                                 />
@@ -1042,7 +1242,7 @@ const AdminLetter = () => {
                                         <textarea
                                             className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none align-top pt-0"
                                             rows="2"
-                                            value={ref}
+                                            value={cleanTextDates(ref) || ""}
                                             onChange={(e) => {
                                                 const newRefs = [...letterInfo.reference];
                                                 newRefs[idx] = e.target.value;
@@ -1117,7 +1317,7 @@ const AdminLetter = () => {
                                                 <td key={colIndex} className="border-r border-black p-2 text-center text-sm last:border-r-0">
                                                     <input
                                                         type="text"
-                                                        value={row[col] || ""}
+                                                        value={row[col] ? (typeof row[col] === 'string' && row[col].includes('T') && !isNaN(Date.parse(row[col])) ? formatDateDot(row[col]) : row[col]) : ""}
                                                         onChange={(e) => handleTableEdit(rowIndex, col, e.target.value)}
                                                         className="w-full text-center focus:outline-none border-none bg-transparent font-semibold"
                                                     />
@@ -1210,7 +1410,7 @@ const AdminLetter = () => {
                         </div>
                     </div>
                     {/* Dynamic Footer Section */}
-                    {(headerInfo.companyName.toLowerCase().includes("suraj") || headerInfo.companyName.toLowerCase().includes("tanay")) ? null : (
+                    {(headerInfo.companyName.toLowerCase().includes("suraj") || headerInfo.companyName.toLowerCase().includes("tanay") || (headerInfo.companyName || "").toUpperCase().includes("RBP")) ? null : (
                         <div id="letter-footer" className="mt-20 border-t border-black pt-4 text-center text-[10px] leading-tight">
                             {headerInfo.companyName.includes("RBP") ? (
                                 <div className="space-y-1">
@@ -1461,10 +1661,10 @@ const AdminLetter = () => {
                             </div>
 
                             {/* Information Note */}
-                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
-                                <span className="text-amber-600 text-xs mt-0.5">ℹ️</span>
-                                <p className="text-xs text-amber-800 leading-relaxed">
-                                    <strong className="font-semibold">नोट:</strong> वर्तमान में WhatsApp व Email इंटीग्रेशन केवल UI प्रीव्यू है। सहेजने पर यह विवरण सुरक्षित हो जाएगा।
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-start gap-2">
+                                <span className="text-emerald-600 text-xs mt-0.5">🚀</span>
+                                <p className="text-xs text-emerald-800 leading-relaxed">
+                                    <strong className="font-semibold">लाइव इंटीग्रेशन:</strong> "Save Letter" पर क्लिक करते ही लेटर PDF स्वतः WhatsApp (Meta Cloud API) एवं Email (EmailJS) पर भेजा जाएगा, तथा कार्य History टैब में दर्ज हो जाएगा।
                                 </p>
                             </div>
                         </div>

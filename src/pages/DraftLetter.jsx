@@ -756,7 +756,7 @@ function DraftLetter() {
                 {/* Header with Title and Top Right Export Buttons */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Draft Letter</h1>
+                        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Draft Letter(technician)</h1>
                         <p className="text-sm text-gray-500 mt-0.5">Manage pending and historical draft letter complaints</p>
                     </div>
 
