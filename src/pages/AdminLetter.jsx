@@ -266,23 +266,33 @@ const AdminLetter = () => {
 
     // Letter Content State (Dynamic)
     const [letterInfo, setLetterInfo] = useState({
+        letterNoLabel: "पत्र क्र.",
         letterNo: `SSY/2025/${Math.floor(Math.random() * 900) + 100}`,
+        dateLabel: "दिनांक",
         date: formatDateDot(new Date()),
+        recipientLabel: "प्रति,",
+        officerName: "जिला प्रभारी,",
+        department: "छत्तीसगढ़ राज्य अक्षय ऊर्जा विकास अभिकरण (क्रेडा)",
+        districtOffice: "जिला कार्यालय, कोण्डागांव (छ०ग०)",
+        subjectLabel: "विषय:-",
         subject: "जिला कोण्डागांव में सौर सुजला योजनांतर्गत स्थापित सिंचाई सोलर पंप के संबंध में ।",
+        referenceLabel: "संदर्भ:-",
         reference: [
             "पत्र क्र. 2386/क्रेडा/जि.का./SSY/O&M/F-04/2024-25 कोण्डागांव, दिनांक 06.11.2025,",
             "जिला कार्यालय कोण्डागांव का पत्र क्रमांक / दिनांक 2067 / 26.09.2025, 2282 / 29.10.2025, 2112 / 29.09.2025 |"
         ],
-        officerName: "जिला प्रभारी,",
-        department: "छत्तीसगढ़ राज्य अक्षय ऊर्जा विकास अभिकरण (क्रेडा)",
-        districtOffice: "जिला कार्यालय, कोण्डागांव (छ०ग०)",
         salutation: "महोदय,",
         introParagraph: "उपरोक्त विषयांतर्गत लेख है कि, जिला कोण्डागांव अंतर्गत हमारे द्वारा विभिन्न स्थलों में सोलर पंपों स्थापित किया गया है। जिसकी अकार्य शीलता की सूचना हमें आपके संदर्भित पत्र के माध्यम से प्राप्त हुआ। जिसका विवरण निम्नानुसार है-",
         closingParagraph: "उपरोक्त साईट के संयंत्र का सुधार कार्य हमारे द्वारा कर दिया गया है, तथा संयंत्र वर्तमान में कार्य शील है। इस पत्र के साथ साईट की संपुष्टि पत्र संलग्न है। पत्र आपकी ओर सादर सूचनार्थ हेतु प्रेषित।",
         thankYou: "सधन्यवाद !",
-        regards: "भवदीय",
+        regards: "भवदीय,",
         forCompany: "वास्ते, तनय विद्युत (ई०) प्रा.लि.",
+        signerName: "अंजली यादव",
         designation: "अधिकृत हस्ताक्षरकर्ता",
+        enclosureLabel: "संलग्न :-",
+        enclosure: "हमारे पूर्व पत्र की छायाप्रति।",
+        enclosures: ["हमारे पूर्व पत्र की छायाप्रति।"],
+        copiesToLabel: "प्रतिलिपि:—",
         copiesTo: [
             "कार्यपालन अभियंता महोदय, (RE-05) क्रेडा प्रधान कार्यालय, रायपुर को सादर सूचनार्थ प्रेषित।",
             "कार्यपालन अभियंता महोदय,क्रेडा जोनल कार्यालय, जगदलपुर को सादर सूचनार्थ प्रेषित।"
@@ -322,6 +332,7 @@ const AdminLetter = () => {
                 letterNo: updatedLetterNo,
                 forCompany: profile.forCompany || `वास्ते, ${profile.name}`,
                 designation: profile.designation || prev.designation || "अधिकृत हस्ताक्षरकर्ता",
+                signerName: prev.signerName || "अंजली यादव",
                 companyDetails: {
                     phone: profile.phone,
                     email: profile.email,
@@ -1183,7 +1194,13 @@ const AdminLetter = () => {
                     <div className="space-y-6 text-base text-gray-800 leading-relaxed font-serif">
                         <div className="flex justify-between items-start mb-4">
                             <div className="flex gap-2 items-center">
-                                <span>पत्र क्र.</span>
+                                <input
+                                    type="text"
+                                    value={letterInfo.letterNoLabel ?? "पत्र क्र."}
+                                    onChange={(e) => handleLetterEdit("letterNoLabel", e.target.value)}
+                                    className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold w-20 text-sm"
+                                    title="पत्र क्रमांक शीर्षक संपादित करें"
+                                />
                                 <input
                                     type="text"
                                     value={letterInfo.letterNo}
@@ -1192,7 +1209,13 @@ const AdminLetter = () => {
                                 />
                             </div>
                             <div className="flex gap-2 items-center">
-                                <span>दिनांक</span>
+                                <input
+                                    type="text"
+                                    value={letterInfo.dateLabel ?? "दिनांक"}
+                                    onChange={(e) => handleLetterEdit("dateLabel", e.target.value)}
+                                    className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold w-16 text-sm text-right"
+                                    title="दिनांक शीर्षक संपादित करें"
+                                />
                                 <input
                                     type="text"
                                     value={letterInfo.date ? (typeof letterInfo.date === 'string' && letterInfo.date.includes('T') ? formatDateDot(letterInfo.date) : letterInfo.date) : ""}
@@ -1203,7 +1226,13 @@ const AdminLetter = () => {
                         </div>
 
                         <div className="mt-4">
-                            <p className="font-bold">प्रति,</p>
+                            <input
+                                type="text"
+                                value={letterInfo.recipientLabel ?? "प्रति,"}
+                                onChange={(e) => handleLetterEdit("recipientLabel", e.target.value)}
+                                className="font-bold border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent w-24 text-base"
+                                title="प्रति शीर्षक संपादित करें"
+                            />
                             <div className="pl-12 space-y-1">
                                 <input
                                     className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-semibold"
@@ -1224,7 +1253,13 @@ const AdminLetter = () => {
                         </div>
 
                         <div className="mt-6 flex gap-2">
-                            <span className="font-bold whitespace-nowrap min-w-[60px]">विषय:-</span>
+                            <input
+                                type="text"
+                                value={letterInfo.subjectLabel ?? "विषय:-"}
+                                onChange={(e) => handleLetterEdit("subjectLabel", e.target.value)}
+                                className="font-bold whitespace-nowrap border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent w-20 self-start text-base"
+                                title="विषय शीर्षक संपादित करें"
+                            />
                             <textarea
                                 className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none font-bold align-top pt-0"
                                 rows="2"
@@ -1234,11 +1269,17 @@ const AdminLetter = () => {
                         </div>
 
                         <div className="mt-4 flex gap-2">
-                            <span className="font-bold whitespace-nowrap min-w-[60px]">संदर्भ:-</span>
+                            <input
+                                type="text"
+                                value={letterInfo.referenceLabel ?? "संदर्भ:-"}
+                                onChange={(e) => handleLetterEdit("referenceLabel", e.target.value)}
+                                className="font-bold whitespace-nowrap border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent w-20 self-start text-base"
+                                title="संदर्भ शीर्षक संपादित करें"
+                            />
                             <div className="w-full space-y-2">
                                 {letterInfo.reference?.map((ref, idx) => (
-                                    <div key={idx} className="flex gap-2">
-                                        <span className="min-w-[20px]">{idx + 1})</span>
+                                    <div key={idx} className="flex gap-2 items-start group">
+                                        <span className="min-w-[20px] pt-0.5">{idx + 1}.</span>
                                         <textarea
                                             className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent h-auto resize-none align-top pt-0"
                                             rows="2"
@@ -1249,8 +1290,28 @@ const AdminLetter = () => {
                                                 handleLetterEdit("reference", newRefs);
                                             }}
                                         />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const newRefs = letterInfo.reference.filter((_, i) => i !== idx);
+                                                handleLetterEdit("reference", newRefs);
+                                            }}
+                                            className="text-red-400 hover:text-red-600 no-print opacity-0 group-hover:opacity-100 transition-opacity p-1 cursor-pointer"
+                                            title="संदर्भ हटाएं"
+                                        >
+                                            <Trash2 size={15} />
+                                        </button>
                                     </div>
                                 ))}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        handleLetterEdit("reference", [...(letterInfo.reference || []), ""]);
+                                    }}
+                                    className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 no-print mt-1 cursor-pointer"
+                                >
+                                    <Plus size={14} /> संदर्भ जोड़ें (Add Reference)
+                                </button>
                             </div>
                         </div>
 
@@ -1272,41 +1333,79 @@ const AdminLetter = () => {
                         </div>
 
                         {/* Dynamic Table */}
-                        <div className="my-8 overflow-hidden rounded-md border border-black relative">
+                        <div className="my-8 overflow-x-auto rounded-md border border-black relative">
                             <table className="w-full border-collapse">
                                 <thead>
                                     <tr className="bg-gray-50 border-b border-black">
                                         {tableColumns.map((col, idx) => (
-                                            <th key={idx} className="border-r border-black p-2 text-center text-sm font-bold last:border-r-0">
-                                                <input
-                                                    type="text"
-                                                    value={col}
-                                                    onChange={(e) => {
-                                                        const oldName = col;
-                                                        const newName = e.target.value;
-                                                        const newCols = [...tableColumns];
-                                                        newCols[idx] = newName;
-                                                        setTableColumns(newCols);
-                                                        setTableData(tableData.map(row => {
-                                                            const newRow = { ...row };
-                                                            newRow[newName] = row[oldName];
-                                                            if (newName !== oldName) delete newRow[oldName];
-                                                            return newRow;
-                                                        }));
-                                                    }}
-                                                    className="w-full text-center focus:outline-none border-none bg-transparent font-bold"
-                                                />
+                                            <th key={idx} className="border-r border-black p-2 text-center text-sm font-bold last:border-r-0 relative group">
+                                                <div className="flex items-center justify-center">
+                                                    <input
+                                                        type="text"
+                                                        value={col}
+                                                        onChange={(e) => {
+                                                            const oldName = col;
+                                                            const newName = e.target.value;
+                                                            const newCols = [...tableColumns];
+                                                            newCols[idx] = newName;
+                                                            setTableColumns(newCols);
+                                                            setTableData(tableData.map(row => {
+                                                                const newRow = { ...row };
+                                                                newRow[newName] = row[oldName];
+                                                                if (newName !== oldName) delete newRow[oldName];
+                                                                return newRow;
+                                                            }));
+                                                        }}
+                                                        className="w-full text-center focus:outline-none border-none bg-transparent font-bold text-xs"
+                                                    />
+                                                    {tableColumns.length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const colToRemove = col;
+                                                                setTableColumns(tableColumns.filter((_, i) => i !== idx));
+                                                                setTableData(tableData.map(row => {
+                                                                    const newRow = { ...row };
+                                                                    delete newRow[colToRemove];
+                                                                    return newRow;
+                                                                }));
+                                                            }}
+                                                            className="text-red-400 hover:text-red-600 no-print opacity-0 group-hover:opacity-100 transition-opacity ml-1 p-0.5 cursor-pointer"
+                                                            title="कॉलम हटाएं (Remove Column)"
+                                                        >
+                                                            <X size={12} />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </th>
                                         ))}
-                                        {/* Action Header Column for Add Row */}
-                                        <th className="p-2 text-center text-sm font-bold bg-gray-100 no-print w-10 border-l border-black">
-                                            <button
-                                                onClick={addRow}
-                                                className="text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
-                                                title="Add Row"
-                                            >
-                                                <SquarePlus size={20} />
-                                            </button>
+                                        {/* Action Header Column for Add Row and Add Column */}
+                                        <th className="p-2 text-center text-sm font-bold bg-gray-100 no-print w-16 border-l border-black">
+                                            <div className="flex items-center justify-center gap-1">
+                                                <button
+                                                    onClick={addRow}
+                                                    className="text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
+                                                    title="पंक्ति जोड़ें (Add Row)"
+                                                >
+                                                    <SquarePlus size={18} />
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        const colName = prompt("नया कॉलम नाम दर्ज करें (Enter column name):");
+                                                        if (colName && colName.trim()) {
+                                                            const trimmed = colName.trim();
+                                                            if (!tableColumns.includes(trimmed)) {
+                                                                setTableColumns([...tableColumns, trimmed]);
+                                                                setTableData(tableData.map(r => ({ ...r, [trimmed]: "" })));
+                                                            }
+                                                        }
+                                                    }}
+                                                    className="text-emerald-600 hover:text-emerald-800 transition-colors cursor-pointer text-xs font-bold px-1 py-0.5 border border-emerald-400 rounded bg-emerald-50"
+                                                    title="कॉलम जोड़ें (Add Column)"
+                                                >
+                                                    +Col
+                                                </button>
+                                            </div>
                                         </th>
                                     </tr>
                                 </thead>
@@ -1319,16 +1418,16 @@ const AdminLetter = () => {
                                                         type="text"
                                                         value={row[col] ? (typeof row[col] === 'string' && row[col].includes('T') && !isNaN(Date.parse(row[col])) ? formatDateDot(row[col]) : row[col]) : ""}
                                                         onChange={(e) => handleTableEdit(rowIndex, col, e.target.value)}
-                                                        className="w-full text-center focus:outline-none border-none bg-transparent font-semibold"
+                                                        className="w-full text-center focus:outline-none border-none bg-transparent font-semibold text-xs"
                                                     />
                                                 </td>
                                             ))}
                                             {/* Action Column for Delete Row */}
-                                            <td className="p-2 text-center text-sm no-print border-l border-black bg-gray-50/50 w-10">
+                                            <td className="p-2 text-center text-sm no-print border-l border-black bg-gray-50/50 w-16">
                                                 <button
                                                     onClick={() => removeRow(rowIndex)}
                                                     className="text-red-400 hover:text-red-600 transition-colors cursor-pointer"
-                                                    title="Remove Row"
+                                                    title="पंक्ति हटाएं (Remove Row)"
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>
@@ -1372,31 +1471,101 @@ const AdminLetter = () => {
                         <div className="mt-12 flex flex-col items-start space-y-1">
                             <input
                                 className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-40"
-                                value={letterInfo.regards || "भवदीय"}
+                                value={letterInfo.regards || "भवदीय,"}
                                 onChange={(e) => handleLetterEdit("regards", e.target.value)}
                             />
-                            <div className="h-10"></div> {/* Space for signature */}
                             <input
                                 className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-80"
                                 value={letterInfo.forCompany || (headerInfo.companyName ? `वास्ते, ${headerInfo.companyName}` : "वास्ते, तनय विद्युत (ई०) प्रा.लि.")}
                                 onChange={(e) => handleLetterEdit("forCompany", e.target.value)}
                             />
+                            <div className="h-8"></div> {/* Space for signature */}
+                            <input
+                                className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-64 text-base"
+                                placeholder="हस्ताक्षरकर्ता का नाम (Signer Name)"
+                                value={letterInfo.signerName !== undefined ? letterInfo.signerName : "अंजली यादव"}
+                                onChange={(e) => handleLetterEdit("signerName", e.target.value)}
+                                title="हस्ताक्षरकर्ता का नाम संपादित करें"
+                            />
                             <input
                                 className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-64"
                                 value={letterInfo.designation || "अधिकृत हस्ताक्षरकर्ता"}
                                 onChange={(e) => handleLetterEdit("designation", e.target.value)}
+                                title="पद संपादित करें"
                             />
                         </div>
 
+                        {/* Enclosure Section (संलग्न) */}
+                        <div className="mt-8 flex gap-2 items-start">
+                            <input
+                                type="text"
+                                value={letterInfo.enclosureLabel ?? "संलग्न :-"}
+                                onChange={(e) => handleLetterEdit("enclosureLabel", e.target.value)}
+                                className="font-bold whitespace-nowrap border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent w-24 self-start"
+                                title="संलग्न शीर्षक संपादित करें"
+                            />
+                            <div className="w-full space-y-1">
+                                {(Array.isArray(letterInfo.enclosures) ? letterInfo.enclosures : (letterInfo.enclosure ? [letterInfo.enclosure] : ["हमारे पूर्व पत्र की छायाप्रति।"])).map((enc, idx, arr) => (
+                                    <div key={idx} className="flex gap-2 items-center group">
+                                        {arr.length > 1 && <span className="min-w-[16px] text-sm">{idx + 1}.</span>}
+                                        <input
+                                            type="text"
+                                            className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent text-sm font-medium"
+                                            value={enc}
+                                            placeholder="संलग्न विवरण दर्ज करें"
+                                            onChange={(e) => {
+                                                const newEncs = [...arr];
+                                                newEncs[idx] = e.target.value;
+                                                handleLetterEdit("enclosures", newEncs);
+                                                handleLetterEdit("enclosure", newEncs.join(", "));
+                                            }}
+                                        />
+                                        {arr.length > 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const newEncs = arr.filter((_, i) => i !== idx);
+                                                    handleLetterEdit("enclosures", newEncs);
+                                                    handleLetterEdit("enclosure", newEncs.join(", "));
+                                                }}
+                                                className="text-red-400 hover:text-red-600 no-print opacity-0 group-hover:opacity-100 transition-opacity p-1 cursor-pointer"
+                                                title="संलग्नक हटाएं"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const current = Array.isArray(letterInfo.enclosures) ? letterInfo.enclosures : (letterInfo.enclosure ? [letterInfo.enclosure] : ["हमारे पूर्व पत्र की छायाप्रति।"]);
+                                        const updated = [...current, ""];
+                                        handleLetterEdit("enclosures", updated);
+                                        handleLetterEdit("enclosure", updated.join(", "));
+                                    }}
+                                    className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 no-print mt-1 cursor-pointer"
+                                >
+                                    <Plus size={14} /> संलग्नक जोड़ें (Add Enclosure)
+                                </button>
+                            </div>
+                        </div>
+
                         {/* CC Section */}
-                        <div className="mt-10 text-sm space-y-2 italic">
-                            <p className="font-bold">प्रतिलिपि:—</p>
+                        <div className="mt-8 text-sm space-y-2">
+                            <input
+                                type="text"
+                                value={letterInfo.copiesToLabel ?? "प्रतिलिपि:—"}
+                                onChange={(e) => handleLetterEdit("copiesToLabel", e.target.value)}
+                                className="font-bold border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent w-28 text-sm"
+                                title="प्रतिलिपि शीर्षक संपादित करें"
+                            />
                             <div className="pl-0 space-y-1">
                                 {letterInfo.copiesTo?.map((copy, idx) => (
-                                    <div key={idx} className="flex gap-2">
-                                        <span className="min-w-[20px]">{idx + 1})</span>
+                                    <div key={idx} className="flex gap-2 items-center group">
+                                        <span className="min-w-[20px] text-sm">{idx + 1}.</span>
                                         <input
-                                            className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent"
+                                            className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent text-sm"
                                             value={copy}
                                             onChange={(e) => {
                                                 const newCopies = [...letterInfo.copiesTo];
@@ -1404,8 +1573,28 @@ const AdminLetter = () => {
                                                 handleLetterEdit("copiesTo", newCopies);
                                             }}
                                         />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const newCopies = letterInfo.copiesTo.filter((_, i) => i !== idx);
+                                                handleLetterEdit("copiesTo", newCopies);
+                                            }}
+                                            className="text-red-400 hover:text-red-600 no-print opacity-0 group-hover:opacity-100 transition-opacity p-1 cursor-pointer"
+                                            title="प्रतिलिपि हटाएं"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
                                     </div>
                                 ))}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        handleLetterEdit("copiesTo", [...(letterInfo.copiesTo || []), ""]);
+                                    }}
+                                    className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 no-print mt-1 cursor-pointer"
+                                >
+                                    <Plus size={14} /> प्रतिलिपि जोड़ें (Add CC)
+                                </button>
                             </div>
                         </div>
                     </div>

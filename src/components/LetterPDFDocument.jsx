@@ -424,24 +424,38 @@ const formatCellValue = (val) => {
 };
 
 const getColumnFlex = (col, isLast) => {
-    const name = String(col).trim();
+    const name = String(col || "").trim().toUpperCase();
     let flex = 1;
-    if (name === "क्र." || name === "क्र" || name === "#" || name === "S.No" || name === "Sr.") {
-        flex = 0.35;
-    } else if (name.includes("आई. डी.") || name.includes("ID") || name.includes("संख्या")) {
-        flex = 0.8;
+    if (name === "क्र." || name === "क्र" || name === "#" || name === "S.NO" || name === "S.NO." || name === "S. NO." || name === "SR.") {
+        flex = 0.45;
+    } else if (name.includes("आई. डी.") || name === "ID" || name.includes("संख्या")) {
+        flex = 0.7;
     } else if (name.includes("समाधान") || name.includes("शिकायत क्र.")) {
         flex = 1.0;
-    } else if (name.includes("हितग्राही") || name.includes("लाभार्थी") || (name.includes("नाम") && !name.includes("साइट"))) {
+    } else if (name.includes("हितग्राही") || name.includes("लाभार्थी") || (name.includes("नाम") && !name.includes("साइट") && !name.includes("VILLAGE"))) {
+        flex = 1.5;
+    } else if (name.includes("VILLAGE") || name.includes("ग्राम")) {
+        flex = 1.1;
+    } else if (name.includes("PARA") || name.includes("पारा")) {
         flex = 1.6;
-    } else if (name.includes("ग्राम") || name.includes("विकासखण्ड") || name.includes("साइट") || name.includes("जिला")) {
-        flex = 1.4;
-    } else if (name.includes("दिनांक") || name.includes("Date")) {
-        flex = 0.95;
-    } else if (name.includes("रिमार्क") || name.includes("विवरण") || name.includes("स्थिति")) {
-        flex = 1.4;
-    } else if (name.includes("रेटिंग") || name.includes("प्रोजेक्ट")) {
-        flex = 0.85;
+    } else if (name.includes("BLOCK") || name.includes("विकासखण्ड")) {
+        flex = 1.0;
+    } else if (name.includes("CAPACITY") || name.includes("रेटिंग") || name.includes("प्रोजेक्ट")) {
+        flex = 0.9;
+    } else if (name.includes("SITE OK") || name.includes("स्थिति") || name.includes("OK/NOT OK")) {
+        flex = 1.0;
+    } else if (name.includes("REMARK") || name.includes("रिमार्क") || name.includes("विवरण")) {
+        flex = 1.2;
+    } else if (name.includes("W.O.") || name === "W.O" || name.includes("W.O")) {
+        if (name.includes("DATE") || name.includes("दिनांक")) {
+            flex = 0.85;
+        } else {
+            flex = 0.75;
+        }
+    } else if (name.includes("दिनांक") || name.includes("DATE")) {
+        flex = 0.9;
+    } else if (name.includes("साइट") || name.includes("जिला")) {
+        flex = 1.2;
     }
 
     return {
@@ -564,40 +578,42 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData, lo
                 {/* ===== LETTER NO & DATE ===== */}
                 <View style={styles.letterInfoRow}>
                     <Text style={styles.letterInfoText}>
-                        पत्र क्र. {cleanTextDates(letterInfo.letterNo || "")}
+                        {(letterInfo.letterNoLabel || "पत्र क्र.")} {cleanTextDates(letterInfo.letterNo || "")}
                     </Text>
                     <Text style={styles.letterInfoText}>
-                        दिनांक {formatDateDot(letterInfo.date) || ""}
+                        {(letterInfo.dateLabel || "दिनांक")} {formatDateDot(letterInfo.date) || ""}
                     </Text>
                 </View>
 
                 {/* ===== RECIPIENT ===== */}
                 <View style={styles.recipientBlock}>
-                    <Text style={styles.recipientLabel}>प्रति,</Text>
+                    <Text style={styles.recipientLabel}>{letterInfo.recipientLabel || "प्रति,"}</Text>
                     <View style={styles.recipientIndented}>
-                        <Text>{letterInfo.officerName || ""}</Text>
-                        <Text>{letterInfo.department || ""}</Text>
-                        <Text>{letterInfo.districtOffice || ""}</Text>
+                        {letterInfo.officerName ? <Text>{letterInfo.officerName}</Text> : null}
+                        {letterInfo.department ? <Text>{letterInfo.department}</Text> : null}
+                        {letterInfo.districtOffice ? <Text>{letterInfo.districtOffice}</Text> : null}
                     </View>
                 </View>
 
                 {/* ===== SUBJECT ===== */}
                 <View style={styles.sectionBlock}>
                     <Text style={styles.bodyText}>
-                        <Text style={styles.labelBold}>विषय:- </Text>
+                        <Text style={styles.labelBold}>{(letterInfo.subjectLabel || "विषय:-")} </Text>
                         {cleanTextDates(letterInfo.subject || "")}
                     </Text>
                 </View>
 
                 {/* ===== REFERENCE ===== */}
-                <View style={styles.sectionBlock}>
-                    <Text style={styles.labelBold}>संदर्भ:-</Text>
-                    {(letterInfo.reference || []).map((ref, idx) => (
-                        <Text key={idx} style={styles.referenceItem}>
-                            {idx + 1}. {cleanTextDates(ref)}
-                        </Text>
-                    ))}
-                </View>
+                {letterInfo.reference && letterInfo.reference.length > 0 && (
+                    <View style={styles.sectionBlock}>
+                        <Text style={styles.labelBold}>{letterInfo.referenceLabel || "संदर्भ:-"}</Text>
+                        {letterInfo.reference.map((ref, idx) => (
+                            <Text key={idx} style={styles.referenceItem}>
+                                {idx + 1}. {cleanTextDates(ref)}
+                            </Text>
+                        ))}
+                    </View>
+                )}
 
                 {/* ===== SALUTATION & INTRO ===== */}
                 <View style={styles.sectionBlock}>
@@ -621,7 +637,8 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData, lo
                                         idx === tableColumns.length - 1
                                             ? styles.tableHeaderCellLast
                                             : styles.tableHeaderCell,
-                                        getColumnFlex(col, idx === tableColumns.length - 1)
+                                        getColumnFlex(col, idx === tableColumns.length - 1),
+                                        tableColumns.length >= 8 ? { fontSize: 6.5, padding: 2.5 } : null
                                     ]}
                                 >
                                     {col}
@@ -646,7 +663,8 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData, lo
                                             colIdx === tableColumns.length - 1
                                                 ? styles.tableCellLast
                                                 : styles.tableCell,
-                                            getColumnFlex(col, colIdx === tableColumns.length - 1)
+                                            getColumnFlex(col, colIdx === tableColumns.length - 1),
+                                            tableColumns.length >= 8 ? { fontSize: 6.5, padding: 2.5 } : null
                                         ]}
                                     >
                                         {formatCellValue(row[col])}
@@ -677,25 +695,61 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData, lo
                 {/* ===== SIGNATURE ===== */}
                 <View style={styles.signatureBlock}>
                     <Text style={styles.signatureText}>
-                        {letterInfo.regards || ""}
+                        {letterInfo.regards || "भवदीय,"}
                     </Text>
-                    <Text style={[styles.signatureText, { marginTop: 22 }]}>
+                    <Text style={[styles.signatureText, { marginTop: 2 }]}>
                         {letterInfo.forCompany || ""}
                     </Text>
+                    <View style={{ height: 18 }} />
+                    {letterInfo.signerName ? (
+                        <Text style={styles.signatureText}>
+                            {letterInfo.signerName}
+                        </Text>
+                    ) : null}
                     <Text style={styles.signatureText}>
-                        {letterInfo.designation || ""}
+                        {letterInfo.designation || "अधिकृत हस्ताक्षरकर्ता"}
                     </Text>
                 </View>
 
-                {/* ===== COPIES TO ===== */}
-                <View style={styles.copiesBlock}>
-                    <Text style={styles.copiesLabel}>प्रतिलिपि:—</Text>
-                    {(letterInfo.copiesTo || []).map((copy, idx) => (
-                        <Text key={idx} style={styles.copyItem}>
-                            {idx + 1}. {cleanTextDates(copy)}
+                {/* ===== ENCLOSURE (संलग्न) ===== */}
+                {(letterInfo.enclosure || (letterInfo.enclosures && letterInfo.enclosures.length > 0)) && (
+                    <View style={[styles.sectionBlock, { marginTop: 8, flexDirection: "row", alignItems: "flex-start" }]}>
+                        <Text style={[styles.labelBold, { marginRight: 4 }]}>
+                            {letterInfo.enclosureLabel || "संलग्न :-"}
                         </Text>
-                    ))}
-                </View>
+                        <View style={{ flex: 1 }}>
+                            {Array.isArray(letterInfo.enclosures) && letterInfo.enclosures.length > 1 ? (
+                                letterInfo.enclosures.map((enc, idx) => (
+                                    <Text key={idx} style={styles.bodyText}>
+                                        {idx + 1}. {cleanTextDates(enc)}
+                                    </Text>
+                                ))
+                            ) : (
+                                <Text style={styles.bodyText}>
+                                    {cleanTextDates(
+                                        Array.isArray(letterInfo.enclosures) && letterInfo.enclosures.length === 1
+                                            ? letterInfo.enclosures[0]
+                                            : (letterInfo.enclosure || "हमारे पूर्व पत्र की छायाप्रति।")
+                                    )}
+                                </Text>
+                            )}
+                        </View>
+                    </View>
+                )}
+
+                {/* ===== COPIES TO ===== */}
+                {letterInfo.copiesTo && letterInfo.copiesTo.length > 0 && (
+                    <View style={styles.copiesBlock}>
+                        <Text style={styles.copiesLabel}>
+                            {letterInfo.copiesToLabel || "प्रतिलिपि:—"}
+                        </Text>
+                        {letterInfo.copiesTo.map((copy, idx) => (
+                            <Text key={idx} style={styles.copyItem}>
+                                {idx + 1}. {cleanTextDates(copy)}
+                            </Text>
+                        ))}
+                    </View>
+                )}
 
                 {/* ===== FOOTER - Fixed on every page ===== */}
                 <View style={{ position: "absolute", bottom: 20, left: 40, right: 40, borderTopWidth: (isRBP || isSuraj || isTanay) ? 0 : 1, borderTopColor: "#000000", paddingTop: 4 }} fixed>
