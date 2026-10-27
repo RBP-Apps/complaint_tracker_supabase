@@ -1501,16 +1501,16 @@ const AdminLetter = () => {
                                 type="text"
                                 value={letterInfo.enclosureLabel ?? "संलग्न :-"}
                                 onChange={(e) => handleLetterEdit("enclosureLabel", e.target.value)}
-                                className="font-bold whitespace-nowrap border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent w-24 self-start"
+                                className="font-bold whitespace-nowrap border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent w-24 self-start text-base"
                                 title="संलग्न शीर्षक संपादित करें"
                             />
                             <div className="w-full space-y-1">
-                                {(Array.isArray(letterInfo.enclosures) ? letterInfo.enclosures : (letterInfo.enclosure ? [letterInfo.enclosure] : ["हमारे पूर्व पत्र की छायाप्रति।"])).map((enc, idx, arr) => (
+                                {(Array.isArray(letterInfo.enclosures) ? letterInfo.enclosures : (letterInfo.enclosure !== undefined && letterInfo.enclosure !== null ? (letterInfo.enclosure ? [letterInfo.enclosure] : []) : ["हमारे पूर्व पत्र की छायाप्रति।"])).map((enc, idx, arr) => (
                                     <div key={idx} className="flex gap-2 items-center group">
-                                        {arr.length > 1 && <span className="min-w-[16px] text-sm">{idx + 1}.</span>}
+                                        {arr.length > 1 && <span className="min-w-[16px] text-base">{idx + 1}.</span>}
                                         <input
                                             type="text"
-                                            className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent text-sm font-medium"
+                                            className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent text-base font-medium"
                                             value={enc}
                                             placeholder="संलग्न विवरण दर्ज करें"
                                             onChange={(e) => {
@@ -1520,26 +1520,24 @@ const AdminLetter = () => {
                                                 handleLetterEdit("enclosure", newEncs.join(", "));
                                             }}
                                         />
-                                        {arr.length > 1 && (
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const newEncs = arr.filter((_, i) => i !== idx);
-                                                    handleLetterEdit("enclosures", newEncs);
-                                                    handleLetterEdit("enclosure", newEncs.join(", "));
-                                                }}
-                                                className="text-red-400 hover:text-red-600 no-print opacity-0 group-hover:opacity-100 transition-opacity p-1 cursor-pointer"
-                                                title="संलग्नक हटाएं"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const newEncs = arr.filter((_, i) => i !== idx);
+                                                handleLetterEdit("enclosures", newEncs);
+                                                handleLetterEdit("enclosure", newEncs.join(", "));
+                                            }}
+                                            className="text-red-400 hover:text-red-600 no-print opacity-0 group-hover:opacity-100 transition-opacity p-1 cursor-pointer"
+                                            title="संलग्नक हटाएं"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
                                     </div>
                                 ))}
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        const current = Array.isArray(letterInfo.enclosures) ? letterInfo.enclosures : (letterInfo.enclosure ? [letterInfo.enclosure] : ["हमारे पूर्व पत्र की छायाप्रति।"]);
+                                        const current = Array.isArray(letterInfo.enclosures) ? letterInfo.enclosures : (letterInfo.enclosure !== undefined && letterInfo.enclosure !== null ? (letterInfo.enclosure ? [letterInfo.enclosure] : []) : ["हमारे पूर्व पत्र की छायाप्रति।"]);
                                         const updated = [...current, ""];
                                         handleLetterEdit("enclosures", updated);
                                         handleLetterEdit("enclosure", updated.join(", "));
@@ -1552,20 +1550,20 @@ const AdminLetter = () => {
                         </div>
 
                         {/* CC Section */}
-                        <div className="mt-8 text-sm space-y-2">
+                        <div className="mt-8 text-base space-y-2">
                             <input
                                 type="text"
                                 value={letterInfo.copiesToLabel ?? "प्रतिलिपि:—"}
                                 onChange={(e) => handleLetterEdit("copiesToLabel", e.target.value)}
-                                className="font-bold border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent w-28 text-sm"
+                                className="font-bold border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent w-28 text-base"
                                 title="प्रतिलिपि शीर्षक संपादित करें"
                             />
                             <div className="pl-0 space-y-1">
                                 {letterInfo.copiesTo?.map((copy, idx) => (
                                     <div key={idx} className="flex gap-2 items-center group">
-                                        <span className="min-w-[20px] text-sm">{idx + 1}.</span>
+                                        <span className="min-w-[20px] text-base">{idx + 1}.</span>
                                         <input
-                                            className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent text-sm"
+                                            className="w-full border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent text-base"
                                             value={copy}
                                             onChange={(e) => {
                                                 const newCopies = [...letterInfo.copiesTo];

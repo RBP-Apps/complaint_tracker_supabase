@@ -170,6 +170,7 @@ const styles = StyleSheet.create({
     letterInfoRow: {
         flexDirection: "row",
         justifyContent: "space-between",
+        marginTop: 4,
         marginBottom: 8,
     },
     letterInfoText: {
@@ -294,14 +295,15 @@ const styles = StyleSheet.create({
     // Copies To
     copiesBlock: {
         marginTop: 10,
-        fontSize: 8.5,
+        fontSize: 9.5,
     },
     copiesLabel: {
+        fontSize: 9.5,
         fontWeight: "bold",
         marginBottom: 2,
     },
     copyItem: {
-        fontSize: 8.5,
+        fontSize: 9.5,
         paddingLeft: 12,
         marginBottom: 2,
         lineHeight: 1.35,
@@ -496,19 +498,19 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData, lo
                             </Text>
                         </View>
                     ) : isRotomag && logoSrc ? (
-                        /* Rotomag - Right aligned, h-28 */
-                        <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 8, marginTop: 8 }}>
-                            <Image src={logoSrc} style={{ width: 200, height: 110, objectFit: "contain" }} />
+                        /* Rotomag - Right aligned */
+                        <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 6, marginTop: 4 }}>
+                            <Image src={logoSrc} style={{ width: 170, height: 85, objectFit: "contain" }} />
                         </View>
                     ) : isSolex && logoSrc ? (
-                        /* Solex - Right aligned, h-24 */
-                        <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 16, marginTop: 16 }}>
-                            <Image src={logoSrc} style={{ width: 180, height: 96, objectFit: "contain" }} />
+                        /* Solex - Right aligned */
+                        <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 6, marginTop: 4 }}>
+                            <Image src={logoSrc} style={{ width: 170, height: 80, objectFit: "contain" }} />
                         </View>
                     ) : isPremier && logoSrc ? (
-                        /* Premier - Left aligned, h-28 */
-                        <View style={{ flexDirection: "row", justifyContent: "flex-start", marginBottom: 16, marginTop: 16 }}>
-                            <Image src={logoSrc} style={{ width: 200, height: 112, objectFit: "contain" }} />
+                        /* Premier - Left aligned */
+                        <View style={{ flexDirection: "row", justifyContent: "flex-start", marginBottom: 6, marginTop: 4 }}>
+                            <Image src={logoSrc} style={{ width: 175, height: 85, objectFit: "contain" }} />
                         </View>
                     ) : isSuraj ? (
                         /* Suraj - Custom text header */
@@ -712,30 +714,46 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData, lo
                 </View>
 
                 {/* ===== ENCLOSURE (संलग्न) ===== */}
-                {(letterInfo.enclosure || (letterInfo.enclosures && letterInfo.enclosures.length > 0)) && (
-                    <View style={[styles.sectionBlock, { marginTop: 8, flexDirection: "row", alignItems: "flex-start" }]}>
-                        <Text style={[styles.labelBold, { marginRight: 4 }]}>
-                            {letterInfo.enclosureLabel || "संलग्न :-"}
-                        </Text>
-                        <View style={{ flex: 1 }}>
-                            {Array.isArray(letterInfo.enclosures) && letterInfo.enclosures.length > 1 ? (
-                                letterInfo.enclosures.map((enc, idx) => (
-                                    <Text key={idx} style={styles.bodyText}>
-                                        {idx + 1}. {cleanTextDates(enc)}
-                                    </Text>
-                                ))
-                            ) : (
-                                <Text style={styles.bodyText}>
-                                    {cleanTextDates(
-                                        Array.isArray(letterInfo.enclosures) && letterInfo.enclosures.length === 1
-                                            ? letterInfo.enclosures[0]
-                                            : (letterInfo.enclosure || "हमारे पूर्व पत्र की छायाप्रति।")
-                                    )}
+                {(() => {
+                    const rawEnclosures = Array.isArray(letterInfo.enclosures)
+                        ? letterInfo.enclosures
+                        : (letterInfo.enclosure !== undefined && letterInfo.enclosure !== null
+                            ? (letterInfo.enclosure ? [letterInfo.enclosure] : [])
+                            : []);
+                    const validEnclosures = rawEnclosures.filter(enc => typeof enc === "string" && enc.trim().length > 0);
+
+                    // If all enclosure items were deleted or empty, do not render enclosure section
+                    if (validEnclosures.length === 0) {
+                        return null;
+                    }
+
+                    const encLabel = letterInfo.enclosureLabel !== undefined && letterInfo.enclosureLabel !== null
+                        ? letterInfo.enclosureLabel
+                        : "संलग्न :-";
+
+                    return (
+                        <View style={[styles.sectionBlock, { marginTop: 8, flexDirection: "row", alignItems: "flex-start" }]}>
+                            {encLabel ? (
+                                <Text style={[styles.labelBold, { marginRight: 4 }]}>
+                                    {encLabel}
                                 </Text>
-                            )}
+                            ) : null}
+                            <View style={{ flex: 1 }}>
+                                {validEnclosures.length > 1 ? (
+                                    validEnclosures.map((enc, idx) => (
+                                        <Text key={idx} style={styles.bodyText}>
+                                            {idx + 1}. {cleanTextDates(enc)}
+                                        </Text>
+                                    ))
+                                ) : (
+                                    <Text style={styles.bodyText}>
+                                        {cleanTextDates(validEnclosures[0])}
+                                    </Text>
+                                )}
+                            </View>
                         </View>
-                    </View>
-                )}
+                    );
+                })()}
 
                 {/* ===== COPIES TO ===== */}
                 {letterInfo.copiesTo && letterInfo.copiesTo.length > 0 && (
