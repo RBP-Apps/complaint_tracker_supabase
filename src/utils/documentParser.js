@@ -1,10 +1,10 @@
 /**
- * AI-Based Dynamic Document Parser for Complaint Tracker
+ * AI-Based Independent Document Parser for Complaint Tracker
  * 
- * Replaces predefined/hardcoded formats (Format 1, 2, 3, etc.) with pure AI-based
- * analysis using Google Gemini or OpenAI API keys from environment (.env).
- * Dynamically identifies whatever fields and tables are present in the uploaded
- * document (PDF, JPG, PNG, Word) and auto-fills the complaint form fields.
+ * Provides ChatGPT-grade document understanding for any uploaded document
+ * (PDF, JPG, PNG, Word) completely format-independently.
+ * Analyzes headings, tables, printed text, stamps, handwritten notes, and
+ * accurately populates only the existing UI fields with zero guessing.
  */
 
 // Clean text helper
@@ -130,7 +130,7 @@ export const detectAIProvider = (apiKey) => {
   if (env.VITE_OPENAI_API_KEY || env.OPENAI_API_KEY) return "openai";
   if (env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY || env.VITE_GOOGLE_API_KEY) return "gemini";
 
-  return "gemini"; // Default to Gemini
+  return "gemini";
 };
 
 // Fuzzy matcher for dropdown options
@@ -151,30 +151,42 @@ export const matchWithOption = (val, options = []) => {
   return val;
 };
 
-// Call Google Gemini API (2.0 Flash -> 1.5 Flash)
-async function callGeminiAPI({ apiKey, prompt, fileBase64, mimeType, onProgress }) {
+// Call Google Gemini API (gemini-2.0-flash -> gemini-1.5-flash)
+async function callGeminiAPI({ apiKey, prompt, fileBase64, mimeType, pageImages = [], onProgress }) {
   const models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
   let lastError = null;
 
   for (const model of models) {
     try {
-      if (onProgress) onProgress(`AI analyzing document with ${model}...`, 65);
+      if (onProgress) onProgress(`AI analyzing document with ${model}...`, 70);
 
       const parts = [{ text: prompt }];
 
-      if (fileBase64 && mimeType) {
+      // Pass multi-page images if available
+      if (pageImages && pageImages.length > 0) {
+        for (const imgB64 of pageImages) {
+          parts.push({
+            inlineData: {
+              mimeType: "image/jpeg",
+              data: imgB64,
+            },
+          });
+        }
+      } else if (fileBase64 && mimeType) {
         let validMime = mimeType;
         if (mimeType.includes("pdf")) validMime = "application/pdf";
         else if (mimeType.includes("png")) validMime = "image/png";
         else if (mimeType.includes("webp")) validMime = "image/webp";
-        else validMime = "image/jpeg";
+        else if (mimeType.startsWith("image/")) validMime = "image/jpeg";
 
-        parts.push({
-          inlineData: {
-            mimeType: validMime,
-            data: fileBase64,
-          },
-        });
+        if (validMime.startsWith("image/") || validMime === "application/pdf") {
+          parts.push({
+            inlineData: {
+              mimeType: validMime,
+              data: fileBase64,
+            },
+          });
+        }
       }
 
       const res = await fetch(
@@ -211,22 +223,29 @@ async function callGeminiAPI({ apiKey, prompt, fileBase64, mimeType, onProgress 
   throw lastError || new Error("Failed to process document with Gemini AI");
 }
 
-// Call OpenAI API (gpt-4o-mini -> gpt-4o)
-async function callOpenAIAPI({ apiKey, prompt, fileBase64, mimeType, onProgress }) {
+// Call OpenAI API (gpt-4o-mini -> gpt-4o) with ChatGPT-like Vision
+async function callOpenAIAPI({ apiKey, prompt, fileBase64, mimeType, pageImages = [], onProgress }) {
   const models = ["gpt-4o-mini", "gpt-4o"];
   let lastError = null;
 
   for (const model of models) {
     try {
-      if (onProgress) onProgress(`AI analyzing document with ${model}...`, 65);
+      if (onProgress) onProgress(`AI analyzing document with ${model}...`, 70);
 
       const userContent = [{ type: "text", text: prompt }];
 
-      if (fileBase64 && mimeType && !mimeType.includes("pdf")) {
-        const dataUrl = `data:${mimeType};base64,${fileBase64}`;
+      // Pass multi-page images for vision understanding
+      if (pageImages && pageImages.length > 0) {
+        for (const imgB64 of pageImages) {
+          userContent.push({
+            type: "image_url",
+            image_url: { url: `data:image/jpeg;base64,${imgB64}` },
+          });
+        }
+      } else if (fileBase64 && mimeType && mimeType.startsWith("image/")) {
         userContent.push({
           type: "image_url",
-          image_url: { url: dataUrl },
+          image_url: { url: `data:${mimeType};base64,${fileBase64}` },
         });
       }
 
@@ -241,7 +260,7 @@ async function callOpenAIAPI({ apiKey, prompt, fileBase64, mimeType, onProgress 
           messages: [
             {
               role: "system",
-              content: "You are an expert AI government document parser. Return JSON only.",
+              content: "You are an expert AI document analyzer specialized in reading, analyzing, and extracting data from Indian documents, government notices, CREDA letters, EPC/Solar service records, and complaint letters. Return JSON only.",
             },
             {
               role: "user",
@@ -278,28 +297,29 @@ export async function executeAIAnalysis({
   prompt,
   fileBase64,
   mimeType,
+  pageImages = [],
   onProgress,
 }) {
   const provider = detectAIProvider(apiKey);
 
   if (provider === "openai") {
     try {
-      return await callOpenAIAPI({ apiKey, prompt, fileBase64, mimeType, onProgress });
+      return await callOpenAIAPI({ apiKey, prompt, fileBase64, mimeType, pageImages, onProgress });
     } catch (e) {
       console.warn("OpenAI attempt failed, trying Gemini:", e.message);
-      return await callGeminiAPI({ apiKey, prompt, fileBase64, mimeType, onProgress });
+      return await callGeminiAPI({ apiKey, prompt, fileBase64, mimeType, pageImages, onProgress });
     }
   } else {
     try {
-      return await callGeminiAPI({ apiKey, prompt, fileBase64, mimeType, onProgress });
+      return await callGeminiAPI({ apiKey, prompt, fileBase64, mimeType, pageImages, onProgress });
     } catch (e) {
       console.warn("Gemini attempt failed, trying OpenAI:", e.message);
-      return await callOpenAIAPI({ apiKey, prompt, fileBase64, mimeType, onProgress });
+      return await callOpenAIAPI({ apiKey, prompt, fileBase64, mimeType, pageImages, onProgress });
     }
   }
 }
 
-// Fallback regex extractor (purely generic, without any Format 1/2/3 hardcoding)
+// Fallback regex extractor (purely generic, without any predefined formats)
 function extractGenericFallback(text) {
   const refMatch = text.match(/(?:क्रमांक|पत्र\s*क्र\.?|Ref(?:\s*No\.?)?)[:\s]*([0-9A-Za-z\u0900-\u097F\.\-_]+(?:\/[0-9A-Za-z\u0900-\u097F\.\-_]+)+)/i);
   const dateMatch = text.match(/(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/);
@@ -336,26 +356,30 @@ function extractGenericFallback(text) {
     productSlNo: "",
     insuranceType: "",
     resolvedDate: null,
-    natureOfComplaint: "Equipment Non-Functional",
+    natureOfComplaint: "",
+    challanNo: "",
+    challanDate: null,
   };
 }
 
 /**
  * Main AI Document Parser Entry Point
- * Completely dynamic, format-independent AI document analyzer.
+ * Completely dynamic, format-independent ChatGPT-like document reader.
  */
 export async function parseComplaintDocument(input, dropdownOptions = {}) {
   let file = null;
   let fileBase64 = "";
   let mimeType = "";
   let extractedText = "";
+  let pageImages = [];
   let onProgress = () => {};
 
   if (typeof input === "object" && input !== null) {
     file = input.file || null;
     fileBase64 = input.fileBase64 || "";
-    mimeType = input.mimeType || (file?.type) || "";
+    mimeType = input.mimeType || file?.type || "";
     extractedText = input.extractedText || input.text || "";
+    pageImages = input.pageImages || [];
     onProgress = input.onProgress || onProgress;
     dropdownOptions = input.dropdownOptions || dropdownOptions;
   } else if (typeof input === "string") {
@@ -369,59 +393,99 @@ export async function parseComplaintDocument(input, dropdownOptions = {}) {
     const fallbackRecord = extractGenericFallback(extractedText);
     return {
       success: true,
-      formatName: "Fallback Parser (No AI Key in .env)",
+      documentType: "Fallback Parser (No AI Key in .env)",
+      formatName: "Fallback Document Scanner",
       records: [{ recordIndex: 1, label: "Record 1 (Fallback)", data: fallbackRecord }],
       defaultRecord: fallbackRecord,
       totalRecords: 1,
     };
   }
 
-  onProgress("Sending document to AI for intelligent extraction...", 55);
+  onProgress("Sending document to AI for intelligent ChatGPT-grade analysis...", 60);
 
   const systemPrompt = `
-You are an expert AI assistant specialized in analyzing Indian government letters, CREDA notices, Solar Pump / EPC service letters, and beneficiary complaints.
-The document may be in Hindi, English, or a mix of both.
+You are an advanced AI document understanding engine (similar to ChatGPT Document Vision).
+Analyze the uploaded document completely, independently, and objectively.
 
-Carefully examine all text, tables, stamps, reference numbers, dates, beneficiary lists, equipment ratings, and locations.
-Extract all complaint details dynamically WITHOUT assuming any rigid or predefined format.
+CRITICAL INSTRUCTIONS:
+1. NO FORMAT ASSUMPTIONS: Do NOT expect or depend on any predefined format, template, or hardcoded layout. Documents can come from various departments (CREDA, State Solar Water Pumping schemes, Jal Jeevan Mission, Discoms, etc.), companies (Solex, Rotomag, Premier Energies, Shakti, Lubi, RBP, etc.), or private customers.
+2. THOROUGH READING: Read all text across all pages, headings, reference numbers, dates, subject lines, tables, rows, columns, stamps, signatures, and handwritten notes.
+3. TABLE / MULTI-RECORD HANDLING:
+   - If the document contains a table with multiple complaint rows or beneficiaries (e.g. 1, 2, 3... or Sr.No.), extract EACH row as an individual object in the "records" array.
+   - Each record must contain its own specific row values (beneficiaryName, idNumber, contactNumber, village, block, rating, product, make, controllerRidNo, productSlNo, natureOfComplaint).
+   - Document-level header values (companyName, letterReferenceNumber, complaintDate, projectName, district) should be associated with each record in that document.
+   - If there is only one complaint / beneficiary in the document, return an array with exactly 1 record.
+4. FILL ONLY EXISTING UI FIELDS:
+   Map extracted data ONLY to the following exact fields:
+   - "companyName": Company addressed to or mentioned (e.g. RBP Energy (India) Pvt. Ltd., Rotomag Motors & Controls, Solex Energy, Premier Energies, Suraj Enterprises, etc.)
+   - "modeOfCall": "Letter" if this is a written letter/notice/complaint, else "Call"
+   - "modeOfLetter": "Notice" or "Letter" or "CM Help" or "Reminder"
+   - "letterReferenceNumber": Official reference / dispatch number / पत्र क्रमांक / Ref No (e.g. 2386/क्रेडा/जि.का./SSY/2024-25)
+   - "complaintNumber": Specific complaint number or inward number if present, else letter reference number
+   - "complaintDate": Date of letter / complaint in "YYYY-MM-DD" format
+   - "idNumber": Beneficiary ID / Saral ID / Farmer Application / Registration No. (e.g. 706780)
+   - "projectName": Scheme or Project name (e.g. SSY Phase-08, SSY Phase-07, PM-KUSUM, SPVPP, Jal Jeevan Mission, etc.)
+   - "district": District name in English title case (e.g. Surajpur, Balrampur, Gariyaband, Kabirdham, Bastar, Raipur, etc.)
+   - "beneficiaryName": Full name of beneficiary / farmer / site / institution
+   - "contactNumber": 10-digit mobile number if clearly mentioned, else ""
+   - "village": Village / Gram / Sthal name
+   - "block": Block / Tehsil / Vikas Khand name
+   - "product": Product or pump type (e.g. Solar Pump, Solar Module, Controller, Inverter, Submersible Pump, Surface Pump, Street Light)
+   - "make": Brand or Make if mentioned (e.g. Rotomag Motors, Premier Energies, ICON, SHAKTI, ROTOSOL, Solex)
+   - "rating": System rating or capacity (e.g. 3 HP DC Sub., 5 HP DC Surf., 7.5 HP, 15W, 300W)
+   - "qty": Quantity (usually "1")
+   - "controllerRidNo": Controller RID number if explicitly indicated, else ""
+   - "productSlNo": Motor / Pump / Module serial number if explicitly indicated, else ""
+   - "insuranceType": If insurance or damage type is indicated (e.g. "Panel Damage" if solar module damaged/stolen, or "Insurance", else "")
+   - "natureOfComplaint": Issue description / fault (e.g. Solar Module Damaged, Inverter Faulty, Pump Not Working, Controller Burnt)
+   - "resolvedDate": Date in "YYYY-MM-DD" ONLY if document explicitly states that the issue has been resolved/repaired, else null
+   - "challanNo": Challan number if mentioned, else ""
+   - "challanDate": Challan date in "YYYY-MM-DD" if mentioned, else null
 
-Return ONLY a valid JSON object with the following structure:
+5. STRICT DATA ACCURACY – ABSOLUTELY NO GUESSING:
+   - ONLY extract data that is clearly and explicitly available in the document.
+   - If any field is NOT found or unclear in the document, you MUST set it to an empty string "" (or null for dates).
+   - NEVER invent, assume, calculate, or guess any value.
+   - NEVER put unrelated information into fields (e.g. do not put reference numbers into contactNumber or controllerRidNo).
+   - Ambiguous or unreadable text must be left as empty string "".
+
+6. LANGUAGE & TRANSLATION:
+   - Translate Hindi district names to standard English (e.g. सूरजपुर -> Surajpur, गरियाबंद -> Gariyaband).
+
+Return ONLY a valid JSON object matching this schema:
 {
-  "documentType": "Short descriptive type (e.g. Government Complaint Notice, CREDA Letter, Service Rectification Report)",
+  "documentType": "Short descriptive title of document",
   "records": [
     {
-      "companyName": "Company name addressed to or mentioned (e.g. RBP Energy (India) Pvt. Ltd., Rotomag Motors & Controls, Premier Energies, Solex Energy, Suraj Enterprises, etc.)",
+      "companyName": "",
       "modeOfCall": "Letter",
-      "modeOfLetter": "Notice or Letter or CM Help",
-      "letterReferenceNumber": "Official reference number / पत्र क्रमांक / Ref No (e.g. 2386/क्रेडा/जि.का./SSY/2024-25)",
-      "complaintNumber": "Inward / आवक number or complaint number if present, else letter reference number",
-      "complaintDate": "Date in YYYY-MM-DD or DD/MM/YYYY format",
-      "idNumber": "Beneficiary ID number / आई.डी. नं. (e.g. 706780, 701069, etc.) if mentioned",
-      "projectName": "Project name (e.g. SSY Phase-08, SSY Phase-07, SSY Phase-06, SSY Phase-05, SPVPP, Saubhagya, Solar Pump)",
-      "district": "District name in English (e.g. Surajpur, Balrampur, Gariyaband, Kabirdham, Bastar, Raipur, Kondagaon, Kanker, Bilaspur, Dantewada, etc.)",
-      "beneficiaryName": "Name of beneficiary / farmer / site (e.g. Shri Ramesh Kumar, Sub Health Centre, etc.)",
-      "contactNumber": "10-digit mobile number if found, else empty string",
-      "village": "Village / स्थल / ग्राम name",
-      "block": "Block / विकासखंड / वि.ख. name",
-      "product": "Product name (e.g. Solar Module, Controller, Inverter, Motor+Pump, Street Light)",
-      "make": "Brand / Make if mentioned (e.g. Rotomag Motors, Premier Energies, ICON, SHAKTI, ROTOSOL)",
-      "rating": "Pump / System rating (e.g. 5 HP DC Sub., 3 HP DC Surf., 4.8 KW, 15W)",
-      "qty": "Quantity (usually '1')",
-      "controllerRidNo": "Controller RID if present, else empty string",
-      "productSlNo": "Product serial number if present, else empty string",
-      "insuranceType": "Insurance status (e.g. 'Panel Damage' if solar module is damaged/stolen, or 'Insurance' if mentioned, else empty string)",
-      "natureOfComplaint": "Brief issue description (e.g. Solar Module Damaged, Inverter Faulty, Pump Not Working, Equipment Rectified & Functional)",
-      "resolvedDate": "Date of resolution if explicitly stated as repaired/resolved, else null"
+      "modeOfLetter": "Notice",
+      "letterReferenceNumber": "",
+      "complaintNumber": "",
+      "complaintDate": "YYYY-MM-DD",
+      "idNumber": "",
+      "projectName": "",
+      "district": "",
+      "beneficiaryName": "",
+      "contactNumber": "",
+      "village": "",
+      "block": "",
+      "product": "",
+      "make": "",
+      "rating": "",
+      "qty": "1",
+      "controllerRidNo": "",
+      "productSlNo": "",
+      "insuranceType": "",
+      "natureOfComplaint": "",
+      "resolvedDate": null,
+      "challanNo": "",
+      "challanDate": null
     }
   ]
 }
 
-CRITICAL RULES:
-1. If the document has a table with multiple rows (e.g. 1, 2, 3... listing multiple beneficiaries or pumps), extract each row as a separate item in the "records" array.
-2. If there is only one complaint / beneficiary, return an array with exactly 1 record.
-3. Translate Hindi district names to standard English (e.g. सूरजपुर -> Surajpur, गरियाबंद -> Gariyaband).
-4. Return pure JSON only. Do not wrap in markdown or backticks.
-${extractedText ? `\n--- EXTRACTED DOCUMENT TEXT ---\n${extractedText}\n--- END TEXT ---` : ""}
+${extractedText ? `\n--- EXTRACTED DOCUMENT TEXT CONTENT ---\n${extractedText}\n--- END TEXT CONTENT ---` : ""}
 `;
 
   try {
@@ -430,10 +494,11 @@ ${extractedText ? `\n--- EXTRACTED DOCUMENT TEXT ---\n${extractedText}\n--- END 
       prompt: systemPrompt,
       fileBase64,
       mimeType,
+      pageImages,
       onProgress,
     });
 
-    onProgress("Processing AI extraction results...", 90);
+    onProgress("Processing AI document extraction results...", 90);
 
     const cleanJson = rawAiResponse
       .replace(/^```json\s*/i, "")
@@ -483,15 +548,23 @@ ${extractedText ? `\n--- EXTRACTED DOCUMENT TEXT ---\n${extractedText}\n--- END 
         d.modeOfLetter = matchWithOption(d.modeOfLetter, modeOfLetterOptions);
       }
 
+      const bName = d.beneficiaryName ? d.beneficiaryName.trim() : "";
+      const loc = d.village || d.block || d.district || "";
+      const prod = d.product || d.rating || "Complaint";
+      const label = bName
+        ? `Record ${idx + 1}: ${bName} ${loc ? `(${loc})` : ""} - ${prod}`
+        : `Record ${idx + 1}: ${loc ? `(${loc})` : ""} ${prod}`;
+
       return {
         recordIndex: idx + 1,
-        label: `Record ${idx + 1}: ${d.beneficiaryName || "Beneficiary"} (${d.village || d.district || "Site"}) - ${d.product || "Complaint"}`,
+        label,
         data: d,
       };
     });
 
     return {
       success: true,
+      documentType: parsedJson.documentType || "AI Document Analysis",
       formatName: parsedJson.documentType || "AI Document Analysis",
       records: normalizedRecords,
       defaultRecord: normalizedRecords[0].data,
@@ -504,7 +577,8 @@ ${extractedText ? `\n--- EXTRACTED DOCUMENT TEXT ---\n${extractedText}\n--- END 
     const fallbackRecord = extractGenericFallback(extractedText);
     return {
       success: true,
-      formatName: "Generic Scanner (AI fallback: " + (err.message ? err.message.slice(0, 40) : "Network error") + ")",
+      documentType: "Generic Scanner",
+      formatName: "Generic Scanner (AI: " + (err.message ? err.message.slice(0, 35) : "Error") + ")",
       records: [{ recordIndex: 1, label: "Record 1 (Fallback)", data: fallbackRecord }],
       defaultRecord: fallbackRecord,
       totalRecords: 1,

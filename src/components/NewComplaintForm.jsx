@@ -8,7 +8,7 @@ import "react-datepicker/dist/react-datepicker.css"
 import * as XLSX from "xlsx";
 import supabase from "../utils/supabase";
 import { parseToDate, isValidDate, formatDateDisplay, formatDateTimeDisplay } from "../utils/dateUtils";
-import { extractDocumentText } from "../utils/documentOcr";
+import { extractDocumentText, prepareDocumentForAI } from "../utils/documentOcr";
 import { parseComplaintDocument, fileToBase64 } from "../utils/documentParser";
 
 // ================= REUSABLE SEARCHABLE SELECT COMPONENT =================
@@ -733,28 +733,33 @@ function NewComplaintForm() {
     if (!recordData) return;
     setFormData((prev) => ({
       ...prev,
-      companyName: recordData.companyName || prev.companyName,
+      // Document & Header level fields
+      companyName: recordData.companyName || prev.companyName || "",
       modeOfCall: recordData.modeOfCall || prev.modeOfCall || "Letter",
       modeOfLetter: recordData.modeOfLetter || prev.modeOfLetter || "Notice",
-      letterReferenceNumber: recordData.letterReferenceNumber || prev.letterReferenceNumber,
-      idNumber: recordData.idNumber !== undefined && recordData.idNumber !== "" ? recordData.idNumber : prev.idNumber,
-      projectName: recordData.projectName || prev.projectName,
-      complaintNumber: recordData.complaintNumber || prev.complaintNumber,
-      beneficiaryName: recordData.beneficiaryName || prev.beneficiaryName,
-      contactNumber: recordData.contactNumber || prev.contactNumber,
+      letterReferenceNumber: recordData.letterReferenceNumber || prev.letterReferenceNumber || "",
+      complaintNumber: recordData.complaintNumber || recordData.letterReferenceNumber || prev.complaintNumber || "",
+      projectName: recordData.projectName || prev.projectName || "",
+      district: recordData.district || prev.district || "",
+
+      // Beneficiary & Row-specific fields (Strict: empty if not explicitly present in this record)
+      idNumber: recordData.idNumber !== undefined && recordData.idNumber !== null ? String(recordData.idNumber).trim() : "",
+      beneficiaryName: recordData.beneficiaryName ? String(recordData.beneficiaryName).trim() : "",
+      contactNumber: recordData.contactNumber ? String(recordData.contactNumber).trim() : "",
       isReferenceName: false,
-      village: recordData.village || prev.village,
-      block: recordData.block || prev.block,
-      district: recordData.district || prev.district,
-      product: recordData.product || prev.product,
-      make: recordData.make || prev.make,
-      rating: recordData.rating || prev.rating,
-      qty: recordData.qty || prev.qty,
-      controllerRidNo: recordData.controllerRidNo || prev.controllerRidNo,
-      productSlNo: recordData.productSlNo || prev.productSlNo,
-      insuranceType: recordData.insuranceType || prev.insuranceType,
-      natureOfComplaint: recordData.natureOfComplaint || prev.natureOfComplaint,
-      documentUrl: docUrl || prev.documentUrl,
+      referenceName: "",
+      village: recordData.village ? String(recordData.village).trim() : "",
+      block: recordData.block ? String(recordData.block).trim() : "",
+      product: recordData.product ? String(recordData.product).trim() : "",
+      make: recordData.make ? String(recordData.make).trim() : "",
+      rating: recordData.rating ? String(recordData.rating).trim() : "",
+      qty: recordData.qty ? String(recordData.qty).trim() : "1",
+      controllerRidNo: recordData.controllerRidNo ? String(recordData.controllerRidNo).trim() : "",
+      productSlNo: recordData.productSlNo ? String(recordData.productSlNo).trim() : "",
+      insuranceType: recordData.insuranceType ? String(recordData.insuranceType).trim() : "",
+      natureOfComplaint: recordData.natureOfComplaint ? String(recordData.natureOfComplaint).trim() : "",
+      challanNo: recordData.challanNo ? String(recordData.challanNo).trim() : "",
+      documentUrl: docUrl || prev.documentUrl || "",
     }));
 
     if (recordData.complaintDate) {
@@ -764,6 +769,16 @@ function NewComplaintForm() {
     if (recordData.resolvedDate) {
       const rd = parseToDate(recordData.resolvedDate);
       if (isValidDate(rd)) setResolvedDate(rd);
+      else setResolvedDate(null);
+    } else {
+      setResolvedDate(null);
+    }
+    if (recordData.challanDate) {
+      const chd = parseToDate(recordData.challanDate);
+      if (isValidDate(chd)) setChallanDate(chd);
+      else setChallanDate(null);
+    } else {
+      setChallanDate(null);
     }
   };
 
@@ -773,6 +788,57 @@ function NewComplaintForm() {
     if (rec) {
       applyExtractedRecord(rec.data, formData.documentUrl);
     }
+  };
+
+  const resetNewComplaintForm = () => {
+    const loggedInUser = localStorage.getItem('username') || localStorage.getItem('currentUser') || "";
+    setFormData({
+      companyName: "",
+      modeOfCall: "",
+      letterReferenceNumber: "",
+      modeOfLetter: "",
+      idNumber: "",
+      projectName: "",
+      complaintNumber: "",
+      beneficiaryName: "",
+      contactNumber: "",
+      isReferenceName: false,
+      referenceName: "",
+      village: "",
+      block: "",
+      district: "",
+      product: "",
+      make: "",
+      rating: "",
+      qty: "",
+      controllerRidNo: "",
+      productSlNo: "",
+      insuranceType: "",
+      natureOfComplaint: "",
+      technicianName: "",
+      technicianContact: "",
+      assigneeWhatsapp: "",
+      challanNo: "",
+      reporterName: loggedInUser,
+      assignToVendor: false,
+      documentUrl: "",
+    });
+
+    setComplaintDate(new Date());
+    setChallanDate(null);
+    setCloseDate(null);
+    setResolvedDate(null);
+
+    setUploadedDocFileName("");
+    setScanResult(null);
+    setDetectedRecords([]);
+    setActiveRecordIndex(1);
+    setScanProgressStep("");
+    setScanProgressPercent(0);
+    setDocumentUploadStatus("");
+
+    const input = document.getElementById("government-document-upload-field");
+    if (input) input.value = "";
   };
 
   const handleDocumentUploadAndScan = async (file) => {
@@ -810,8 +876,8 @@ function NewComplaintForm() {
         setFormData((prev) => ({ ...prev, documentUrl: docPublicUrl }));
       }
 
-      // 2. Prepare file data and text for AI
-      setScanProgressStep("Processing document content for AI…");
+      // 2. Prepare file data and text for AI using ChatGPT-grade document reader
+      setScanProgressStep("Processing document content for AI...");
       setScanProgressPercent(30);
 
       // Convert file to Base64 (supports PDF & Images for AI Multimodal vision)
@@ -825,26 +891,22 @@ function NewComplaintForm() {
         console.warn("Base64 preparation notice:", b64Err);
       }
 
-      // Concurrently run text extraction to supply alongside image/PDF
-      let extractedText = "";
-      try {
-        extractedText = await extractDocumentText(file, (msg, pct) => {
-          setScanProgressStep(msg);
-          if (pct) setScanProgressPercent(Math.min(pct, 50));
-        });
-      } catch (ocrErr) {
-        console.warn("Local text extraction notice:", ocrErr);
-      }
+      // Comprehensive document preparation (multi-page PDF rendering for vision, Word tables, or images)
+      const prep = await prepareDocumentForAI(file, (msg, pct) => {
+        setScanProgressStep(msg);
+        if (pct) setScanProgressPercent(pct);
+      });
 
-      // 3. AI-Based dynamic extraction (NO rigid or predefined formats)
-      setScanProgressStep("AI is analyzing document and extracting complaint details…");
-      setScanProgressPercent(60);
+      // 3. AI-Based independent document understanding (NO rigid or predefined formats)
+      setScanProgressStep("AI is analyzing document independently & extracting complaint details...");
+      setScanProgressPercent(65);
 
       const parseResult = await parseComplaintDocument({
         file,
         fileBase64,
-        mimeType: fileMimeType,
-        extractedText,
+        mimeType: prep.mimeType || fileMimeType,
+        extractedText: prep.extractedText || "",
+        pageImages: prep.pageImages || [],
         dropdownOptions: {
           companyNameOptions,
           districtOptions,
@@ -867,7 +929,7 @@ function NewComplaintForm() {
         applyExtractedRecord(parseResult.records[0].data, docPublicUrl);
         setScanProgressStep(`✓ AI Auto-Fill Complete: ${parseResult.records.length} record(s) detected`);
         setScanProgressPercent(100);
-        setDocumentUploadStatus(`✓ AI Scanned: ${parseResult.formatName || file.name}`);
+        setDocumentUploadStatus(`✓ AI Scanned: ${parseResult.documentType || parseResult.formatName || file.name}`);
       } else {
         setDocumentUploadStatus(`✓ Uploaded: ${file.name}`);
       }
@@ -1488,50 +1550,7 @@ function NewComplaintForm() {
       }
 
       // ✅ FORM RESET
-      const loggedInUsernameOnReset = localStorage.getItem('username') || localStorage.getItem('currentUser') || ""
-      setFormData({
-        companyName: "",
-        modeOfCall: "",
-        letterReferenceNumber: "",
-        modeOfLetter: "",
-        idNumber: "",
-        projectName: "",
-        complaintNumber: "",
-        beneficiaryName: "",
-        contactNumber: "",
-        isReferenceName: false,
-        referenceName: "",
-        village: "",
-        block: "",
-        district: "",
-        product: "",
-        make: "",
-        rating: "",
-        qty: "",
-        controllerRidNo: "",
-        productSlNo: "",
-        insuranceType: "",
-        natureOfComplaint: "",
-        technicianName: "",
-        technicianContact: "",
-        assigneeWhatsapp: "",
-        challanNo: "",
-        reporterName: loggedInUsernameOnReset,
-        assignToVendor: false,
-        documentUrl: "",
-      })
-      setDocumentUploadStatus("")
-      setScanResult(null)
-      setDetectedRecords([])
-      setActiveRecordIndex(1)
-      setUploadedDocFileName("")
-      setScanProgressStep("")
-      setScanProgressPercent(0)
-
-      setComplaintDate(null)
-      setChallanDate(null)
-      setCloseDate(null)
-      setResolvedDate(null)
+      resetNewComplaintForm();
 
       // ✅ TABLE REFRESH
       await fetchTableData()
@@ -1588,17 +1607,8 @@ function NewComplaintForm() {
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => {
-                    const loggedInUser = localStorage.getItem('username') || localStorage.getItem('currentUser') || ""
-                    if (loggedInUser && !formData.reporterName) {
-                      setFormData(prev => ({ ...prev, reporterName: loggedInUser }))
-                    }
-                    setScanResult(null)
-                    setDetectedRecords([])
-                    setActiveRecordIndex(1)
-                    setUploadedDocFileName("")
-                    setScanProgressStep("")
-                    setScanProgressPercent(0)
-                    setShowForm(true)
+                    resetNewComplaintForm();
+                    setShowForm(true);
                   }}
                   className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md flex items-center shadow-sm hover:shadow cursor-pointer transition-all"
                 >
@@ -1618,10 +1628,26 @@ function NewComplaintForm() {
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
                   <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
                     <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-                      <h2 className="text-xl font-semibold text-gray-900">New Complaint Form</h2>
+                      <div className="flex items-center gap-3">
+                        <h2 className="text-xl font-semibold text-gray-900">New Complaint Form</h2>
+                        <button
+                          type="button"
+                          onClick={resetNewComplaintForm}
+                          className="text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-md font-medium transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                          title="Form ke saare fields clear karein"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Reset Form
+                        </button>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => setShowForm(false)}
+                        onClick={() => {
+                          resetNewComplaintForm();
+                          setShowForm(false);
+                        }}
                         className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                       >
                         <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1673,18 +1699,9 @@ function NewComplaintForm() {
                                   </a>
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      setFormData((prev) => ({ ...prev, documentUrl: "" }));
-                                      setUploadedDocFileName("");
-                                      setScanResult(null);
-                                      setDetectedRecords([]);
-                                      setScanProgressStep("");
-                                      setDocumentUploadStatus("");
-                                      const input = document.getElementById("government-document-upload-field");
-                                      if (input) input.value = "";
-                                    }}
+                                    onClick={resetNewComplaintForm}
                                     className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded border border-transparent hover:border-red-200 transition cursor-pointer"
-                                    title="Remove document"
+                                    title="Remove document and reset fields"
                                   >
                                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -1728,21 +1745,12 @@ function NewComplaintForm() {
                                 </div>
                               </label>
 
-                              {(uploadedDocFileName || formData.documentUrl) && !isScanningDocument && (
+                              {(uploadedDocFileName || formData.documentUrl || scanResult) && !isScanningDocument && (
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    setUploadedDocFileName("");
-                                    setScanResult(null);
-                                    setDetectedRecords([]);
-                                    setScanProgressStep("");
-                                    setDocumentUploadStatus("");
-                                    setFormData((prev) => ({ ...prev, documentUrl: "" }));
-                                    const input = document.getElementById("government-document-upload-field");
-                                    if (input) input.value = "";
-                                  }}
-                                  className="text-xs text-red-600 hover:text-red-800 px-2.5 py-1.5 rounded hover:bg-red-50 transition border border-red-200 self-center font-medium cursor-pointer flex items-center gap-1 shadow-2xs"
-                                  title="Clear uploaded document"
+                                  onClick={resetNewComplaintForm}
+                                  className="text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-md transition border border-red-200 self-center font-semibold cursor-pointer flex items-center gap-1.5 shadow-2xs whitespace-nowrap"
+                                  title="Clear document and reset all form fields"
                                 >
                                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1784,7 +1792,7 @@ function NewComplaintForm() {
                                     </span>
                                     <div>
                                       <span className="text-xs font-bold text-emerald-900">
-                                        AI Auto-Fill Active: {scanResult.formatName}
+                                        AI Auto-Fill: {scanResult.documentType || scanResult.formatName || "Document Analyzed"}
                                       </span>
                                       <p className="text-[11px] text-emerald-700">
                                         Information successfully extracted by AI and mapped to form fields. You can manually edit any field below.
@@ -1822,14 +1830,17 @@ function NewComplaintForm() {
                               </div>
                             )}
 
-                            {/* Supported Formats Info */}
-                            <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
-                              <span className="font-semibold text-gray-600">Supported Formats:</span>
-                              <span className="bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">Format 1: CREDA Multi-Notice</span>
-                              <span className="bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">Format 2: Gariyaband Camp</span>
-                              <span className="bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">Format 3: RBP Rectification</span>
-                              <span className="bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">Format 4: SPVPP Power Plant</span>
-                              <span className="bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">Format 5: Premier Energies</span>
+                            {/* Universal AI Document Auto-Fill Badge */}
+                            <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px] text-blue-700 bg-blue-50/70 border border-blue-200 px-3 py-1.5 rounded-lg">
+                              <span className="font-semibold flex items-center gap-1">
+                                <svg className="w-3.5 h-3.5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg>
+                                AI Universal Auto-Fetch:
+                              </span>
+                              <span className="text-gray-600">
+                                Supports any PDF, JPG, PNG or Word document. AI reads content, tables, and notices independently to auto-fill form fields.
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -2459,21 +2470,38 @@ function NewComplaintForm() {
                       </div >
 
                       {/* Form Buttons */}
-                      <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
+                      <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 border-t border-gray-100">
                         <button
                           type="button"
-                          onClick={() => setShowForm(false)}
-                          className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                          onClick={resetNewComplaintForm}
+                          className="w-full sm:w-auto px-4 py-2 border border-red-200 text-red-600 rounded-md hover:bg-red-50 focus:outline-none cursor-pointer text-sm font-medium transition flex items-center justify-center gap-1.5 shadow-2xs"
+                          title="Form ke saare fields reset karein"
                         >
-                          Cancel
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          Clear All Fields
                         </button>
-                        <button
-                          type="submit"
-                          disabled={isSubmitting}
-                          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm"
-                        >
-                          {isSubmitting ? 'Creating...' : 'Create Complaint'}
-                        </button>
+
+                        <div className="flex items-center space-x-3 w-full sm:w-auto justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetNewComplaintForm();
+                              setShowForm(false);
+                            }}
+                            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer text-sm"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm text-sm"
+                          >
+                            {isSubmitting ? 'Creating...' : 'Create Complaint'}
+                          </button>
+                        </div>
                       </div>
                     </form>
                   </div>

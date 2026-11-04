@@ -1,9 +1,9 @@
 /**
  * Document OCR & Text Extraction Engine
  * Supports:
- * - PDF (digital text extraction via PDF.js, or scanned rendering to OCR)
- * - Word Documents (.docx, .doc via Mammoth / XML extraction)
- * - Images (JPG, JPEG, PNG via Tesseract.js with image preprocessing)
+ * - PDF (digital text extraction + multi-page canvas rendering for AI vision)
+ * - Word Documents (.docx, .doc via Mammoth raw text + HTML table extraction)
+ * - Images (JPG, JPEG, PNG, WebP via Tesseract.js / direct base64)
  */
 
 const TESSERACT_CDN = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
@@ -71,7 +71,6 @@ export const runTesseractOCR = async (imageCanvasOrBlob, onProgress = () => {}) 
 
   let worker = null;
   try {
-    // Try English + Hindi first for government notices
     try {
       worker = await window.Tesseract.createWorker(["eng", "hin"], 1, {
         logger: (m) => {
@@ -108,7 +107,7 @@ export const runTesseractOCR = async (imageCanvasOrBlob, onProgress = () => {}) 
 };
 
 /**
- * Extract text from PDF files using PDF.js
+ * Extract text from PDF files using PDF.js across all pages
  */
 export const extractTextFromPDF = async (file, onProgress = () => {}) => {
   onProgress("Loading PDF reader...", 15);
@@ -122,18 +121,21 @@ export const extractTextFromPDF = async (file, onProgress = () => {}) => {
   const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
   let fullText = "";
-  onProgress("Reading PDF pages...", 30);
+  const totalPages = pdf.numPages;
+  const pagesToScan = Math.min(totalPages, 5);
 
-  const numPagesToScan = Math.min(pdf.numPages, 3); // Government notices are 1-2 pages
+  onProgress(`Reading PDF pages (1 to ${pagesToScan})...`, 25);
 
-  for (let i = 1; i <= numPagesToScan; i++) {
+  for (let i = 1; i <= pagesToScan; i++) {
     const page = await pdf.getPage(i);
     const textContent = await page.getTextContent();
     const pageText = textContent.items.map((item) => item.str).join(" ");
-    fullText += pageText + "\n";
+    if (pageText.trim()) {
+      fullText += `\n--- Page ${i} ---\n` + pageText + "\n";
+    }
   }
 
-  // If digital text is found, return it directly (very fast & 100% accurate!)
+  // If digital text is found, return it directly
   if (fullText.trim().length > 60) {
     onProgress("Digital text extracted successfully!", 90);
     return fullText;
@@ -153,7 +155,7 @@ export const extractTextFromPDF = async (file, onProgress = () => {}) => {
 };
 
 /**
- * Extract text from Word documents (.docx)
+ * Extract text from Word documents (.docx, .doc)
  */
 export const extractTextFromWord = async (file, onProgress = () => {}) => {
   onProgress("Reading Word document...", 25);
@@ -161,8 +163,18 @@ export const extractTextFromWord = async (file, onProgress = () => {}) => {
     await loadScript(MAMMOTH_CDN);
     if (window.mammoth) {
       const arrayBuffer = await file.arrayBuffer();
-      const res = await window.mammoth.extractRawText({ arrayBuffer });
-      return res.value || "";
+      const rawRes = await window.mammoth.extractRawText({ arrayBuffer });
+      let combined = rawRes.value || "";
+
+      // Also extract HTML to preserve table structures
+      try {
+        const htmlRes = await window.mammoth.convertToHtml({ arrayBuffer });
+        if (htmlRes.value && htmlRes.value.includes("<table")) {
+          combined += "\n\n--- DOCUMENT TABLES ---\n" + htmlRes.value;
+        }
+      } catch (_) {}
+
+      return combined;
     }
   } catch (err) {
     console.warn("Mammoth load failed, attempting fallback text scan:", err);
@@ -172,14 +184,12 @@ export const extractTextFromWord = async (file, onProgress = () => {}) => {
   const buffer = await file.arrayBuffer();
   const textDecoder = new TextDecoder("utf-8");
   const rawString = textDecoder.decode(buffer);
-  // Extract visible xml tags text
   const matches = rawString.match(/<w:t[^>]*>([^<]+)<\/w:t>/g) || [];
   return matches.map((m) => m.replace(/<[^>]+>/g, "")).join(" ");
 };
 
 /**
  * Universal Document Text Extraction
- * Takes any supported file and extracts all readable text.
  */
 export const extractDocumentText = async (file, onProgress = () => {}) => {
   if (!file) throw new Error("No file provided");
@@ -209,7 +219,116 @@ export const extractDocumentText = async (file, onProgress = () => {}) => {
     return await runTesseractOCR(canvas, onProgress);
   }
 
-  // Default fallback try OCR
   const canvas = await prepareImageCanvas(file);
   return await runTesseractOCR(canvas, onProgress);
 };
+
+/**
+ * Comprehensive ChatGPT-grade Document Preparation for AI
+ * Handles:
+ * - PDF: Extracts text from ALL pages + renders high-res page images for Vision models (GPT-4o & Gemini)
+ * - Word: Extracts raw text + HTML tables
+ * - Images: Converts to high-res base64
+ */
+export const prepareDocumentForAI = async (file, onProgress = () => {}) => {
+  if (!file) throw new Error("No file provided");
+
+  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+  const type = file.type || "";
+
+  // 1. PDF Documents
+  if (ext === "pdf" || type === "application/pdf") {
+    onProgress("Initializing PDF multi-page reader...", 15);
+    try {
+      await loadScript(PDFJS_CDN);
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_CDN;
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const totalPages = pdf.numPages;
+        const pagesToScan = Math.min(totalPages, 5); // scan up to 5 pages
+        let combinedText = "";
+        const pageImages = [];
+
+        for (let i = 1; i <= pagesToScan; i++) {
+          onProgress(`Rendering page ${i} of ${totalPages} for AI Vision...`, Math.round(15 + (i / pagesToScan) * 35));
+          const page = await pdf.getPage(i);
+
+          // Extract digital text from this page
+          try {
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map((item) => item.str).join(" ");
+            if (pageText.trim()) {
+              combinedText += `\n--- PAGE ${i} OF ${totalPages} ---\n${pageText}\n`;
+            }
+          } catch (tErr) {
+            console.warn(`Text error on page ${i}:`, tErr);
+          }
+
+          // Render page to canvas image for multimodal vision
+          try {
+            const viewport = page.getViewport({ scale: 1.5 });
+            const canvas = document.createElement("canvas");
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            const ctx = canvas.getContext("2d");
+            await page.render({ canvasContext: ctx, viewport }).promise;
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+            const b64 = dataUrl.split(",")[1];
+            if (b64) pageImages.push(b64);
+          } catch (cErr) {
+            console.warn(`Canvas render error on page ${i}:`, cErr);
+          }
+        }
+
+        return {
+          mimeType: "application/pdf",
+          extractedText: combinedText.trim(),
+          pageImages,
+          totalPages,
+        };
+      }
+    } catch (pdfErr) {
+      console.warn("PDF multi-page preparation notice:", pdfErr);
+    }
+
+    return {
+      mimeType: "application/pdf",
+      extractedText: "",
+      pageImages: [],
+      totalPages: 1,
+    };
+  }
+
+  // 2. Word Documents (.docx, .doc)
+  if (ext === "docx" || ext === "doc" || type.includes("word") || type.includes("officedocument")) {
+    onProgress("Extracting Word document text and tables...", 25);
+    const docText = await extractTextFromWord(file, onProgress);
+    return {
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      extractedText: docText.trim(),
+      pageImages: [],
+      totalPages: 1,
+    };
+  }
+
+  // 3. Image Files (JPG, PNG, WebP)
+  if (ext === "jpg" || ext === "jpeg" || ext === "png" || ext === "webp" || type.startsWith("image/")) {
+    onProgress("Preparing image for AI Vision...", 20);
+    return {
+      mimeType: type || "image/jpeg",
+      extractedText: "",
+      pageImages: [],
+      totalPages: 1,
+    };
+  }
+
+  return {
+    mimeType: type || "application/octet-stream",
+    extractedText: "",
+    pageImages: [],
+    totalPages: 1,
+  };
+};
+
+export default extractDocumentText;
