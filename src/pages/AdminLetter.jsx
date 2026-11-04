@@ -262,14 +262,28 @@ const AdminLetter = () => {
         });
         if (found) return found;
 
-        // 2. Partial/fuzzy match
+        // 2. Contains match
         found = list.find(item => {
             const n1 = (item.company_name || "").trim().toLowerCase();
             const n2 = (item.company_name1 || "").trim().toLowerCase();
             return (n1 && (clean.includes(n1) || n1.includes(clean))) ||
                    (n2 && (clean.includes(n2) || n2.includes(clean)));
         });
-        return found || null;
+        if (found) return found;
+
+        // 3. Significant word token match (e.g. "solex" matching "solex energy pvt ltd" vs "solex energy limited")
+        const stopWords = new Set(["energy", "pvt", "ltd", "limited", "india", "enterprises", "motors", "controls", "services", "private", "llp", "corp"]);
+        const targetTokens = clean.split(/[\s\(\)\.\-_,]+/).filter(w => w.length > 2 && !stopWords.has(w));
+
+        if (targetTokens.length > 0) {
+            found = list.find(item => {
+                const combined = `${item.company_name || ""} ${item.company_name1 || ""}`.toLowerCase();
+                return targetTokens.some(tok => combined.includes(tok));
+            });
+            if (found) return found;
+        }
+
+        return null;
     };
 
     const syncSealAndSignatureForCompany = (compName, listToUse) => {
@@ -279,7 +293,8 @@ const AdminLetter = () => {
         if (matched) {
             const sealImg = matched.seal || matched.seal_url || "";
             const sigImg = matched.signature || matched.signature_url || "";
-            setSelectedSealCompany(matched.company_name || matched.company_name1 || compName);
+            // Keep the chosen company in the selector
+            setSelectedSealCompany(compName);
             setSelectedSealUrl(sealImg);
             setSelectedSigUrl(sigImg);
             setIncludeSeal(!!sealImg);
@@ -720,9 +735,20 @@ const AdminLetter = () => {
 
     const fetchCompanyOptions = async () => {
         try {
-            const { data: rows, error: masterError } = await supabase
-                .from("Master")
-                .select("id, company_name, company_name1, address, email_id, phone_no, seal, signature, seal_url, signature_url");
+            // Try select("*") to fetch all available columns without failing if specific columns are absent
+            let rows = null;
+            let masterError = null;
+
+            const res1 = await supabase.from("Master").select("*");
+            if (!res1.error && res1.data) {
+                rows = res1.data;
+            } else {
+                const res2 = await supabase
+                    .from("Master")
+                    .select("id, company_name, company_name1, address, email_id, phone_no");
+                rows = res2.data;
+                masterError = res2.error;
+            }
 
             // Load backup from localStorage
             let localRecords = [];
@@ -1230,24 +1256,48 @@ const AdminLetter = () => {
                                     </div>
                                 </div>
 
-                                {sealSignatureList.length > 0 && (
-                                    <div className="flex items-center gap-1.5">
-                                        <span className="text-[11px] text-gray-500 font-medium">Source:</span>
-                                        <select
-                                            value={selectedSealCompany}
-                                            onChange={(e) => syncSealAndSignatureForCompany(e.target.value)}
-                                            className="text-xs border border-gray-300 rounded px-2 py-1 bg-white text-gray-700 font-medium focus:ring-1 focus:ring-amber-500 focus:outline-none"
-                                            title="Seal aur Signature ki company chunein"
-                                        >
-                                            <option value={headerInfo.companyName}>Auto (Header: {(headerInfo.companyName || "").slice(0, 16)}...)</option>
-                                            {sealSignatureList.map((item, idx) => (
-                                                <option key={item.id || idx} value={item.company_name || item.company_name1}>
-                                                    {item.company_name || item.company_name1}
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[11px] text-gray-600 font-semibold whitespace-nowrap">Source:</span>
+                                    <select
+                                        value={selectedSealCompany || headerInfo.companyName}
+                                        onChange={(e) => syncSealAndSignatureForCompany(e.target.value)}
+                                        className="text-xs border border-gray-300 rounded px-2.5 py-1 bg-white text-gray-800 font-medium focus:ring-1 focus:ring-amber-500 focus:outline-none shadow-2xs max-w-[220px] truncate cursor-pointer"
+                                        title="Seal aur Signature ki company chunein"
+                                    >
+                                        {headerInfo.companyName && (
+                                            <option value={headerInfo.companyName}>
+                                                {headerInfo.companyName}
+                                            </option>
+                                        )}
+                                        {/* Companies with uploaded seal/signature */}
+                                        {sealSignatureList
+                                            .filter(item => {
+                                                const cName = (item.company_name || item.company_name1 || "").trim();
+                                                return cName && cName.toLowerCase() !== (headerInfo.companyName || "").trim().toLowerCase();
+                                            })
+                                            .map((item, idx) => {
+                                                const cName = item.company_name || item.company_name1;
+                                                return (
+                                                    <option key={item.id || idx} value={cName}>
+                                                        {cName}
+                                                    </option>
+                                                );
+                                            })}
+                                        {/* Other company options from Master/defaults */}
+                                        {companyOptions
+                                            .filter(opt => {
+                                                const oName = (opt.name || "").trim();
+                                                const hName = (headerInfo.companyName || "").trim().toLowerCase();
+                                                const inSealList = sealSignatureList.some(s => (s.company_name || s.company_name1 || "").trim().toLowerCase() === oName.toLowerCase());
+                                                return oName && oName.toLowerCase() !== hName && !inSealList;
+                                            })
+                                            .map(opt => (
+                                                <option key={opt.name} value={opt.name}>
+                                                    {opt.name}
                                                 </option>
                                             ))}
-                                        </select>
-                                    </div>
-                                )}
+                                    </select>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

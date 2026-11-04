@@ -9,7 +9,7 @@ import * as XLSX from "xlsx";
 import supabase from "../utils/supabase";
 import { parseToDate, isValidDate, formatDateDisplay, formatDateTimeDisplay } from "../utils/dateUtils";
 import { extractDocumentText } from "../utils/documentOcr";
-import { parseComplaintDocument } from "../utils/documentParser";
+import { parseComplaintDocument, fileToBase64 } from "../utils/documentParser";
 
 // ================= REUSABLE SEARCHABLE SELECT COMPONENT =================
 function SearchableSelect({
@@ -781,8 +781,8 @@ function NewComplaintForm() {
       setUploadedDocFileName(file.name);
       setIsScanningDocument(true);
       setIsUploadingDocument(true);
-      setScanProgressStep("Reading document and extracting complaint details…");
-      setScanProgressPercent(10);
+      setScanProgressStep("Reading document and preparing AI analysis…");
+      setScanProgressPercent(15);
       setDocumentUploadStatus("Uploading document...");
 
       // 1. Concurrently upload to Supabase Storage
@@ -810,27 +810,52 @@ function NewComplaintForm() {
         setFormData((prev) => ({ ...prev, documentUrl: docPublicUrl }));
       }
 
-      // 2. OCR / Text Extraction
-      setScanProgressStep("Reading document and extracting complaint details…");
-      setScanProgressPercent(25);
+      // 2. Prepare file data and text for AI
+      setScanProgressStep("Processing document content for AI…");
+      setScanProgressPercent(30);
 
-      const extractedText = await extractDocumentText(file, (msg, pct) => {
-        setScanProgressStep(msg);
-        if (pct) setScanProgressPercent(pct);
-      });
+      // Convert file to Base64 (supports PDF & Images for AI Multimodal vision)
+      let fileBase64 = "";
+      let fileMimeType = file.type || "application/octet-stream";
+      try {
+        const b64 = await fileToBase64(file);
+        fileBase64 = b64.base64Data;
+        fileMimeType = b64.mimeType;
+      } catch (b64Err) {
+        console.warn("Base64 preparation notice:", b64Err);
+      }
 
-      console.log("Document text extracted successfully, running pattern matcher...");
+      // Concurrently run text extraction to supply alongside image/PDF
+      let extractedText = "";
+      try {
+        extractedText = await extractDocumentText(file, (msg, pct) => {
+          setScanProgressStep(msg);
+          if (pct) setScanProgressPercent(Math.min(pct, 50));
+        });
+      } catch (ocrErr) {
+        console.warn("Local text extraction notice:", ocrErr);
+      }
 
-      // 3. Format detection and keyword matching
-      setScanProgressStep("Matching keywords and detecting document format…");
-      setScanProgressPercent(88);
+      // 3. AI-Based dynamic extraction (NO rigid or predefined formats)
+      setScanProgressStep("AI is analyzing document and extracting complaint details…");
+      setScanProgressPercent(60);
 
-      const parseResult = parseComplaintDocument(extractedText, {
-        companyNameOptions,
-        districtOptions,
-        projectNameOptions,
-        insuranceTypeOptions,
-        modeOfLetterOptions,
+      const parseResult = await parseComplaintDocument({
+        file,
+        fileBase64,
+        mimeType: fileMimeType,
+        extractedText,
+        dropdownOptions: {
+          companyNameOptions,
+          districtOptions,
+          projectNameOptions,
+          insuranceTypeOptions,
+          modeOfLetterOptions,
+        },
+        onProgress: (msg, pct) => {
+          setScanProgressStep(msg);
+          if (pct) setScanProgressPercent(pct);
+        }
       });
 
       if (parseResult.success && parseResult.records?.length > 0) {
@@ -838,17 +863,17 @@ function NewComplaintForm() {
         setDetectedRecords(parseResult.records);
         setActiveRecordIndex(1);
 
-        // Populate Record 1 data:
+        // Populate Record 1 data into form
         applyExtractedRecord(parseResult.records[0].data, docPublicUrl);
-        setScanProgressStep(`✓ Auto-filled from: ${parseResult.formatName}`);
+        setScanProgressStep(`✓ AI Auto-Fill Complete: ${parseResult.records.length} record(s) detected`);
         setScanProgressPercent(100);
-        setDocumentUploadStatus(`✓ Scanned: ${parseResult.formatName}`);
+        setDocumentUploadStatus(`✓ AI Scanned: ${parseResult.formatName || file.name}`);
       } else {
         setDocumentUploadStatus(`✓ Uploaded: ${file.name}`);
       }
     } catch (err) {
       console.error("Document scan error:", err);
-      alert("Failed to scan document: " + err.message);
+      alert("Failed to scan document with AI: " + err.message);
       setDocumentUploadStatus("Upload/Scan failed");
     } finally {
       setIsScanningDocument(false);
@@ -1624,27 +1649,48 @@ function NewComplaintForm() {
                                   <label className="text-sm font-bold text-gray-900 flex items-center gap-2">
                                     Document Upload (Auto-Fill Form)
                                     <span className="text-[11px] font-semibold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-full">
-                                      Field #1
+                                      AI Auto-Fetch
                                     </span>
                                   </label>
                                   <p className="text-xs text-gray-500">
-                                    Upload government complaint document (PDF, JPG, PNG, Word) to automatically scan, detect format, and fill form fields.
+                                    Upload any complaint document (PDF, JPG, PNG, Word) for AI to automatically read, analyze, and populate form fields dynamically.
                                   </p>
                                 </div>
                               </div>
 
                               {formData.documentUrl && (
-                                <a
-                                  href={formData.documentUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-white hover:bg-blue-50 px-2.5 py-1.5 rounded-md border border-blue-200 transition shadow-xs"
-                                >
-                                  <span>View Document</span>
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                  </svg>
-                                </a>
+                                <div className="flex items-center gap-1.5">
+                                  <a
+                                    href={formData.documentUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-white hover:bg-blue-50 px-2.5 py-1.5 rounded-md border border-blue-200 transition shadow-xs"
+                                  >
+                                    <span>View Document</span>
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setFormData((prev) => ({ ...prev, documentUrl: "" }));
+                                      setUploadedDocFileName("");
+                                      setScanResult(null);
+                                      setDetectedRecords([]);
+                                      setScanProgressStep("");
+                                      setDocumentUploadStatus("");
+                                      const input = document.getElementById("government-document-upload-field");
+                                      if (input) input.value = "";
+                                    }}
+                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded border border-transparent hover:border-red-200 transition cursor-pointer"
+                                    title="Remove document"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                </div>
                               )}
                             </div>
 
@@ -1673,7 +1719,7 @@ function NewComplaintForm() {
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                                     </svg>
                                     <span className="text-xs sm:text-sm font-medium text-gray-700 truncate">
-                                      {uploadedDocFileName || "Choose document to scan (PDF, JPG, PNG, Word)..."}
+                                      {uploadedDocFileName || "Choose document to scan with AI (PDF, JPG, PNG, Word)..."}
                                     </span>
                                   </div>
                                   <span className="text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md shadow-xs flex-shrink-0 ml-2">
@@ -1682,7 +1728,7 @@ function NewComplaintForm() {
                                 </div>
                               </label>
 
-                              {uploadedDocFileName && !isScanningDocument && (
+                              {(uploadedDocFileName || formData.documentUrl) && !isScanningDocument && (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1691,11 +1737,16 @@ function NewComplaintForm() {
                                     setDetectedRecords([]);
                                     setScanProgressStep("");
                                     setDocumentUploadStatus("");
+                                    setFormData((prev) => ({ ...prev, documentUrl: "" }));
                                     const input = document.getElementById("government-document-upload-field");
                                     if (input) input.value = "";
                                   }}
-                                  className="text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition border border-gray-200 self-center"
+                                  className="text-xs text-red-600 hover:text-red-800 px-2.5 py-1.5 rounded hover:bg-red-50 transition border border-red-200 self-center font-medium cursor-pointer flex items-center gap-1 shadow-2xs"
+                                  title="Clear uploaded document"
                                 >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
                                   Clear
                                 </button>
                               )}
@@ -1707,7 +1758,7 @@ function NewComplaintForm() {
                                 <div className="flex items-center justify-between text-xs text-blue-900 font-medium mb-1.5">
                                   <span className="flex items-center gap-2">
                                     <span className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
-                                    Reading document and extracting complaint details…
+                                    AI reading document and extracting complaint details…
                                   </span>
                                   <span className="font-bold">{scanProgressPercent}%</span>
                                 </div>
@@ -1733,10 +1784,10 @@ function NewComplaintForm() {
                                     </span>
                                     <div>
                                       <span className="text-xs font-bold text-emerald-900">
-                                        Auto-Fill Active: {scanResult.formatName}
+                                        AI Auto-Fill Active: {scanResult.formatName}
                                       </span>
                                       <p className="text-[11px] text-emerald-700">
-                                        Information successfully mapped to form fields. You can manually edit any field below.
+                                        Information successfully extracted by AI and mapped to form fields. You can manually edit any field below.
                                       </p>
                                     </div>
                                   </div>
@@ -1745,11 +1796,11 @@ function NewComplaintForm() {
                                   </span>
                                 </div>
 
-                                {/* Multi-Record Switcher (For documents with multiple rows like Format 1) */}
+                                {/* Multi-Record Switcher (For documents with multiple rows / complaints) */}
                                 {detectedRecords.length > 1 && (
                                   <div className="mt-3 pt-2.5 border-t border-emerald-200">
                                     <p className="text-xs font-semibold text-gray-800 mb-1.5">
-                                      Select Record to Populate into Form:
+                                      Select Record / Row to Populate into Form:
                                     </p>
                                     <div className="flex flex-wrap gap-1.5">
                                       {detectedRecords.map((rec) => (
@@ -1758,7 +1809,7 @@ function NewComplaintForm() {
                                           type="button"
                                           onClick={() => handleSelectRecord(rec.recordIndex)}
                                           className={`text-xs px-2.5 py-1.5 rounded-md font-medium transition cursor-pointer ${activeRecordIndex === rec.recordIndex
-                                              ? "bg-blue-600 text-white shadow-xs"
+                                              ? "bg-blue-600 text-white shadow-xs font-bold"
                                               : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
                                             }`}
                                         >

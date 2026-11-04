@@ -1,14 +1,14 @@
 /**
- * Dynamic Document Parser for Government Complaint Letters & Notices
+ * AI-Based Dynamic Document Parser for Complaint Tracker
  * 
- * Accurately detects and dynamically parses all 5 predefined CREDA / Government formats
- * and general complaint letters. Extracts whatever real text is written in the uploaded
- * document (reference numbers, dates, beneficiary names, locations, products, ratings,
- * quantities, etc.) WITHOUT guessing or relying on hardcoded static values.
+ * Replaces predefined/hardcoded formats (Format 1, 2, 3, etc.) with pure AI-based
+ * analysis using Google Gemini or OpenAI API keys from environment (.env).
+ * Dynamically identifies whatever fields and tables are present in the uploaded
+ * document (PDF, JPG, PNG, Word) and auto-fills the complaint form fields.
  */
 
 // Clean text helper
-const cleanText = (text) => {
+export const cleanText = (text) => {
   if (!text) return "";
   return text
     .replace(/\r\n/g, "\n")
@@ -39,51 +39,110 @@ export const DISTRICT_MAP = {
   "धमतरी": "Dhamtari",
   "जांजगीर-चांपा": "Janjgir-Champa",
   "कोरबा": "Korba",
+  "कोण्डागांव": "Kondagaon",
+  "कोंडागांव": "Kondagaon",
+  "सुकमा": "Sukma",
+  "बीजापुर": "Bijapur",
+  "नारायणपुर": "Narayanpur",
+  "बेमेतरा": "Bemetara",
+  "बालोद": "Balod",
+  "बलौदाबाजार": "Baloda Bazar",
+  "सक्ती": "Sakti",
+  "सारंगढ़-बिलाईगढ़": "Sarangarh-Bilaigarh",
+  "मोहला-मानपुर": "Mohla-Manpur",
+  "खैरागढ़": "Khairagarh",
+  "मनेन्द्रगढ़": "Manendragarh"
 };
 
-// Project pattern mapping
-export const PROJECT_PATTERNS = [
-  { pattern: /सौर\s*सुजला\s*(?:योजना\s*)?फेस[-–\s]*0?8|ssy\s*phase[-–\s]*0?8|ssy[-–\s]*8/i, name: "SSY Phase-08" },
-  { pattern: /सौर\s*सुजला\s*(?:योजना\s*)?फेस[-–\s]*0?7|ssy\s*phase[-–\s]*0?7|ssy[-–\s]*7/i, name: "SSY Phase-07" },
-  { pattern: /सौर\s*सुजला\s*(?:योजना\s*)?फेस[-–\s]*0?6|ssy\s*phase[-–\s]*0?6|ssy[-–\s]*6/i, name: "SSY Phase-06" },
-  { pattern: /सौर\s*सुजला\s*(?:योजना\s*)?फेस[-–\s]*0?5|ssy\s*phase[-–\s]*0?5|ssy[-–\s]*5/i, name: "SSY Phase-05" },
-  { pattern: /सौर\s*सुजला\s*(?:योजना\s*)?फेस[-–\s]*0?4|ssy\s*phase[-–\s]*0?4|ssy[-–\s]*4/i, name: "SSY Phase-04" },
-  { pattern: /सौर\s*पॉवर\s*प्लांट|solar\s*power\s*plant|spvpp|नस्ती[-–\s]*\d+[-–\s]*spvpp/i, name: "SPVPP" },
-];
+// Helper: Convert File or Blob to Base64
+export const fileToBase64 = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = reader.result;
+      if (typeof res === "string") {
+        const parts = res.split(",");
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mimeType = mimeMatch ? mimeMatch[1] : (file.type || "application/octet-stream");
+        const base64Data = parts[1];
+        resolve({ base64Data, mimeType, dataUrl: res });
+      } else {
+        reject(new Error("Failed to convert file to base64"));
+      }
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+};
 
-// Product pattern mapping
-export const PRODUCT_PATTERNS = [
-  { pattern: /controller|कंट्रोलर|vfd/i, name: "Controller" },
-  { pattern: /solar\s*module|module\s*\(damage\)|module|सोलर\s*मॉड्यूल|मॉड्यूल|panel/i, name: "Solar Module" },
-  { pattern: /inverter|इन्वर्टर/i, name: "Inverter" },
-  { pattern: /motor\s*\+\s*pump|motor\s*pump|मोटर|पंप|submersible\s*pump/i, name: "Motor+Pump" },
-];
+// Helper: Get AI API Key from .env (checks all potential variable names)
+export const getAIApiKey = () => {
+  const env = import.meta.env || {};
 
-// Parse string date into Date object
-export const parseDocDate = (str) => {
-  if (!str) return null;
-  const match = str.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
-  if (!match) return null;
-  let day = parseInt(match[1], 10);
-  let month = parseInt(match[2], 10) - 1;
-  let year = parseInt(match[3], 10);
-  if (year < 100) {
-    year += 2000;
+  const candidates = [
+    env.VITE_AI_API_KEY,
+    env.AI_API_KEY,
+    env.VITE_GEMINI_API_KEY,
+    env.GEMINI_API_KEY,
+    env.VITE_OPENAI_API_KEY,
+    env.OPENAI_API_KEY,
+    env.VITE_GOOGLE_API_KEY,
+    env.GOOGLE_API_KEY,
+    env.VITE_API_KEY,
+    env.API_KEY,
+    env.VITE_GEMINI_KEY,
+    env.GEMINI_KEY,
+    env.VITE_OPENAI_KEY,
+    env.OPENAI_KEY
+  ];
+
+  for (const c of candidates) {
+    if (c && typeof c === "string" && c.trim()) {
+      return c.trim();
+    }
   }
-  const dateObj = new Date(year, month, day);
-  return isNaN(dateObj.getTime()) ? null : dateObj;
+
+  // Scan import.meta.env dynamically
+  for (const [key, val] of Object.entries(env)) {
+    const kUpper = key.toUpperCase();
+    if (
+      (kUpper.includes("API_KEY") ||
+        kUpper.includes("GEMINI") ||
+        kUpper.includes("OPENAI") ||
+        kUpper.includes("AI_KEY")) &&
+      typeof val === "string" &&
+      val.trim()
+    ) {
+      return val.trim();
+    }
+  }
+
+  return "";
 };
 
-// Fuzzy matcher for select options
+// Helper: Detect whether the key belongs to Google Gemini or OpenAI
+export const detectAIProvider = (apiKey) => {
+  if (!apiKey) return "gemini";
+  if (apiKey.startsWith("AIzaSy") || apiKey.startsWith("AIza")) return "gemini";
+  if (apiKey.startsWith("sk-")) return "openai";
+
+  const env = import.meta.env || {};
+  if (env.VITE_OPENAI_API_KEY || env.OPENAI_API_KEY) return "openai";
+  if (env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY || env.VITE_GOOGLE_API_KEY) return "gemini";
+
+  return "gemini"; // Default to Gemini
+};
+
+// Fuzzy matcher for dropdown options
 export const matchWithOption = (val, options = []) => {
   if (!val || !options || options.length === 0) return val || "";
   const vLower = val.toLowerCase().trim();
-  
-  // Exact match
+
+  // 1. Exact match
   const exact = options.find((opt) => opt && opt.toLowerCase().trim() === vLower);
   if (exact) return exact;
 
-  // Substring match
+  // 2. Substring match
   const sub = options.find(
     (opt) => opt && (opt.toLowerCase().includes(vLower) || vLower.includes(opt.toLowerCase()))
   );
@@ -92,796 +151,366 @@ export const matchWithOption = (val, options = []) => {
   return val;
 };
 
-// ================= DYNAMIC COMMON EXTRACTORS =================
+// Call Google Gemini API (2.0 Flash -> 1.5 Flash)
+async function callGeminiAPI({ apiKey, prompt, fileBase64, mimeType, onProgress }) {
+  const models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+  let lastError = null;
 
-// Extract official reference / letter number
-const extractDynamicRefNo = (text) => {
-  const m =
-    text.match(/(?:क्रमांक|पत्र\s*क्र\.?|पत्र\s*क्रमांक|Ref(?:\s*No\.?)?|Letter\s*No\.?)[:\s]*([0-9A-Za-z\u0900-\u097F\.\-_]+(?:\/[0-9A-Za-z\u0900-\u097F\.\-_]+)+)/i) ||
-    text.match(/(?:पत्र\s*क्र\.?|Ref(?:\s*No\.?)?)[:\s]*([A-Za-z0-9\/\-_]+)/i);
-  return m ? m[1].replace(/^[:\s\-]+/, "").trim() : "";
-};
+  for (const model of models) {
+    try {
+      if (onProgress) onProgress(`AI analyzing document with ${model}...`, 65);
 
-// Extract main letter date
-const extractDynamicDate = (text) => {
-  const m =
-    text.match(/(?:दिनांक|Date)[:\s]*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i) ||
-    text.match(/(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4})/);
-  return m ? parseDocDate(m[1]) : null;
-};
+      const parts = [{ text: prompt }];
 
-// Extract inward stamp number (e.g., "4891 (SSY)", "525 power plant", "514 (SSY)", "SSY/06-26/05")
-const extractDynamicInwardNo = (text) => {
-  const m =
-    text.match(/(?:Inward|आवक)[^\n]*?(?:No\.?|क्र\.?)[:\s]*([^\n,]+?)(?:\s+(?:Date|दिनांक)|\n|$)/i) ||
-    text.match(/No\.?[:\s]*([0-9A-Za-z\s\(\)\-_]+?)(?:\s+(?:Date|दिनांक)|$)/i) ||
-    text.match(/(SSY\/\d+[-–]\d+\/\d+)/i);
-  return m ? m[1].replace(/^[:\s\-]+/, "").trim() : "";
-};
+      if (fileBase64 && mimeType) {
+        let validMime = mimeType;
+        if (mimeType.includes("pdf")) validMime = "application/pdf";
+        else if (mimeType.includes("png")) validMime = "image/png";
+        else if (mimeType.includes("webp")) validMime = "image/webp";
+        else validMime = "image/jpeg";
 
-// Extract inward stamp date
-const extractDynamicInwardDate = (text) => {
-  const m =
-    text.match(/(?:Inward|आवक)[^\n]*?(?:Date|दिनांक)[:\s]*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i) ||
-    text.match(/(?:Date|दिनांक)[:\s]*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\s*$/m);
-  return m ? parseDocDate(m[1]) : null;
-};
+        parts.push({
+          inlineData: {
+            mimeType: validMime,
+            data: fileBase64,
+          },
+        });
+      }
 
-// Extract recipient / company name
-const extractDynamicCompany = (text, options = []) => {
-  const m = text.match(/प्रति[,\s]+(?:M\/[sS]\.?\s*)?([^\n,]+)/i);
-  let comp = m ? m[1].trim() : "";
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: {
+              temperature: 0.1,
+              responseMimeType: "application/json",
+            },
+          }),
+        }
+      );
 
-  if (/RBP\s*Energy|RBP/i.test(comp) || /RBP\s*Energy/i.test(text)) {
-    comp = "RBP Energy (India) Pvt. Ltd.";
-  } else if (/Rotomag/i.test(comp) || /Rotomag\s*Motors/i.test(text)) {
-    comp = "Rotomag Motors & Controls Pvt. Ltd.";
-  } else if (/Premier\s*Energies/i.test(comp) || /Premier/i.test(text)) {
-    comp = "Premier Energies Ltd.";
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson?.error?.message || `Gemini ${model} HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) throw new Error("Empty response from Gemini AI");
+
+      return rawText;
+    } catch (err) {
+      console.warn(`Gemini ${model} notice:`, err.message);
+      lastError = err;
+    }
   }
 
-  return matchWithOption(comp, options);
-};
+  throw lastError || new Error("Failed to process document with Gemini AI");
+}
 
-// Extract district dynamically from Subject or text
-const extractDynamicDistrict = (text, options = []) => {
-  // Try finding in subject line first: e.g. "जिला सूरजपुर अंतर्गत" or "जिला बलरामपुर अंतर्गत"
-  const subMatch = text.match(/विषय[:\-—\s]*([^\n\r]+)/i);
-  const searchArea = subMatch ? subMatch[1] : text;
+// Call OpenAI API (gpt-4o-mini -> gpt-4o)
+async function callOpenAIAPI({ apiKey, prompt, fileBase64, mimeType, onProgress }) {
+  const models = ["gpt-4o-mini", "gpt-4o"];
+  let lastError = null;
 
-  const dMatch = searchArea.match(/जिला\s*([^\s, अंतर्गत]+)/i);
-  if (dMatch) {
-    const raw = dMatch[1].trim();
-    const mapped = DISTRICT_MAP[raw] || raw;
-    return matchWithOption(mapped, options);
+  for (const model of models) {
+    try {
+      if (onProgress) onProgress(`AI analyzing document with ${model}...`, 65);
+
+      const userContent = [{ type: "text", text: prompt }];
+
+      if (fileBase64 && mimeType && !mimeType.includes("pdf")) {
+        const dataUrl = `data:${mimeType};base64,${fileBase64}`;
+        userContent.push({
+          type: "image_url",
+          image_url: { url: dataUrl },
+        });
+      }
+
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            {
+              role: "system",
+              content: "You are an expert AI government document parser. Return JSON only.",
+            },
+            {
+              role: "user",
+              content: userContent,
+            },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson?.error?.message || `OpenAI ${model} HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const rawText = data?.choices?.[0]?.message?.content;
+      if (!rawText) throw new Error("Empty response from OpenAI");
+
+      return rawText;
+    } catch (err) {
+      console.warn(`OpenAI ${model} notice:`, err.message);
+      lastError = err;
+    }
   }
 
-  // Check known districts
+  throw lastError || new Error("Failed to process document with OpenAI");
+}
+
+// Universal AI Caller
+export async function executeAIAnalysis({
+  apiKey,
+  prompt,
+  fileBase64,
+  mimeType,
+  onProgress,
+}) {
+  const provider = detectAIProvider(apiKey);
+
+  if (provider === "openai") {
+    try {
+      return await callOpenAIAPI({ apiKey, prompt, fileBase64, mimeType, onProgress });
+    } catch (e) {
+      console.warn("OpenAI attempt failed, trying Gemini:", e.message);
+      return await callGeminiAPI({ apiKey, prompt, fileBase64, mimeType, onProgress });
+    }
+  } else {
+    try {
+      return await callGeminiAPI({ apiKey, prompt, fileBase64, mimeType, onProgress });
+    } catch (e) {
+      console.warn("Gemini attempt failed, trying OpenAI:", e.message);
+      return await callOpenAIAPI({ apiKey, prompt, fileBase64, mimeType, onProgress });
+    }
+  }
+}
+
+// Fallback regex extractor (purely generic, without any Format 1/2/3 hardcoding)
+function extractGenericFallback(text) {
+  const refMatch = text.match(/(?:क्रमांक|पत्र\s*क्र\.?|Ref(?:\s*No\.?)?)[:\s]*([0-9A-Za-z\u0900-\u097F\.\-_]+(?:\/[0-9A-Za-z\u0900-\u097F\.\-_]+)+)/i);
+  const dateMatch = text.match(/(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/);
+  const phoneMatch = text.match(/\b([6-9]\d{9})\b/);
+  const idMatch = text.match(/\b(\d{6,7})\b/);
+
+  let district = "";
   for (const [hindi, eng] of Object.entries(DISTRICT_MAP)) {
     if (text.includes(hindi) || new RegExp(`\\b${eng}\\b`, "i").test(text)) {
-      return matchWithOption(eng, options);
+      district = eng;
+      break;
     }
-  }
-
-  return "";
-};
-
-// Extract project dynamically
-const extractDynamicProject = (text, options = []) => {
-  for (const pm of PROJECT_PATTERNS) {
-    if (pm.pattern.test(text)) {
-      return matchWithOption(pm.name, options);
-    }
-  }
-  return "";
-};
-
-// Extract rating dynamically (e.g. "05 Hp DC Surf.", "03 HP DC Sub.", "4.8 KW")
-const extractDynamicRating = (text) => {
-  const m =
-    text.match(/(\d{1,2}(?:\.\d+)?\s*(?:Hp|HP|kw|KW)(?:[^\n,\t\r]{0,25}))/i) ||
-    text.match(/(\d{1,2}\s*HP[-–\s]*(?:Surface|Submersible)[^\n,\t\r]{0,20})/i);
-  return m ? m[1].trim() : "";
-};
-
-// Extract product dynamically
-const extractDynamicProduct = (text) => {
-  for (const prod of PRODUCT_PATTERNS) {
-    if (prod.pattern.test(text)) {
-      return prod.name;
-    }
-  }
-  return "";
-};
-
-// Extract make dynamically
-const extractDynamicMake = (text) => {
-  if (/Rotomag|Rotomage/i.test(text)) return "Rotomag Motors";
-  if (/Premier/i.test(text)) return "Premier Energies";
-  if (/Icon/i.test(text)) return "ICON";
-  if (/Shakti/i.test(text)) return "SHAKTI";
-  if (/Rotosol/i.test(text)) return "ROTOSOL";
-  return "";
-};
-
-// Extract quantity dynamically
-const extractDynamicQty = (text) => {
-  const m =
-    text.match(/(?:संख्या(?:\s*नग(?:\/मी\.)?)?|Qty|Quantity)[:\s]*(\d+)/i) ||
-    text.match(/\b0?([1-9]\d?)\s*(?:नग|nos?|qty)\b/i);
-  if (m) {
-    return parseInt(m[1], 10).toString();
-  }
-  return "1";
-};
-
-// Extract phone number (10 digits)
-const extractDynamicPhone = (text) => {
-  const m = text.match(/\b([6-9]\d{9})\b/);
-  return m ? m[1] : "";
-};
-
-// Extract nature of complaint dynamically
-const extractDynamicNatureOfComplaint = (text) => {
-  if (/सोलर\s*मॉड्यूल\s*क्षतिग्रस्त|Module\s*\(Damage\)|क्षतिग्रस्त|damaged/i.test(text)) {
-    return "Solar Module Damaged / Non-Functional";
-  }
-  if (/सुधार\s*कर\s*संयंत्र\s*को\s*पूरी\s*तरह\s*कार्यशील|पूरी\s*तरह\s*से\s*कार्यशील/i.test(text)) {
-    return "Equipment Rectified / Repaired & Functional";
-  }
-  if (/इनवर्टर|inverter/i.test(text) && /अकार्यशील|खराब/i.test(text)) {
-    return "Inverter Faulty / Equipment Non-Functional";
-  }
-  if (/controller|कंट्रोलर/i.test(text) && /अकार्यशील|खराब/i.test(text)) {
-    return "Controller Faulty / Non-Functional";
-  }
-  if (/अकार्यशील|अकार्यशीलता|खराब|not\s*working|non[- ]functional/i.test(text)) {
-    return "Equipment Not Working / Non-Functional";
-  }
-  return "Equipment Non-Functional";
-};
-
-// ================= FORMAT DETECTORS & DYNAMIC RECORD PARSERS =================
-
-/**
- * FORMAT 1: CREDA Raipur Head Office Multi-Entry Notice
- * Layout Anchors:
- * - "प्रधान कार्यालय, रायपुर" OR "CREDA"
- * - Table Headers: "संयंत्र का प्रकार", "जिला का नाम", "स्थल का नाम", "वि.ख.", "संयंत्र क्षमता", "खराब सामग्री का विवरण"
- */
-function tryParseFormat1Dynamic(text, options = {}) {
-  const isF1 =
-    (text.includes("प्रधान कार्यालय") || text.includes("रायपुर")) &&
-    (text.includes("स्थल का नाम") || text.includes("खराब सामग्री का विवरण") || text.includes("वारंटी अवधि में अकार्यशील")) &&
-    (text.includes("क्रेडा") || text.includes("CREDA") || text.includes("अक्षय ऊर्जा"));
-
-  if (!isF1) return null;
-
-  const letterRef = extractDynamicRefNo(text);
-  const letterDate = extractDynamicDate(text);
-  const inwardNo = extractDynamicInwardNo(text);
-  const inwardDate = extractDynamicInwardDate(text);
-  const company = extractDynamicCompany(text, options.companyNameOptions);
-  const district = extractDynamicDistrict(text, options.districtOptions);
-  const project = extractDynamicProject(text, options.projectNameOptions);
-
-  // Parse dynamic table rows
-  // Look for lines with row numbers: "1 ...", "2 ...", "3 ..."
-  const rows = [];
-  const lines = text.split("\n");
-
-  let currentBlock = "";
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (/^[1-9]\b/.test(trimmed)) {
-      if (currentBlock) rows.push(currentBlock);
-      currentBlock = trimmed;
-    } else if (currentBlock) {
-      currentBlock += " " + trimmed;
-    }
-  }
-  if (currentBlock) rows.push(currentBlock);
-
-  const parsedRecords = [];
-
-  if (rows.length > 0) {
-    rows.forEach((rowText, idx) => {
-      // Dynamic parse each row
-      let rowBeneficiary = "";
-      let rowVillage = "";
-      let rowBlock = "";
-
-      // Match "Shri Name / Smt Name, Vill.-Village" or "स्थल का नाम"
-      const villMatch = rowText.match(/([^\d,]+?)[,\s]+(?:Vill\.?[-–\s]*|ग्राम[-–\s]*)([^,\s]+)/i);
-      if (villMatch) {
-        rowBeneficiary = villMatch[1].replace(/^[1-9\s\.\-_]+/, "").trim();
-        rowVillage = villMatch[2].trim();
-      } else {
-        const words = rowText.split(/[\s,]+/);
-        rowBeneficiary = words.slice(1, 4).join(" ");
-      }
-
-      // Check block (Odagi, Pratappur, etc.)
-      const blockMatch = rowText.match(/\b(Odagi|Pratappur|Wadrafnagar|Balrampur|Deobhog|देवभोग|बोड़ला)\b/i);
-      if (blockMatch) {
-        rowBlock = blockMatch[1];
-      }
-
-      const rowRating = extractDynamicRating(rowText) || extractDynamicRating(text);
-      const rowProduct = extractDynamicProduct(rowText) || extractDynamicProduct(text);
-      const rowMake = extractDynamicMake(rowText) || extractDynamicMake(text);
-      const rowQty = extractDynamicQty(rowText);
-
-      parsedRecords.push({
-        recordIndex: idx + 1,
-        label: `Record ${idx + 1}: ${rowBeneficiary || "Beneficiary"} (${rowVillage || district || "Site"}) - ${rowProduct || "Equipment"}`,
-        data: {
-          companyName: company,
-          modeOfCall: "Letter",
-          modeOfLetter: "Notice",
-          letterReferenceNumber: letterRef,
-          complaintNumber: inwardNo || letterRef.split("/")[0] || "",
-          complaintDate: inwardDate || letterDate,
-          idNumber: "",
-          projectName: project,
-          district: district,
-          beneficiaryName: rowBeneficiary,
-          contactNumber: "",
-          village: rowVillage,
-          block: rowBlock,
-          rating: rowRating,
-          product: rowProduct,
-          make: rowMake,
-          qty: rowQty,
-          controllerRidNo: "",
-          productSlNo: "",
-          insuranceType: rowProduct === "Solar Module" ? "Panel Damage" : "",
-          resolvedDate: null,
-          natureOfComplaint: extractDynamicNatureOfComplaint(rowText || text),
-        },
-      });
-    });
-  }
-
-  // Fallback single record if table row splitting wasn't row-indexed
-  if (parsedRecords.length === 0) {
-    const benMatch = text.match(/(?:स्थल\s*का\s*नाम)[:\s]*([^\n,]+)(?:[,\s]+(?:Vill\.?|ग्राम)[-–\s]*([^\n,]+))?/i);
-    const ben = benMatch ? benMatch[1].trim() : "";
-    const vill = benMatch && benMatch[2] ? benMatch[2].trim() : "";
-
-    parsedRecords.push({
-      recordIndex: 1,
-      label: `Record 1: ${ben || "Detected Beneficiary"} - ${extractDynamicProduct(text) || "Equipment"}`,
-      data: {
-        companyName: company,
-        modeOfCall: "Letter",
-        modeOfLetter: "Notice",
-        letterReferenceNumber: letterRef,
-        complaintNumber: inwardNo || letterRef.split("/")[0] || "",
-        complaintDate: inwardDate || letterDate,
-        idNumber: "",
-        projectName: project,
-        district: district,
-        beneficiaryName: ben,
-        contactNumber: "",
-        village: vill,
-        block: "",
-        rating: extractDynamicRating(text),
-        product: extractDynamicProduct(text),
-        make: extractDynamicMake(text),
-        qty: extractDynamicQty(text),
-        controllerRidNo: "",
-        productSlNo: "",
-        insuranceType: "",
-        resolvedDate: null,
-        natureOfComplaint: extractDynamicNatureOfComplaint(text),
-      },
-    });
   }
 
   return {
-    formatName: `CREDA Raipur Multi-Notice (${district || project || "SSY Phase-08"})`,
-    formatCode: "FORMAT_1",
-    confidence: "High",
-    records: parsedRecords,
-    defaultRecord: parsedRecords[0].data,
-  };
-}
-
-/**
- * FORMAT 2: CREDA District Office Notice (Gariyaband / Camp Notice)
- * Layout Anchors:
- * - "जिला कार्यालय"
- * - Table Headers: "आई.डी./SSY", "हितग्राही का नाम", "ग्राम", "वि.ख.", "सोलर पंप की क्षमता", "समस्या का विवरण"
- */
-function tryParseFormat2Dynamic(text, options = {}) {
-  const isF2 =
-    text.includes("जिला कार्यालय") &&
-    (text.includes("हितग्राही का नाम") || text.includes("समस्या का विवरण") || text.includes("समाधान शिविर") || text.includes("सुशासन तिहार"));
-
-  if (!isF2) return null;
-
-  const letterRef = extractDynamicRefNo(text);
-  const letterDate = extractDynamicDate(text);
-  const inwardNo = extractDynamicInwardNo(text);
-  const company = extractDynamicCompany(text, options.companyNameOptions);
-  const district = extractDynamicDistrict(text, options.districtOptions);
-  const project = extractDynamicProject(text, options.projectNameOptions);
-  const phone = extractDynamicPhone(text);
-
-  // Dynamic ID from "706780/SSY07" or ID column
-  let idNumber = "";
-  const idMatch = text.match(/\b(\d{6,7})(?:\/SSY\d+)?\b/);
-  if (idMatch) idNumber = idMatch[1];
-
-  // Dynamic Beneficiary Name
-  let beneficiary = "";
-  const benMatch = text.match(/(?:हितग्राही\s*का\s*नाम)[:\s]*([^\n\d]+)/i) ||
-                   text.match(/\b(श्री\s*[^\n\d,]+|\bSmt\.?\s*[^\n\d,]+|\bShri\s*[^\n\d,]+)/i);
-  if (benMatch) beneficiary = benMatch[1].replace(/[\/,\-]+$/, "").trim();
-
-  // Dynamic Village
-  let village = "";
-  const villMatch = text.match(/(?:ग्राम)[:\s]*([^\n,\s\t]+)/i) ||
-                    text.match(/\b(खोखसरा[^\s\n,]*|[A-Za-z]+)\s*(?:\([^\)]+\))?/);
-  if (villMatch) village = villMatch[0].replace(/^ग्राम[:\s]*/, "").trim();
-
-  // Dynamic Block
-  let block = "";
-  const blockMatch = text.match(/(?:वि\.ख\.|विकासखंड)[:\s]*([^\n,\s\t]+)/i) ||
-                     text.match(/\b(देवभोग|बोड़ला|Odagi|Pratappur|Balrampur)\b/i);
-  if (blockMatch) block = blockMatch[1].trim();
-
-  const rating = extractDynamicRating(text);
-  const product = extractDynamicProduct(text) || "Solar Module";
-  const make = extractDynamicMake(text);
-  const qty = extractDynamicQty(text);
-
-  // Check handwritten Insurance
-  const insuranceType = /insurance/i.test(text) ? "Insurance" : (product === "Solar Module" ? "Panel Damage" : "");
-
-  const recordData = {
-    companyName: company,
+    companyName: "",
     modeOfCall: "Letter",
     modeOfLetter: "Notice",
-    letterReferenceNumber: letterRef,
-    complaintNumber: inwardNo || letterRef.split("/")[0] || "",
-    complaintDate: letterDate,
-    idNumber: idNumber,
-    projectName: project,
+    letterReferenceNumber: refMatch ? refMatch[1] : "",
+    complaintNumber: refMatch ? refMatch[1].split("/")[0] : "",
+    complaintDate: dateMatch ? dateMatch[1] : null,
+    idNumber: idMatch ? idMatch[1] : "",
+    projectName: "",
     district: district,
-    beneficiaryName: beneficiary,
-    contactNumber: phone,
-    village: village,
-    block: block,
-    rating: rating,
-    product: product,
-    make: make,
-    qty: qty,
-    controllerRidNo: "",
-    productSlNo: "",
-    insuranceType: insuranceType,
-    resolvedDate: null,
-    natureOfComplaint: extractDynamicNatureOfComplaint(text),
-  };
-
-  return {
-    formatName: `CREDA District Notice – ${district || "District Office"} (${project || "SSY"})`,
-    formatCode: "FORMAT_2",
-    confidence: "High",
-    records: [
-      {
-        recordIndex: 1,
-        label: `Record 1: ${beneficiary || "Beneficiary"} (${village || district || "Site"}) - ${product}`,
-        data: recordData,
-      },
-    ],
-    defaultRecord: recordData,
-  };
-}
-
-/**
- * FORMAT 3: RBP Energy / Contractor Rectification Letter to CREDA
- * Layout Anchors:
- * - "RBP ENERGY" letterhead or company letter
- * - Table Headers: "सामग्री का विवरण", "सुधार/कार्यशील किए जाने की स्थिति"
- */
-function tryParseFormat3Dynamic(text, options = {}) {
-  const isF3 =
-    (text.includes("RBP ENERGY") || text.includes("Solar EPC")) &&
-    (text.includes("कार्यपालन अभियंता") || text.includes("सुधार/कार्यशील") || text.includes("पूरी तरह से कार्यशील"));
-
-  if (!isF3) return null;
-
-  const letterRef = extractDynamicRefNo(text);
-  const letterDate = extractDynamicDate(text);
-  const company = extractDynamicCompany(text, options.companyNameOptions) || "RBP Energy (India) Pvt. Ltd.";
-  const district = extractDynamicDistrict(text, options.districtOptions);
-  const project = extractDynamicProject(text, options.projectNameOptions);
-
-  // ID Number e.g. "701069 (Gen)"
-  let idNumber = "";
-  const idMatch = text.match(/\b(\d{6,7})(?:\s*\(Gen\))?\b/);
-  if (idMatch) idNumber = idMatch[1];
-
-  // Beneficiary & Village
-  let beneficiary = "";
-  let village = "";
-  const benMatch = text.match(/([A-Za-z\s]+?)[,\s]+(?:Vill\.?[-–\s]*|ग्राम[-–\s]*)([A-Za-z\u0900-\u097F]+)/i);
-  if (benMatch) {
-    beneficiary = benMatch[1].trim();
-    village = benMatch[2].trim();
-  }
-
-  // Block
-  let block = "";
-  const blockMatch = text.match(/(?:वि\.ख\.)[:\s]*([^\n,\s]+)/i) || district;
-  if (blockMatch) block = typeof blockMatch === "string" ? blockMatch : blockMatch[1];
-
-  const rating = extractDynamicRating(text);
-  const product = extractDynamicProduct(text) || "Controller";
-  const make = extractDynamicMake(text);
-  const qty = extractDynamicQty(text);
-
-  const recordData = {
-    companyName: company,
-    modeOfCall: "Letter",
-    modeOfLetter: "Letter",
-    letterReferenceNumber: letterRef,
-    complaintNumber: letterRef,
-    complaintDate: letterDate,
-    idNumber: idNumber,
-    projectName: project,
-    district: district,
-    beneficiaryName: beneficiary,
-    contactNumber: "",
-    village: village,
-    block: block,
-    rating: rating,
-    product: product,
-    make: make,
-    qty: qty,
-    controllerRidNo: "",
-    productSlNo: "",
-    insuranceType: "",
-    resolvedDate: letterDate, // Rectification confirmed in letter
-    natureOfComplaint: "Controller Not Working / Repaired & Functional",
-  };
-
-  return {
-    formatName: `RBP Energy Rectification Letter (${district || "CREDA Work"})`,
-    formatCode: "FORMAT_3",
-    confidence: "High",
-    records: [
-      {
-        recordIndex: 1,
-        label: `Record 1: ${beneficiary || "Beneficiary"} (${village || district || "Site"}) - ${product}`,
-        data: recordData,
-      },
-    ],
-    defaultRecord: recordData,
-  };
-}
-
-/**
- * FORMAT 4: CREDA Raipur Solar Power Plant (SPVPP) Notice
- * Layout Anchors:
- * - "SPVPP" OR "सोलर पॉवर प्लांट"
- * - Table Headers: "जिला का नाम", "स्थल का नाम", "वि.ख.", "संयंत्र क्षमता", "स्थापना तिथि", "खराब सामग्री का विवरण"
- */
-function tryParseFormat4Dynamic(text, options = {}) {
-  const isF4 =
-    (text.includes("SPVPP") || text.includes("सोलर पॉवर प्लांट") || text.includes("power plant")) &&
-    (text.includes("क्रेडा") || text.includes("CREDA") || text.includes("अक्षय ऊर्जा"));
-
-  if (!isF4) return null;
-
-  const letterRef = extractDynamicRefNo(text);
-  const letterDate = extractDynamicDate(text);
-  const inwardNo = extractDynamicInwardNo(text);
-  const inwardDate = extractDynamicInwardDate(text);
-  const company = extractDynamicCompany(text, options.companyNameOptions);
-  const district = extractDynamicDistrict(text, options.districtOptions);
-
-  // Beneficiary / Site Name & Village (e.g. प्राथमिक स्वास्थ्य केन्द्र, दलदली)
-  let beneficiary = "";
-  let village = "";
-  const siteMatch = text.match(/(?:स्थल\s*का\s*नाम)[:\s]*([^\n]+)/i) ||
-                    text.match(/(प्राथमिक\s*स्वास्थ्य\s*केन्द्र[,\s]+[^\n,\s]+)/i);
-  if (siteMatch) {
-    const raw = siteMatch[1].trim();
-    const parts = raw.split(/[,،]/);
-    beneficiary = parts[0]?.trim() || "";
-    village = parts[1]?.trim() || "";
-  }
-
-  // Block
-  let block = "";
-  const bMatch = text.match(/\b(बोड़ला|Bodla|देवभोग|Deobhog|Odagi|Pratappur)\b/i);
-  if (bMatch) block = bMatch[1];
-
-  const rating = extractDynamicRating(text) || "4.8 KW";
-  const product = extractDynamicProduct(text) || "Inverter";
-  const qty = extractDynamicQty(text);
-
-  const recordData = {
-    companyName: company,
-    modeOfCall: "Letter",
-    modeOfLetter: "Notice",
-    letterReferenceNumber: letterRef,
-    complaintNumber: inwardNo || letterRef.split("/")[0] || "",
-    complaintDate: inwardDate || letterDate,
-    idNumber: "",
-    projectName: "SPVPP",
-    district: district,
-    beneficiaryName: beneficiary,
-    contactNumber: "",
-    village: village,
-    block: block,
-    rating: rating,
-    product: product,
+    beneficiaryName: "",
+    contactNumber: phoneMatch ? phoneMatch[1] : "",
+    village: "",
+    block: "",
+    product: "",
     make: "",
-    qty: qty,
+    rating: "",
+    qty: "1",
     controllerRidNo: "",
     productSlNo: "",
     insuranceType: "",
     resolvedDate: null,
-    natureOfComplaint: extractDynamicNatureOfComplaint(text),
-  };
-
-  return {
-    formatName: `CREDA Raipur Notice – SPVPP (${district || "Solar Power Plant"})`,
-    formatCode: "FORMAT_4",
-    confidence: "High",
-    records: [
-      {
-        recordIndex: 1,
-        label: `Record 1: ${beneficiary || "Site"} (${village || district || "Location"}) - ${product}`,
-        data: recordData,
-      },
-    ],
-    defaultRecord: recordData,
+    natureOfComplaint: "Equipment Non-Functional",
   };
 }
 
 /**
- * FORMAT 5: CREDA Raipur Notice to Premier Energies / CM Help Notice
- * Layout Anchors:
- * - "शिकायत आई.डी. क्र." OR "CM Help"
- * - Table Headers with "शिकायत आई.डी. क्र.", "संयंत्र का प्रकार", "खराब सामग्री का विवरण"
+ * Main AI Document Parser Entry Point
+ * Completely dynamic, format-independent AI document analyzer.
  */
-function tryParseFormat5Dynamic(text, options = {}) {
-  const isF5 =
-    (text.includes("CM Help") || text.includes("शिकायत आई.डी.") || text.includes("Premier Energies")) &&
-    (text.includes("क्रेडा") || text.includes("CREDA") || text.includes("अक्षय ऊर्जा"));
+export async function parseComplaintDocument(input, dropdownOptions = {}) {
+  let file = null;
+  let fileBase64 = "";
+  let mimeType = "";
+  let extractedText = "";
+  let onProgress = () => {};
 
-  if (!isF5) return null;
-
-  const letterRef = extractDynamicRefNo(text);
-  const letterDate = extractDynamicDate(text);
-  const inwardNo = extractDynamicInwardNo(text);
-  const inwardDate = extractDynamicInwardDate(text);
-  const company = extractDynamicCompany(text, options.companyNameOptions);
-  const district = extractDynamicDistrict(text, options.districtOptions);
-  const project = extractDynamicProject(text, options.projectNameOptions);
-
-  // Dynamic ID e.g. "CM Help-CC260700125894" or "CC260700125894"
-  let idNumber = "";
-  const idMatch = text.match(/(?:CM\s*Help[-–])?([A-Z]{2}\d{10,})/i) ||
-                  text.match(/\b(\d{6,8})\b/);
-  if (idMatch) idNumber = idMatch[1];
-
-  // Beneficiary & Village
-  let beneficiary = "";
-  let village = "";
-  const benMatch = text.match(/([A-Za-z\s]+?)[,\s]+(?:Vill\.?[-–\s]*|ग्राम[-–\s]*)([A-Za-z\u0900-\u097F]+)/i);
-  if (benMatch) {
-    beneficiary = benMatch[1].trim();
-    village = benMatch[2].trim();
+  if (typeof input === "object" && input !== null) {
+    file = input.file || null;
+    fileBase64 = input.fileBase64 || "";
+    mimeType = input.mimeType || (file?.type) || "";
+    extractedText = input.extractedText || input.text || "";
+    onProgress = input.onProgress || onProgress;
+    dropdownOptions = input.dropdownOptions || dropdownOptions;
+  } else if (typeof input === "string") {
+    extractedText = input;
   }
 
-  // Block
-  let block = "";
-  const bMatch = text.match(/\b(Wadrafnagar|Balrampur|Odagi|Pratappur|देवभोग)\b/i);
-  if (bMatch) block = bMatch[1];
+  const apiKey = getAIApiKey();
 
-  const rating = extractDynamicRating(text);
-  const product = extractDynamicProduct(text) || "Solar Module";
-  const make = extractDynamicMake(text) || (company.includes("Premier") ? "Premier Energies" : "");
-  const qty = extractDynamicQty(text);
-
-  const recordData = {
-    companyName: company,
-    modeOfCall: "Letter",
-    modeOfLetter: "Notice",
-    letterReferenceNumber: letterRef,
-    complaintNumber: inwardNo || letterRef.split("/")[0] || "",
-    complaintDate: inwardDate || letterDate,
-    idNumber: idNumber,
-    projectName: project,
-    district: district,
-    beneficiaryName: beneficiary,
-    contactNumber: "",
-    village: village,
-    block: block,
-    rating: rating,
-    product: product,
-    make: make,
-    qty: qty,
-    controllerRidNo: "",
-    productSlNo: "",
-    insuranceType: product === "Solar Module" ? "Panel Damage" : "",
-    resolvedDate: null,
-    natureOfComplaint: extractDynamicNatureOfComplaint(text),
-  };
-
-  return {
-    formatName: `CREDA Raipur Notice – ${project || "SSY"} (${company || "Notice"})`,
-    formatCode: "FORMAT_5",
-    confidence: "High",
-    records: [
-      {
-        recordIndex: 1,
-        label: `Record 1: ${beneficiary || "Beneficiary"} (${village || district || "Site"}) - ${product}`,
-        data: recordData,
-      },
-    ],
-    defaultRecord: recordData,
-  };
-}
-
-/**
- * GENERAL DYNAMIC PARSER
- * Fallback that extracts all available patterns from any government notice layout.
- */
-function parseGeneralDynamic(text, options = {}) {
-  const company = extractDynamicCompany(text, options.companyNameOptions);
-  const letterRef = extractDynamicRefNo(text);
-  const letterDate = extractDynamicDate(text);
-  const inwardNo = extractDynamicInwardNo(text);
-  const inwardDate = extractDynamicInwardDate(text);
-  const district = extractDynamicDistrict(text, options.districtOptions);
-  const project = extractDynamicProject(text, options.projectNameOptions);
-  const phone = extractDynamicPhone(text);
-  const rating = extractDynamicRating(text);
-  const product = extractDynamicProduct(text);
-  const make = extractDynamicMake(text);
-  const qty = extractDynamicQty(text);
-
-  // Dynamic ID
-  let idNumber = "";
-  const idMatch =
-    text.match(/(?:CM\s*Help[-–])?([A-Z]{2}\d{10,})/i) ||
-    text.match(/\b(\d{6,8})\b/);
-  if (idMatch) idNumber = idMatch[1];
-
-  // Beneficiary & Village
-  let beneficiary = "";
-  let village = "";
-  const benMatch =
-    text.match(/([A-Za-z\u0900-\u097F\s]+?)[,\s]+(?:Vill\.?[-–\s]*|ग्राम[-–\s]*)([A-Za-z\u0900-\u097F]+)/i) ||
-    text.match(/(?:हितग्राही\s*का\s*नाम|स्थल\s*का\s*नाम)[:\s]*([^\n]+)/i);
-  if (benMatch) {
-    beneficiary = benMatch[1].replace(/\d{10}/g, "").trim();
-    village = benMatch[2] ? benMatch[2].replace(/\d{10}/g, "").trim() : "";
-  }
-
-  // Block
-  let block = "";
-  const bMatch = text.match(/(?:वि\.ख\.|विकासखंड|Block)[:\s]*([^\n,\s]+)/i);
-  if (bMatch) block = bMatch[1].trim();
-
-  const recordData = {
-    companyName: company,
-    modeOfCall: "Letter",
-    modeOfLetter: /सूचना/i.test(text) ? "Notice" : "Letter",
-    letterReferenceNumber: letterRef,
-    complaintNumber: inwardNo || (letterRef ? letterRef.split("/")[0] : ""),
-    complaintDate: inwardDate || letterDate,
-    idNumber: idNumber,
-    projectName: project,
-    district: district,
-    beneficiaryName: beneficiary,
-    contactNumber: phone,
-    village: village,
-    block: block,
-    rating: rating,
-    product: product,
-    make: make,
-    qty: qty,
-    controllerRidNo: "",
-    productSlNo: "",
-    insuranceType: /insurance/i.test(text) ? "Insurance" : (product === "Solar Module" ? "Panel Damage" : ""),
-    resolvedDate: null,
-    natureOfComplaint: extractDynamicNatureOfComplaint(text),
-  };
-
-  return {
-    formatName: "Government Complaint Document",
-    formatCode: "GENERAL",
-    confidence: "Medium",
-    records: [
-      {
-        recordIndex: 1,
-        label: `Record 1: ${beneficiary || "Detected Record"} (${district || "Location"})`,
-        data: recordData,
-      },
-    ],
-    defaultRecord: recordData,
-  };
-}
-
-/**
- * Main Document Parser Entry Point
- * @param {string} rawText Extracted text from OCR or file parser
- * @param {Object} dropdownOptions Existing options from form dropdowns
- * @returns {Object} Parsed dynamic result with records and matched fields
- */
-export function parseComplaintDocument(rawText, dropdownOptions = {}) {
-  const text = cleanText(rawText);
-  if (!text) {
+  if (!apiKey) {
+    console.warn("AI API Key missing in environment (.env). Running fallback extraction.");
+    const fallbackRecord = extractGenericFallback(extractedText);
     return {
-      success: false,
-      error: "No text extracted from document",
+      success: true,
+      formatName: "Fallback Parser (No AI Key in .env)",
+      records: [{ recordIndex: 1, label: "Record 1 (Fallback)", data: fallbackRecord }],
+      defaultRecord: fallbackRecord,
+      totalRecords: 1,
     };
   }
 
-  // Detect format and parse dynamic values from the text
-  let parsed =
-    tryParseFormat1Dynamic(text, dropdownOptions) ||
-    tryParseFormat2Dynamic(text, dropdownOptions) ||
-    tryParseFormat3Dynamic(text, dropdownOptions) ||
-    tryParseFormat4Dynamic(text, dropdownOptions) ||
-    tryParseFormat5Dynamic(text, dropdownOptions) ||
-    parseGeneralDynamic(text, dropdownOptions);
+  onProgress("Sending document to AI for intelligent extraction...", 55);
 
-  if (!parsed || !parsed.records || parsed.records.length === 0) {
+  const systemPrompt = `
+You are an expert AI assistant specialized in analyzing Indian government letters, CREDA notices, Solar Pump / EPC service letters, and beneficiary complaints.
+The document may be in Hindi, English, or a mix of both.
+
+Carefully examine all text, tables, stamps, reference numbers, dates, beneficiary lists, equipment ratings, and locations.
+Extract all complaint details dynamically WITHOUT assuming any rigid or predefined format.
+
+Return ONLY a valid JSON object with the following structure:
+{
+  "documentType": "Short descriptive type (e.g. Government Complaint Notice, CREDA Letter, Service Rectification Report)",
+  "records": [
+    {
+      "companyName": "Company name addressed to or mentioned (e.g. RBP Energy (India) Pvt. Ltd., Rotomag Motors & Controls, Premier Energies, Solex Energy, Suraj Enterprises, etc.)",
+      "modeOfCall": "Letter",
+      "modeOfLetter": "Notice or Letter or CM Help",
+      "letterReferenceNumber": "Official reference number / पत्र क्रमांक / Ref No (e.g. 2386/क्रेडा/जि.का./SSY/2024-25)",
+      "complaintNumber": "Inward / आवक number or complaint number if present, else letter reference number",
+      "complaintDate": "Date in YYYY-MM-DD or DD/MM/YYYY format",
+      "idNumber": "Beneficiary ID number / आई.डी. नं. (e.g. 706780, 701069, etc.) if mentioned",
+      "projectName": "Project name (e.g. SSY Phase-08, SSY Phase-07, SSY Phase-06, SSY Phase-05, SPVPP, Saubhagya, Solar Pump)",
+      "district": "District name in English (e.g. Surajpur, Balrampur, Gariyaband, Kabirdham, Bastar, Raipur, Kondagaon, Kanker, Bilaspur, Dantewada, etc.)",
+      "beneficiaryName": "Name of beneficiary / farmer / site (e.g. Shri Ramesh Kumar, Sub Health Centre, etc.)",
+      "contactNumber": "10-digit mobile number if found, else empty string",
+      "village": "Village / स्थल / ग्राम name",
+      "block": "Block / विकासखंड / वि.ख. name",
+      "product": "Product name (e.g. Solar Module, Controller, Inverter, Motor+Pump, Street Light)",
+      "make": "Brand / Make if mentioned (e.g. Rotomag Motors, Premier Energies, ICON, SHAKTI, ROTOSOL)",
+      "rating": "Pump / System rating (e.g. 5 HP DC Sub., 3 HP DC Surf., 4.8 KW, 15W)",
+      "qty": "Quantity (usually '1')",
+      "controllerRidNo": "Controller RID if present, else empty string",
+      "productSlNo": "Product serial number if present, else empty string",
+      "insuranceType": "Insurance status (e.g. 'Panel Damage' if solar module is damaged/stolen, or 'Insurance' if mentioned, else empty string)",
+      "natureOfComplaint": "Brief issue description (e.g. Solar Module Damaged, Inverter Faulty, Pump Not Working, Equipment Rectified & Functional)",
+      "resolvedDate": "Date of resolution if explicitly stated as repaired/resolved, else null"
+    }
+  ]
+}
+
+CRITICAL RULES:
+1. If the document has a table with multiple rows (e.g. 1, 2, 3... listing multiple beneficiaries or pumps), extract each row as a separate item in the "records" array.
+2. If there is only one complaint / beneficiary, return an array with exactly 1 record.
+3. Translate Hindi district names to standard English (e.g. सूरजपुर -> Surajpur, गरियाबंद -> Gariyaband).
+4. Return pure JSON only. Do not wrap in markdown or backticks.
+${extractedText ? `\n--- EXTRACTED DOCUMENT TEXT ---\n${extractedText}\n--- END TEXT ---` : ""}
+`;
+
+  try {
+    const rawAiResponse = await executeAIAnalysis({
+      apiKey,
+      prompt: systemPrompt,
+      fileBase64,
+      mimeType,
+      onProgress,
+    });
+
+    onProgress("Processing AI extraction results...", 90);
+
+    const cleanJson = rawAiResponse
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+
+    const parsedJson = JSON.parse(cleanJson);
+    const rawRecords = Array.isArray(parsedJson.records) && parsedJson.records.length > 0
+      ? parsedJson.records
+      : (parsedJson.record ? [parsedJson.record] : []);
+
+    if (rawRecords.length === 0) {
+      throw new Error("AI did not find any complaint records in the document");
+    }
+
+    // Normalize records with form dropdown options
+    const {
+      companyNameOptions = [],
+      districtOptions = [],
+      projectNameOptions = [],
+      insuranceTypeOptions = [],
+      modeOfLetterOptions = [],
+    } = dropdownOptions;
+
+    const normalizedRecords = rawRecords.map((item, idx) => {
+      const d = { ...item };
+
+      // Map Hindi district if any
+      if (d.district && DISTRICT_MAP[d.district.trim()]) {
+        d.district = DISTRICT_MAP[d.district.trim()];
+      }
+
+      if (d.companyName && companyNameOptions.length > 0) {
+        d.companyName = matchWithOption(d.companyName, companyNameOptions);
+      }
+      if (d.district && districtOptions.length > 0) {
+        d.district = matchWithOption(d.district, districtOptions);
+      }
+      if (d.projectName && projectNameOptions.length > 0) {
+        d.projectName = matchWithOption(d.projectName, projectNameOptions);
+      }
+      if (d.insuranceType && insuranceTypeOptions.length > 0) {
+        d.insuranceType = matchWithOption(d.insuranceType, insuranceTypeOptions);
+      }
+      if (d.modeOfLetter && modeOfLetterOptions.length > 0) {
+        d.modeOfLetter = matchWithOption(d.modeOfLetter, modeOfLetterOptions);
+      }
+
+      return {
+        recordIndex: idx + 1,
+        label: `Record ${idx + 1}: ${d.beneficiaryName || "Beneficiary"} (${d.village || d.district || "Site"}) - ${d.product || "Complaint"}`,
+        data: d,
+      };
+    });
+
     return {
-      success: false,
-      error: "Could not identify complaint data from document",
+      success: true,
+      formatName: parsedJson.documentType || "AI Document Analysis",
+      records: normalizedRecords,
+      defaultRecord: normalizedRecords[0].data,
+      totalRecords: normalizedRecords.length,
+    };
+  } catch (err) {
+    console.error("AI Document Parsing error:", err);
+
+    // If AI call failed, fallback to generic regex parser
+    const fallbackRecord = extractGenericFallback(extractedText);
+    return {
+      success: true,
+      formatName: "Generic Scanner (AI fallback: " + (err.message ? err.message.slice(0, 40) : "Network error") + ")",
+      records: [{ recordIndex: 1, label: "Record 1 (Fallback)", data: fallbackRecord }],
+      defaultRecord: fallbackRecord,
+      totalRecords: 1,
+      warning: err.message,
     };
   }
-
-  // Normalize fields against available form dropdown options
-  const {
-    companyNameOptions = [],
-    districtOptions = [],
-    projectNameOptions = [],
-    insuranceTypeOptions = [],
-    modeOfLetterOptions = [],
-  } = dropdownOptions;
-
-  const normalizedRecords = parsed.records.map((rec) => {
-    const d = { ...rec.data };
-    if (d.companyName && companyNameOptions.length > 0) {
-      d.companyName = matchWithOption(d.companyName, companyNameOptions);
-    }
-    if (d.district && districtOptions.length > 0) {
-      d.district = matchWithOption(d.district, districtOptions);
-    }
-    if (d.projectName && projectNameOptions.length > 0) {
-      d.projectName = matchWithOption(d.projectName, projectNameOptions);
-    }
-    if (d.insuranceType && insuranceTypeOptions.length > 0) {
-      d.insuranceType = matchWithOption(d.insuranceType, insuranceTypeOptions);
-    }
-    if (d.modeOfLetter && modeOfLetterOptions.length > 0) {
-      d.modeOfLetter = matchWithOption(d.modeOfLetter, modeOfLetterOptions);
-    }
-    return {
-      ...rec,
-      data: d,
-    };
-  });
-
-  return {
-    success: true,
-    formatName: parsed.formatName,
-    formatCode: parsed.formatCode,
-    confidence: parsed.confidence,
-    records: normalizedRecords,
-    defaultRecord: normalizedRecords[0].data,
-    totalRecords: normalizedRecords.length,
-    rawTextPreview: text.substring(0, 300),
-  };
 }
+
+export default parseComplaintDocument;
