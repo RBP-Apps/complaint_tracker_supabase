@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, Plus, Save, FileText, Mail, Globe, Phone, Trash2, SquarePlus, Download, X } from "lucide-react";
+import { ArrowLeft, Plus, Save, FileText, Mail, Globe, Phone, Trash2, SquarePlus, Download, X, Stamp, FileSignature } from "lucide-react";
 import { pdf } from "@react-pdf/renderer";
 import DashboardLayout from "../components/DashboardLayout";
 import LetterPDFDocument from "../components/LetterPDFDocument";
@@ -241,6 +241,58 @@ const AdminLetter = () => {
         }
     }, [location.state]);
 
+    // Seal & Signature State
+    const [sealSignatureList, setSealSignatureList] = useState([]);
+    const [selectedSealCompany, setSelectedSealCompany] = useState("");
+    const [selectedSealUrl, setSelectedSealUrl] = useState("");
+    const [selectedSigUrl, setSelectedSigUrl] = useState("");
+    const [includeSeal, setIncludeSeal] = useState(false);
+    const [includeSignature, setIncludeSignature] = useState(false);
+    const [sealSize, setSealSize] = useState(70);
+
+    const findSealSigRecord = (targetCompany, list = sealSignatureList) => {
+        if (!targetCompany || !list || list.length === 0) return null;
+        const clean = targetCompany.trim().toLowerCase();
+
+        // 1. Exact match
+        let found = list.find(item => {
+            const n1 = (item.company_name || "").trim().toLowerCase();
+            const n2 = (item.company_name1 || "").trim().toLowerCase();
+            return n1 === clean || n2 === clean;
+        });
+        if (found) return found;
+
+        // 2. Partial/fuzzy match
+        found = list.find(item => {
+            const n1 = (item.company_name || "").trim().toLowerCase();
+            const n2 = (item.company_name1 || "").trim().toLowerCase();
+            return (n1 && (clean.includes(n1) || n1.includes(clean))) ||
+                   (n2 && (clean.includes(n2) || n2.includes(clean)));
+        });
+        return found || null;
+    };
+
+    const syncSealAndSignatureForCompany = (compName, listToUse) => {
+        if (!compName) return;
+        const currentList = listToUse || sealSignatureList;
+        const matched = findSealSigRecord(compName, currentList);
+        if (matched) {
+            const sealImg = matched.seal || matched.seal_url || "";
+            const sigImg = matched.signature || matched.signature_url || "";
+            setSelectedSealCompany(matched.company_name || matched.company_name1 || compName);
+            setSelectedSealUrl(sealImg);
+            setSelectedSigUrl(sigImg);
+            setIncludeSeal(!!sealImg);
+            setIncludeSignature(!!sigImg);
+        } else {
+            setSelectedSealCompany(compName);
+            setSelectedSealUrl("");
+            setSelectedSigUrl("");
+            setIncludeSeal(false);
+            setIncludeSignature(false);
+        }
+    };
+
     const [rbpLogoBase64, setRbpLogoBase64] = useState(null);
 
     useEffect(() => {
@@ -303,7 +355,7 @@ const AdminLetter = () => {
     const [tableColumns, setTableColumns] = useState(["क्र.", "सौर समाधान क्र.", "आई. डी. नं.", "हितग्राही का नाम", "ग्राम/ विकासखण्ड", "दिनांक", "रिमार्क"]);
     const [tableData, setTableData] = useState([]);
 
-    const applyCompanyProfile = (targetName) => {
+    const applyCompanyProfile = (targetName, overrideList) => {
         if (!targetName) return;
         const profile = getCompanyProfile(targetName, companyOptions);
         if (!profile) return;
@@ -340,6 +392,9 @@ const AdminLetter = () => {
                 }
             };
         });
+
+        // Automatically sync seal & signature for this company
+        syncSealAndSignatureForCompany(profile.name, overrideList);
     };
 
     useEffect(() => {
@@ -658,6 +713,8 @@ const AdminLetter = () => {
         if (complaintId) {
             fetchTaskDetails();
             fetchCompanyOptions();
+        } else {
+            fetchCompanyOptions();
         }
     }, [complaintId, location.state]);
 
@@ -665,7 +722,60 @@ const AdminLetter = () => {
         try {
             const { data: rows, error: masterError } = await supabase
                 .from("Master")
-                .select("company_name, company_name1, address, email_id, phone_no");
+                .select("id, company_name, company_name1, address, email_id, phone_no, seal, signature, seal_url, signature_url");
+
+            // Load backup from localStorage
+            let localRecords = [];
+            try {
+                localRecords = JSON.parse(localStorage.getItem("master_seal_signatures") || "[]");
+            } catch (e) {
+                console.warn("Notice: localStorage master_seal_signatures parse error:", e);
+            }
+
+            const allSealSigItems = [];
+            const seenSealNames = new Set();
+
+            // 1. Supabase records with seal or signature
+            if (rows && !masterError) {
+                rows.forEach((r) => {
+                    const cName = (r.company_name || r.company_name1 || "").trim();
+                    const sImg = r.seal || r.seal_url || "";
+                    const sigImg = r.signature || r.signature_url || "";
+                    if (cName && (sImg || sigImg)) {
+                        allSealSigItems.push({
+                            id: r.id || `supa_${Date.now()}_${Math.random()}`,
+                            company_name: cName,
+                            seal: sImg,
+                            seal_url: sImg,
+                            signature: sigImg,
+                            signature_url: sigImg
+                        });
+                        seenSealNames.add(cName.toLowerCase());
+                    }
+                });
+            }
+
+            // 2. localStorage records
+            if (Array.isArray(localRecords)) {
+                localRecords.forEach((loc) => {
+                    const cName = (loc.company_name || loc.company_name1 || "").trim();
+                    const sImg = loc.seal || loc.seal_url || "";
+                    const sigImg = loc.signature || loc.signature_url || "";
+                    if (cName && (sImg || sigImg) && !seenSealNames.has(cName.toLowerCase())) {
+                        allSealSigItems.push({
+                            id: loc.id || `local_${Date.now()}`,
+                            company_name: cName,
+                            seal: sImg,
+                            seal_url: sImg,
+                            signature: sigImg,
+                            signature_url: sigImg
+                        });
+                        seenSealNames.add(cName.toLowerCase());
+                    }
+                });
+            }
+
+            setSealSignatureList(allSealSigItems);
 
             const optionsMap = new Map();
 
@@ -719,12 +829,25 @@ const AdminLetter = () => {
 
             const targetCompany = location.state?.autoSelectCompany || 
                                   location.state?.task?.companyName || 
-                                  (location.state?.tasks && location.state.tasks[0]?.companyName);
+                                  (location.state?.tasks && location.state.tasks[0]?.companyName) ||
+                                  headerInfo.companyName;
             if (targetCompany) {
-                applyCompanyProfile(targetCompany);
+                applyCompanyProfile(targetCompany, allSealSigItems);
             }
         } catch (error) {
             console.error("Error fetching company options from Supabase:", error);
+            let localRecords = [];
+            try {
+                localRecords = JSON.parse(localStorage.getItem("master_seal_signatures") || "[]");
+            } catch (e) {}
+            setSealSignatureList(localRecords);
+            const targetCompany = location.state?.autoSelectCompany || 
+                                  location.state?.task?.companyName || 
+                                  (location.state?.tasks && location.state.tasks[0]?.companyName) ||
+                                  headerInfo.companyName;
+            if (targetCompany) {
+                syncSealAndSignatureForCompany(targetCompany, localRecords);
+            }
             setCompanyOptions(DEFAULT_COMPANY_PROFILES.map(p => ({
                 name: p.name,
                 address: p.address,
@@ -811,6 +934,9 @@ const AdminLetter = () => {
                     tableColumns={tableColumns}
                     tableData={tableData}
                     logoSrc={rbpLogoBase64}
+                    sealUrl={includeSeal && selectedSealUrl ? selectedSealUrl : null}
+                    signatureUrl={includeSignature && selectedSigUrl ? selectedSigUrl : null}
+                    sealSize={sealSize}
                 />
             );
 
@@ -988,6 +1114,9 @@ const AdminLetter = () => {
                     tableColumns={tableColumns}
                     tableData={tableData}
                     logoSrc={rbpLogoBase64}
+                    sealUrl={includeSeal && selectedSealUrl ? selectedSealUrl : null}
+                    signatureUrl={includeSignature && selectedSigUrl ? selectedSigUrl : null}
+                    sealSize={sealSize}
                 />
             );
 
@@ -1082,6 +1211,175 @@ const AdminLetter = () => {
                                     <option value={headerInfo.companyName}>{headerInfo.companyName}</option>
                                 )}
                             </select>
+                        </div>
+
+                        {/* Company Seal & Signature Controls (No-Print) */}
+                        <div className="mb-6 no-print bg-gradient-to-r from-amber-50/90 via-white to-blue-50/90 border border-amber-200 rounded-xl p-3.5 max-w-2xl mx-auto shadow-sm text-left">
+                            <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-amber-200/70 mb-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-300 flex items-center justify-center text-amber-700">
+                                        <Stamp size={16} />
+                                    </div>
+                                    <div>
+                                        <span className="text-xs font-bold text-gray-800 block">
+                                            Seal & Signature Settings (मुहर एवं हस्ताक्षर)
+                                        </span>
+                                        <span className="text-[11px] text-gray-500">
+                                            Company: <strong className="text-gray-700">{selectedSealCompany || headerInfo.companyName || "None"}</strong>
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {sealSignatureList.length > 0 && (
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[11px] text-gray-500 font-medium">Source:</span>
+                                        <select
+                                            value={selectedSealCompany}
+                                            onChange={(e) => syncSealAndSignatureForCompany(e.target.value)}
+                                            className="text-xs border border-gray-300 rounded px-2 py-1 bg-white text-gray-700 font-medium focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                                            title="Seal aur Signature ki company chunein"
+                                        >
+                                            <option value={headerInfo.companyName}>Auto (Header: {(headerInfo.companyName || "").slice(0, 16)}...)</option>
+                                            {sealSignatureList.map((item, idx) => (
+                                                <option key={item.id || idx} value={item.company_name || item.company_name1}>
+                                                    {item.company_name || item.company_name1}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {/* Seal Control Block */}
+                                <div className={`p-2.5 rounded-lg border transition-all ${includeSeal && selectedSealUrl ? 'bg-amber-50/70 border-amber-300 shadow-xs' : 'bg-gray-50 border-gray-200'}`}>
+                                    <div className="flex items-center justify-between">
+                                        <label className={`flex items-center gap-2 ${!selectedSealUrl ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={includeSeal && !!selectedSealUrl}
+                                                disabled={!selectedSealUrl}
+                                                onChange={(e) => setIncludeSeal(e.target.checked)}
+                                                className="w-4 h-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500 cursor-pointer disabled:cursor-not-allowed"
+                                            />
+                                            <span className="text-xs font-bold text-gray-800 flex items-center gap-1">
+                                                <Stamp size={13} className="text-amber-600" />
+                                                Seal (मुहर) Add karein
+                                            </span>
+                                        </label>
+                                        {selectedSealUrl ? (
+                                            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 border border-emerald-300 px-1.5 py-0.5 rounded">
+                                                ✓ Available
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-300 px-1.5 py-0.5 rounded" title="Master me is company ki seal upload nahi hai">
+                                                Blank / Not Available
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Seal Resizer (active when seal is available and enabled) */}
+                                    {selectedSealUrl && includeSeal && (
+                                        <div className="mt-2.5 pt-2 border-t border-amber-200/70">
+                                            <div className="flex items-center justify-between text-[11px] text-gray-600 mb-1">
+                                                <span className="font-medium">Seal Size: <strong className="text-amber-800 font-bold">{sealSize}px</strong></span>
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSealSize(prev => Math.max(35, prev - 5))}
+                                                        className="w-5 h-5 flex items-center justify-center bg-white border border-gray-300 hover:bg-amber-100 hover:border-amber-400 rounded text-xs font-bold text-gray-700 cursor-pointer"
+                                                        title="Chhota karein (-5px)"
+                                                    >
+                                                        -
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSealSize(prev => Math.min(150, prev + 5))}
+                                                        className="w-5 h-5 flex items-center justify-center bg-white border border-gray-300 hover:bg-amber-100 hover:border-amber-400 rounded text-xs font-bold text-gray-700 cursor-pointer"
+                                                        title="Bada karein (+5px)"
+                                                    >
+                                                        +
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Range Slider */}
+                                            <input
+                                                type="range"
+                                                min="35"
+                                                max="150"
+                                                step="5"
+                                                value={sealSize}
+                                                onChange={(e) => setSealSize(parseInt(e.target.value))}
+                                                className="w-full accent-amber-600 cursor-pointer h-1.5 bg-amber-200 rounded-lg"
+                                            />
+
+                                            {/* Size Presets */}
+                                            <div className="flex items-center gap-1.5 mt-1.5">
+                                                {[
+                                                    { label: "S (50px)", size: 50 },
+                                                    { label: "M (70px)", size: 70 },
+                                                    { label: "L (95px)", size: 95 },
+                                                    { label: "XL (120px)", size: 120 }
+                                                ].map(preset => (
+                                                    <button
+                                                        key={preset.size}
+                                                        type="button"
+                                                        onClick={() => setSealSize(preset.size)}
+                                                        className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                                                            sealSize === preset.size
+                                                                ? 'bg-amber-600 text-white border-amber-600 font-bold'
+                                                                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'
+                                                        }`}
+                                                    >
+                                                        {preset.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Signature Control Block */}
+                                <div className={`p-2.5 rounded-lg border transition-all ${includeSignature && selectedSigUrl ? 'bg-blue-50/70 border-blue-300 shadow-xs' : 'bg-gray-50 border-gray-200'}`}>
+                                    <div className="flex items-center justify-between">
+                                        <label className={`flex items-center gap-2 ${!selectedSigUrl ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={includeSignature && !!selectedSigUrl}
+                                                disabled={!selectedSigUrl}
+                                                onChange={(e) => setIncludeSignature(e.target.checked)}
+                                                className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer disabled:cursor-not-allowed"
+                                            />
+                                            <span className="text-xs font-bold text-gray-800 flex items-center gap-1">
+                                                <FileSignature size={13} className="text-blue-600" />
+                                                Signature (हस्ताक्षर) Add karein
+                                            </span>
+                                        </label>
+                                        {selectedSigUrl ? (
+                                            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 border border-emerald-300 px-1.5 py-0.5 rounded">
+                                                ✓ Available
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-300 px-1.5 py-0.5 rounded" title="Master me is company ka signature upload nahi hai">
+                                                Blank / Not Available
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Preview thumbnail if available */}
+                                    {selectedSigUrl && (
+                                        <div className="mt-2 pt-2 border-t border-blue-100 flex items-center gap-2">
+                                            <span className="text-[11px] text-gray-500 font-medium">Preview:</span>
+                                            <img
+                                                src={selectedSigUrl}
+                                                alt="Sig Preview"
+                                                className="h-6 object-contain bg-white px-1 border border-gray-200 rounded"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
 
                         {(headerInfo.companyName || "").toUpperCase().includes("RBP") ? (
@@ -1479,7 +1777,65 @@ const AdminLetter = () => {
                                 value={letterInfo.forCompany || (headerInfo.companyName ? `वास्ते, ${headerInfo.companyName}` : "वास्ते, तनय विद्युत (ई०) प्रा.लि.")}
                                 onChange={(e) => handleLetterEdit("forCompany", e.target.value)}
                             />
-                            <div className="h-8"></div> {/* Space for signature */}
+
+                            {/* Seal & Signature On-Screen Preview: Only render if valid URL & user enabled */}
+                            {(includeSeal && selectedSealUrl) || (includeSignature && selectedSigUrl) ? (
+                                <div className="my-2 flex items-center gap-4 relative group">
+                                    {includeSeal && selectedSealUrl && (
+                                        <div className="relative inline-flex flex-col items-center">
+                                            <img
+                                                src={selectedSealUrl}
+                                                alt="Seal"
+                                                style={{
+                                                    width: `${sealSize}px`,
+                                                    height: `${sealSize}px`,
+                                                    objectFit: "contain"
+                                                }}
+                                                className="drop-shadow-sm select-none"
+                                                title={`Seal (${sealSize}px)`}
+                                            />
+                                            {/* Quick On-Screen Resize Controls (No-Print) */}
+                                            <div className="no-print opacity-0 group-hover:opacity-100 transition-opacity absolute -top-3 -right-3 flex items-center bg-white/95 border border-amber-300 shadow-md rounded-full px-1.5 py-0.5 gap-1 text-[10px] z-10">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSealSize(prev => Math.max(35, prev - 5))}
+                                                    className="w-4 h-4 flex items-center justify-center font-bold text-gray-700 hover:text-amber-700 hover:bg-amber-100 rounded cursor-pointer"
+                                                    title="Seal Chhota karein (-5px)"
+                                                >
+                                                    -
+                                                </button>
+                                                <span className="font-semibold text-amber-800">{sealSize}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSealSize(prev => Math.min(150, prev + 5))}
+                                                    className="w-4 h-4 flex items-center justify-center font-bold text-gray-700 hover:text-amber-700 hover:bg-amber-100 rounded cursor-pointer"
+                                                    title="Seal Bada karein (+5px)"
+                                                >
+                                                    +
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {includeSignature && selectedSigUrl && (
+                                        <div className="relative inline-flex items-center">
+                                            <img
+                                                src={selectedSigUrl}
+                                                alt="Signature"
+                                                style={{
+                                                    maxWidth: "115px",
+                                                    maxHeight: "52px",
+                                                    objectFit: "contain"
+                                                }}
+                                                className="drop-shadow-sm select-none"
+                                                title="Authorized Signature"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="h-8"></div>
+                            )}
+
                             <input
                                 className="border-b border-transparent focus:border-blue-300 focus:outline-none bg-transparent font-bold text-left w-64 text-base"
                                 placeholder="हस्ताक्षरकर्ता का नाम (Signer Name)"

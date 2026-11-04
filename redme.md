@@ -56,6 +56,8 @@ create table public."AssignToVendor" (
   timestamp timestamp without time zone null,
   vendor_name character varying(150) null,
   product_type character varying(150) null,
+  company_seal text null,
+  authorized_signature text null,
   send_details_to_vendor boolean null default false,
   vendor_complaint_id character varying(100) null,
   date date null,

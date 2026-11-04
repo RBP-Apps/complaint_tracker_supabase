@@ -467,7 +467,16 @@ const getColumnFlex = (col, isLast) => {
     };
 };
 
-const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData, logoSrc: customLogoSrc }) => {
+const LetterPDFDocument = ({
+    headerInfo,
+    letterInfo,
+    tableColumns,
+    tableData,
+    logoSrc: customLogoSrc,
+    sealUrl,
+    signatureUrl,
+    sealSize = 65
+}) => {
     const isSuraj = headerInfo.companyName && headerInfo.companyName.toLowerCase().includes('suraj');
     const isRotomag = headerInfo.companyName && headerInfo.companyName.toLowerCase().includes('rotomag');
     const isSolex = headerInfo.companyName && headerInfo.companyName.toLowerCase().includes('solex');
@@ -702,7 +711,36 @@ const LetterPDFDocument = ({ headerInfo, letterInfo, tableColumns, tableData, lo
                     <Text style={[styles.signatureText, { marginTop: 2 }]}>
                         {letterInfo.forCompany || ""}
                     </Text>
-                    <View style={{ height: 18 }} />
+
+                    {/* Seal & Signature: Only render if valid URL is provided */}
+                    {(sealUrl || signatureUrl) ? (
+                        <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 4 }}>
+                            {sealUrl ? (
+                                <Image
+                                    src={sealUrl}
+                                    style={{
+                                        width: sealSize,
+                                        height: sealSize,
+                                        objectFit: "contain",
+                                        marginRight: signatureUrl ? 14 : 0
+                                    }}
+                                />
+                            ) : null}
+                            {signatureUrl ? (
+                                <Image
+                                    src={signatureUrl}
+                                    style={{
+                                        width: 85,
+                                        height: 42,
+                                        objectFit: "contain"
+                                    }}
+                                />
+                            ) : null}
+                        </View>
+                    ) : (
+                        <View style={{ height: 18 }} />
+                    )}
+
                     {letterInfo.signerName ? (
                         <Text style={styles.signatureText}>
                             {letterInfo.signerName}

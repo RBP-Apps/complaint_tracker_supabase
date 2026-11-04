@@ -29,7 +29,13 @@ import {
   AlertCircle,
   CheckCircle2,
   ChevronRight,
-  Database
+  Database,
+  Stamp,
+  FileSignature,
+  UploadCloud,
+  Eye,
+  Image as ImageIcon,
+  Maximize2
 } from "lucide-react";
 
 // Master categories definition with icons and description
@@ -201,6 +207,20 @@ const MASTER_CATEGORIES = [
     ]
   },
   {
+    id: "seal_and_signature",
+    label: "Seal and Signature",
+    dbField: "seal",
+    icon: Stamp,
+    color: "from-amber-500 to-rose-600",
+    lightBg: "bg-amber-50 text-amber-700 border-amber-200",
+    description: "Upload and manage official company seals and authorized signature images.",
+    inputs: [
+      { key: "company_name", label: "Company Name", placeholder: "e.g. Tanay Vidyut / Tata Power", type: "text", required: true },
+      { key: "seal", label: "Seal Image", type: "file", accept: "image/png,image/webp" },
+      { key: "signature", label: "Signature Image", type: "file", accept: "image/png,image/webp" }
+    ]
+  },
+  {
     id: "all_records",
     label: "All Master Records",
     dbField: null,
@@ -224,10 +244,26 @@ export default function MasterDataManagement() {
   const [newEntryData, setNewEntryData] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Seal & Signature specific state
+  const [sealCompanyName, setSealCompanyName] = useState("");
+  const [sealFile, setSealFile] = useState(null);
+  const [sealPreview, setSealPreview] = useState("");
+  const [sigFile, setSigFile] = useState(null);
+  const [sigPreview, setSigPreview] = useState("");
+
   // Edit state
   const [editId, setEditId] = useState(null);
   const [editData, setEditData] = useState({});
   const [isUpdating, setIsUpdating] = useState(false);
+  const [editSealCompanyName, setEditSealCompanyName] = useState("");
+  const [editSealFile, setEditSealFile] = useState(null);
+  const [editSealPreview, setEditSealPreview] = useState("");
+  const [editSigFile, setEditSigFile] = useState(null);
+  const [editSigPreview, setEditSigPreview] = useState("");
+
+  // Image zoom modal
+  const [previewModalUrl, setPreviewModalUrl] = useState(null);
+  const [previewModalTitle, setPreviewModalTitle] = useState("");
 
   // Show message banner with auto-hide
   const showToast = (text, type = "success") => {
@@ -235,6 +271,176 @@ export default function MasterDataManagement() {
     setTimeout(() => {
       setMessage({ text: "", type: "" });
     }, 4000);
+  };
+
+  // Upload image to Supabase Storage (with fallback to Base64 Data URL)
+  const uploadImageToSupabase = async (file) => {
+    if (!file) return "";
+    if (typeof file === "string") return file;
+
+    const fileExt = file.name ? file.name.split(".").pop() : "png";
+    const fileName = `seal-sign-${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+
+    try {
+      let uploadRes = await supabase.storage.from("vendor_tracker").upload(fileName, file, { upsert: true });
+      if (!uploadRes.error) {
+        const { data } = supabase.storage.from("vendor_tracker").getPublicUrl(fileName);
+        if (data?.publicUrl) return data.publicUrl;
+      }
+    } catch (err) {
+      console.warn("Storage upload vendor_tracker error:", err);
+    }
+
+    try {
+      let uploadRes = await supabase.storage.from("complaint_documents").upload(fileName, file, { upsert: true });
+      if (!uploadRes.error) {
+        const { data } = supabase.storage.from("complaint_documents").getPublicUrl(fileName);
+        if (data?.publicUrl) return data.publicUrl;
+      }
+    } catch (err) {
+      console.warn("Storage upload complaint_documents error:", err);
+    }
+
+    // Seamless fallback to Base64 Data URL
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // ================= CHECK IMAGE TRANSPARENCY =================
+  const checkImageTransparency = (file) => {
+    return new Promise((resolve) => {
+      // JPG / JPEG does not support transparency at all
+      if (
+        file.type === "image/jpeg" ||
+        file.type === "image/jpg" ||
+        /\.(jpe?g)$/i.test(file.name)
+      ) {
+        resolve({
+          isTransparent: false,
+          reason: "JPG/JPEG format me background transparent nahi hota. Kripya transparent background wali PNG image upload karein."
+        });
+        return;
+      }
+
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.src = objectUrl;
+
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const canvas = document.createElement("canvas");
+        const maxDim = 400;
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) {
+          resolve({ isTransparent: true });
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
+        const totalPixels = width * height;
+        let transparentPixels = 0;
+
+        // Check alpha channel (every 4th element)
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] < 240) {
+            transparentPixels++;
+          }
+        }
+
+        // Check corner pixels (corners are almost always background for seals & signatures)
+        const cornerCoords = [
+          [0, 0],
+          [width - 1, 0],
+          [0, height - 1],
+          [width - 1, height - 1]
+        ];
+        let transparentCorners = 0;
+        cornerCoords.forEach(([x, y]) => {
+          const idx = (y * width + x) * 4;
+          if (data[idx + 3] < 240) {
+            transparentCorners++;
+          }
+        });
+
+        const transparentRatio = transparentPixels / totalPixels;
+
+        // Valid transparent background:
+        // Must have at least 5% transparent pixels AND at least 2 transparent corners, OR at least 8% transparent pixels overall
+        if (transparentRatio >= 0.05 && (transparentCorners >= 2 || transparentRatio >= 0.08)) {
+          resolve({ isTransparent: true, transparentRatio });
+        } else {
+          resolve({
+            isTransparent: false,
+            reason: "Image ka background transparent nahi hai! Kripya transparent background (no background / transparent PNG) wali image upload karein."
+          });
+        }
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve({
+          isTransparent: false,
+          reason: "Image load karne me error aayi. Kripya valid transparent PNG file upload karein."
+        });
+      };
+    });
+  };
+
+  // Image select handler with transparency verification
+  const handleImageSelect = async (e, type) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      showToast("Kripya valid image file select karein (PNG format recommended)", "error");
+      e.target.value = "";
+      return;
+    }
+
+    // Verify background transparency
+    const check = await checkImageTransparency(file);
+    if (!check.isTransparent) {
+      showToast(check.reason, "error");
+      e.target.value = "";
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    if (type === "seal") {
+      setSealFile(file);
+      setSealPreview(previewUrl);
+    } else if (type === "sig") {
+      setSigFile(file);
+      setSigPreview(previewUrl);
+    } else if (type === "editSeal") {
+      setEditSealFile(file);
+      setEditSealPreview(previewUrl);
+    } else if (type === "editSig") {
+      setEditSigFile(file);
+      setEditSigPreview(previewUrl);
+    }
+    showToast("✓ Transparent background verify ho gaya!", "success");
   };
 
   // ================= FETCH MASTER DATA =================
@@ -247,9 +453,26 @@ export default function MasterDataManagement() {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setMasterData(data || []);
+
+      // Merge with localStorage cached seal/signature records
+      let localSeals = [];
+      try {
+        localSeals = JSON.parse(localStorage.getItem("master_seal_signatures") || "[]");
+      } catch (e) {}
+
+      const fetchedList = data || [];
+      const existingIds = new Set(fetchedList.map((r) => r.id));
+      const filteredLocal = localSeals.filter((r) => !existingIds.has(r.id));
+
+      setMasterData([...fetchedList, ...filteredLocal]);
     } catch (error) {
       console.error("Error fetching master data:", error);
+      try {
+        const localSeals = JSON.parse(localStorage.getItem("master_seal_signatures") || "[]");
+        if (localSeals.length > 0) {
+          setMasterData(localSeals);
+        }
+      } catch (e) {}
       showToast("Error fetching records: " + error.message, "error");
     } finally {
       setLoading(false);
@@ -274,6 +497,16 @@ export default function MasterDataManagement() {
     setEditId(null);
     setEditData({});
     setItemSearch("");
+    setSealCompanyName("");
+    setSealFile(null);
+    setSealPreview("");
+    setSigFile(null);
+    setSigPreview("");
+    setEditSealCompanyName("");
+    setEditSealFile(null);
+    setEditSealPreview("");
+    setEditSigFile(null);
+    setEditSigPreview("");
   }, [activeCategoryId]);
 
   // Dynamic counts for each category
@@ -282,6 +515,14 @@ export default function MasterDataManagement() {
     MASTER_CATEGORIES.forEach((cat) => {
       if (cat.id === "all_records") {
         counts[cat.id] = masterData.length;
+      } else if (cat.id === "seal_and_signature") {
+        counts[cat.id] = masterData.filter(
+          (item) =>
+            (item.seal && item.seal.toString().trim() !== "") ||
+            (item.seal_url && item.seal_url.toString().trim() !== "") ||
+            (item.signature && item.signature.toString().trim() !== "") ||
+            (item.signature_url && item.signature_url.toString().trim() !== "")
+        ).length;
       } else if (cat.id === "technician") {
         counts[cat.id] = masterData.filter(
           (item) =>
@@ -331,6 +572,14 @@ export default function MasterDataManagement() {
     let items = [];
     if (activeCategory.id === "all_records") {
       items = masterData;
+    } else if (activeCategory.id === "seal_and_signature") {
+      items = masterData.filter(
+        (item) =>
+          (item.seal && item.seal.toString().trim() !== "") ||
+          (item.seal_url && item.seal_url.toString().trim() !== "") ||
+          (item.signature && item.signature.toString().trim() !== "") ||
+          (item.signature_url && item.signature_url.toString().trim() !== "")
+      );
     } else if (activeCategory.id === "technician") {
       items = masterData.filter(
         (item) =>
@@ -396,6 +645,110 @@ export default function MasterDataManagement() {
   const handleCreateRecord = async (e) => {
     e.preventDefault();
 
+    if (activeCategory.id === "seal_and_signature") {
+      if (!sealCompanyName.trim()) {
+        showToast("Kripya Company Name enter karein.", "error");
+        return;
+      }
+
+      if (!sealPreview && !sigPreview) {
+        showToast("Kripya kam se kam ek Seal ya Signature image upload karein.", "error");
+        return;
+      }
+
+      // Check transparency before submitting
+      if (sealFile) {
+        const check = await checkImageTransparency(sealFile);
+        if (!check.isTransparent) {
+          showToast("Seal Image: " + check.reason + " Isliye submit nahi kiya ja sakta.", "error");
+          return;
+        }
+      }
+
+      if (sigFile) {
+        const check = await checkImageTransparency(sigFile);
+        if (!check.isTransparent) {
+          showToast("Signature Image: " + check.reason + " Isliye submit nahi kiya ja sakta.", "error");
+          return;
+        }
+      }
+
+      try {
+        setIsSubmitting(true);
+
+        let sealUrl = sealPreview;
+        if (sealFile) {
+          sealUrl = await uploadImageToSupabase(sealFile);
+        }
+
+        let signatureUrl = sigPreview;
+        if (sigFile) {
+          signatureUrl = await uploadImageToSupabase(sigFile);
+        }
+
+        let insertSuccess = false;
+        let createdRecord = null;
+
+        // Try insert with primary column names (company_name, seal, signature)
+        try {
+          const { data, error } = await supabase.from("Master").insert([
+            { company_name: sealCompanyName.trim(), seal: sealUrl, signature: signatureUrl }
+          ]).select();
+          if (!error && data?.length) {
+            insertSuccess = true;
+            createdRecord = data[0];
+          }
+        } catch (err) {
+          console.warn("Insert seal/signature notice:", err);
+        }
+
+        // Fallback: try with seal_url, signature_url
+        if (!insertSuccess) {
+          try {
+            const { data, error } = await supabase.from("Master").insert([
+              { company_name: sealCompanyName.trim(), seal_url: sealUrl, signature_url: signatureUrl }
+            ]).select();
+            if (!error && data?.length) {
+              insertSuccess = true;
+              createdRecord = data[0];
+            }
+          } catch (err) {
+            console.warn("Insert seal_url/signature_url notice:", err);
+          }
+        }
+
+        // Cache in localStorage as backup
+        const fallbackRecord = createdRecord || {
+          id: "local_" + Date.now(),
+          company_name: sealCompanyName.trim(),
+          seal: sealUrl,
+          seal_url: sealUrl,
+          signature: signatureUrl,
+          signature_url: signatureUrl,
+          created_at: new Date().toISOString()
+        };
+
+        try {
+          const stored = JSON.parse(localStorage.getItem("master_seal_signatures") || "[]");
+          localStorage.setItem("master_seal_signatures", JSON.stringify([fallbackRecord, ...stored]));
+        } catch (e) {}
+
+        showToast("Seal and Signature uploaded successfully!", "success");
+        setSealCompanyName("");
+        setSealFile(null);
+        setSealPreview("");
+        setSigFile(null);
+        setSigPreview("");
+        fetchMasterData();
+      } catch (error) {
+        console.error("Error adding seal/signature:", error);
+        showToast("Error adding record: " + error.message, "error");
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     // Check if at least one input has value
     const hasValues = Object.values(newEntryData).some(
       (val) => val !== undefined && val !== null && val.toString().trim() !== ""
@@ -437,18 +790,104 @@ export default function MasterDataManagement() {
   const startEdit = (item) => {
     setEditId(item.id);
     setEditData({ ...item });
+    if (activeCategory.id === "seal_and_signature") {
+      setEditSealCompanyName(item.company_name || "");
+      setEditSealPreview(item.seal || item.seal_url || "");
+      setEditSigPreview(item.signature || item.signature_url || "");
+      setEditSealFile(null);
+      setEditSigFile(null);
+    }
   };
 
   // Cancel edit
   const cancelEdit = () => {
     setEditId(null);
     setEditData({});
+    setEditSealCompanyName("");
+    setEditSealFile(null);
+    setEditSealPreview("");
+    setEditSigFile(null);
+    setEditSigPreview("");
   };
 
   // ================= UPDATE RECORD =================
   const handleUpdateRecord = async (id) => {
     try {
+      if (activeCategory.id === "seal_and_signature") {
+        if (!editSealCompanyName.trim()) {
+          showToast("Kripya Company Name enter karein.", "error");
+          return;
+        }
+        if (editSealFile) {
+          const check = await checkImageTransparency(editSealFile);
+          if (!check.isTransparent) {
+            showToast("Seal Image: " + check.reason + " Isliye update nahi ho sakta.", "error");
+            return;
+          }
+        }
+        if (editSigFile) {
+          const check = await checkImageTransparency(editSigFile);
+          if (!check.isTransparent) {
+            showToast("Signature Image: " + check.reason + " Isliye update nahi ho sakta.", "error");
+            return;
+          }
+        }
+      }
+
       setIsUpdating(true);
+
+      if (activeCategory.id === "seal_and_signature") {
+        let sealUrl = editSealPreview;
+        if (editSealFile) {
+          sealUrl = await uploadImageToSupabase(editSealFile);
+        }
+
+        let signatureUrl = editSigPreview;
+        if (editSigFile) {
+          signatureUrl = await uploadImageToSupabase(editSigFile);
+        }
+
+        let updateSuccess = false;
+        try {
+          const { error } = await supabase
+            .from("Master")
+            .update({ company_name: editSealCompanyName.trim(), seal: sealUrl, signature: signatureUrl })
+            .eq("id", id);
+          if (!error) updateSuccess = true;
+        } catch (e) {}
+
+        if (!updateSuccess) {
+          try {
+            await supabase
+              .from("Master")
+              .update({ company_name: editSealCompanyName.trim(), seal_url: sealUrl, signature_url: signatureUrl })
+              .eq("id", id);
+          } catch (e) {}
+        }
+
+        // Update in localStorage
+        try {
+          const stored = JSON.parse(localStorage.getItem("master_seal_signatures") || "[]");
+          const updated = stored.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  company_name: editSealCompanyName.trim(),
+                  seal: sealUrl,
+                  seal_url: sealUrl,
+                  signature: signatureUrl,
+                  signature_url: signatureUrl
+                }
+              : item
+          );
+          localStorage.setItem("master_seal_signatures", JSON.stringify(updated));
+        } catch (e) {}
+
+        showToast("Seal and Signature updated successfully!", "success");
+        cancelEdit();
+        fetchMasterData();
+        return;
+      }
 
       // Build update payload
       const payload = {};
@@ -488,8 +927,17 @@ export default function MasterDataManagement() {
     if (!window.confirm(`Are you sure you want to delete this ${label}?`)) return;
 
     try {
-      const { error } = await supabase.from("Master").delete().eq("id", id);
-      if (error) throw error;
+      if (typeof id === "number" || (typeof id === "string" && !id.startsWith("local_"))) {
+        const { error } = await supabase.from("Master").delete().eq("id", id);
+        if (error) throw error;
+      }
+
+      // Also clean up from localStorage if present
+      try {
+        const stored = JSON.parse(localStorage.getItem("master_seal_signatures") || "[]");
+        const updated = stored.filter((item) => item.id !== id);
+        localStorage.setItem("master_seal_signatures", JSON.stringify(updated));
+      } catch (e) {}
 
       showToast("Record deleted successfully.", "success");
       if (editId === id) cancelEdit();
@@ -765,88 +1213,283 @@ export default function MasterDataManagement() {
                     </h3>
                   </div>
 
-                  <form onSubmit={handleCreateRecord} className="space-y-3">
-                    <div className={`grid grid-cols-1 ${activeCategory.inputs.length === 3 ? "md:grid-cols-3" : activeCategory.inputs.length >= 2 ? "md:grid-cols-2" : ""} gap-3`}>
-                      {activeCategory.inputs.map((input) => {
-                        const isFullWidth = input.fullWidth || (activeCategory.inputs.length === 1);
+                  {activeCategory.id === "seal_and_signature" ? (
+                    <form onSubmit={handleCreateRecord} className="space-y-4">
+                      {/* Field: Company Name */}
+                      <div className="bg-white p-4 rounded-xl border border-purple-200/80 shadow-sm">
+                        <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                          <Building2 className="h-4 w-4 text-purple-600" />
+                          <span>Company Name (कंपनी का नाम) <span className="text-red-500">*</span></span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Tanay Vidyut / Tata Power / BREDA"
+                          value={sealCompanyName}
+                          onChange={(e) => setSealCompanyName(e.target.value)}
+                          required
+                          className="w-full px-3.5 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-purple-500/30 focus:border-purple-600 transition font-medium text-gray-800"
+                        />
+                      </div>
 
-                        return (
-                          <div
-                            key={input.key}
-                            className={isFullWidth ? "col-span-1 md:col-span-2" : "col-span-1"}
-                          >
-                            <label className="block text-xs font-semibold text-gray-700 mb-1">
-                              {input.label} {input.required && <span className="text-red-500">*</span>}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Field 1: Seal Image Upload */}
+                        <div className="bg-white p-4 rounded-xl border-2 border-dashed border-rose-200 hover:border-rose-400 transition-colors">
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5 uppercase tracking-wide">
+                              <Stamp className="h-4 w-4 text-rose-600" />
+                              <span>Seal Image (सील / मुहर)</span>
                             </label>
+                            <div className="flex items-center gap-2">
+                              {sealPreview && (
+                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                                  <CheckCircle2 className="h-3 w-3" /> Transparent
+                                </span>
+                              )}
+                              {sealPreview && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSealFile(null);
+                                    setSealPreview("");
+                                  }}
+                                  className="text-xs text-red-500 hover:text-red-700 font-semibold flex items-center gap-1"
+                                >
+                                  <X className="h-3.5 w-3.5" /> Remove
+                                </button>
+                              )}
+                            </div>
+                          </div>
 
-                            {input.type === "textarea" ? (
-                              <textarea
-                                rows={2}
-                                placeholder={input.placeholder}
-                                value={newEntryData[input.key] || ""}
-                                onChange={(e) =>
-                                  handleNewInputChange(input.key, e.target.value, input.type)
-                                }
-                                className="w-full px-3.5 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-600 transition"
+                          {sealPreview ? (
+                            <div className="relative group bg-gray-50 rounded-lg p-3 border border-gray-200 flex flex-col items-center justify-center min-h-[150px]">
+                              <img
+                                src={sealPreview}
+                                alt="Seal Preview"
+                                className="max-h-28 max-w-full object-contain rounded drop-shadow-sm cursor-pointer"
+                                onClick={() => {
+                                  setPreviewModalUrl(sealPreview);
+                                  setPreviewModalTitle("Seal Image Preview");
+                                }}
                               />
-                            ) : input.type === "select" ? (
-                              <div className="flex gap-2">
-                                <select
+                              <div className="mt-3 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPreviewModalUrl(sealPreview);
+                                    setPreviewModalTitle("Seal Image Preview");
+                                  }}
+                                  className="px-2.5 py-1 text-xs bg-white border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 flex items-center gap-1 shadow-sm"
+                                >
+                                  <Eye className="h-3.5 w-3.5 text-rose-600" /> View Full
+                                </button>
+                                <label className="px-2.5 py-1 text-xs bg-rose-50 border border-rose-200 rounded-md text-rose-700 hover:bg-rose-100 flex items-center gap-1 cursor-pointer">
+                                  Change Image
+                                  <input
+                                    type="file"
+                                    accept="image/png,image/webp"
+                                    className="hidden"
+                                    onChange={(e) => handleImageSelect(e, "seal")}
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          ) : (
+                            <label className="flex flex-col items-center justify-center min-h-[150px] cursor-pointer hover:bg-rose-50/40 rounded-lg transition-colors p-4 text-center border border-dashed border-rose-100">
+                              <div className="p-3 bg-rose-50 text-rose-600 rounded-full mb-2">
+                                <UploadCloud className="h-6 w-6" />
+                              </div>
+                              <span className="text-xs font-semibold text-gray-700">Click to upload Seal image</span>
+                              <span className="text-[11px] text-amber-600 font-medium mt-1">Sirf Transparent PNG background wali image upload karein</span>
+                              <span className="text-[10px] text-gray-400 mt-0.5">(Non-transparent background submit nahi hoga)</span>
+                              <input
+                                type="file"
+                                accept="image/png,image/webp"
+                                className="hidden"
+                                onChange={(e) => handleImageSelect(e, "seal")}
+                              />
+                            </label>
+                          )}
+                        </div>
+
+                        {/* Field 2: Signature Image Upload */}
+                        <div className="bg-white p-4 rounded-xl border-2 border-dashed border-indigo-200 hover:border-indigo-400 transition-colors">
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5 uppercase tracking-wide">
+                              <FileSignature className="h-4 w-4 text-indigo-600" />
+                              <span>Signature Image (हस्ताक्षर / सिग्नेचर)</span>
+                            </label>
+                            <div className="flex items-center gap-2">
+                              {sigPreview && (
+                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                                  <CheckCircle2 className="h-3 w-3" /> Transparent
+                                </span>
+                              )}
+                              {sigPreview && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSigFile(null);
+                                    setSigPreview("");
+                                  }}
+                                  className="text-xs text-red-500 hover:text-red-700 font-semibold flex items-center gap-1"
+                                >
+                                  <X className="h-3.5 w-3.5" /> Remove
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {sigPreview ? (
+                            <div className="relative group bg-gray-50 rounded-lg p-3 border border-gray-200 flex flex-col items-center justify-center min-h-[150px]">
+                              <img
+                                src={sigPreview}
+                                alt="Signature Preview"
+                                className="max-h-28 max-w-full object-contain rounded drop-shadow-sm cursor-pointer"
+                                onClick={() => {
+                                  setPreviewModalUrl(sigPreview);
+                                  setPreviewModalTitle("Signature Image Preview");
+                                }}
+                              />
+                              <div className="mt-3 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPreviewModalUrl(sigPreview);
+                                    setPreviewModalTitle("Signature Image Preview");
+                                  }}
+                                  className="px-2.5 py-1 text-xs bg-white border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 flex items-center gap-1 shadow-sm"
+                                >
+                                  <Eye className="h-3.5 w-3.5 text-indigo-600" /> View Full
+                                </button>
+                                <label className="px-2.5 py-1 text-xs bg-indigo-50 border border-indigo-200 rounded-md text-indigo-700 hover:bg-indigo-100 flex items-center gap-1 cursor-pointer">
+                                  Change Image
+                                  <input
+                                    type="file"
+                                    accept="image/png,image/webp"
+                                    className="hidden"
+                                    onChange={(e) => handleImageSelect(e, "sig")}
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          ) : (
+                            <label className="flex flex-col items-center justify-center min-h-[150px] cursor-pointer hover:bg-indigo-50/40 rounded-lg transition-colors p-4 text-center border border-dashed border-indigo-100">
+                              <div className="p-3 bg-indigo-50 text-indigo-600 rounded-full mb-2">
+                                <UploadCloud className="h-6 w-6" />
+                              </div>
+                              <span className="text-xs font-semibold text-gray-700">Click to upload Signature image</span>
+                              <span className="text-[11px] text-amber-600 font-medium mt-1">Sirf Transparent PNG background wali image upload karein</span>
+                              <span className="text-[10px] text-gray-400 mt-0.5">(Non-transparent background submit nahi hoga)</span>
+                              <input
+                                type="file"
+                                accept="image/png,image/webp"
+                                className="hidden"
+                                onChange={(e) => handleImageSelect(e, "sig")}
+                              />
+                            </label>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end pt-2">
+                        <button
+                          type="submit"
+                          disabled={isSubmitting || !sealCompanyName.trim() || (!sealPreview && !sigPreview)}
+                          className="flex items-center gap-2 bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-700 hover:to-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-md hover:shadow-lg transition active:scale-95 disabled:opacity-50"
+                        >
+                          {isSubmitting ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <UploadCloud className="h-4 w-4" />
+                          )}
+                          <span>Upload & Save Seal & Signature</span>
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <form onSubmit={handleCreateRecord} className="space-y-3">
+                      <div className={`grid grid-cols-1 ${activeCategory.inputs.length === 3 ? "md:grid-cols-3" : activeCategory.inputs.length >= 2 ? "md:grid-cols-2" : ""} gap-3`}>
+                        {activeCategory.inputs.map((input) => {
+                          const isFullWidth = input.fullWidth || (activeCategory.inputs.length === 1);
+
+                          return (
+                            <div
+                              key={input.key}
+                              className={isFullWidth ? "col-span-1 md:col-span-2" : "col-span-1"}
+                            >
+                              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                                {input.label} {input.required && <span className="text-red-500">*</span>}
+                              </label>
+
+                              {input.type === "textarea" ? (
+                                <textarea
+                                  rows={2}
+                                  placeholder={input.placeholder}
                                   value={newEntryData[input.key] || ""}
                                   onChange={(e) =>
                                     handleNewInputChange(input.key, e.target.value, input.type)
                                   }
                                   className="w-full px-3.5 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-600 transition"
-                                >
-                                  <option value="">-- Select {input.label} --</option>
-                                  {input.options.map((opt) => (
-                                    <option key={opt} value={opt}>
-                                      {opt}
-                                    </option>
-                                  ))}
-                                </select>
+                                />
+                              ) : input.type === "select" ? (
+                                <div className="flex gap-2">
+                                  <select
+                                    value={newEntryData[input.key] || ""}
+                                    onChange={(e) =>
+                                      handleNewInputChange(input.key, e.target.value, input.type)
+                                    }
+                                    className="w-full px-3.5 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-600 transition"
+                                  >
+                                    <option value="">-- Select {input.label} --</option>
+                                    {input.options.map((opt) => (
+                                      <option key={opt} value={opt}>
+                                        {opt}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <input
+                                    type="text"
+                                    placeholder="Or custom status"
+                                    value={newEntryData[input.key] || ""}
+                                    onChange={(e) =>
+                                      handleNewInputChange(input.key, e.target.value, "text")
+                                    }
+                                    className="w-full px-3.5 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-600 transition"
+                                  />
+                                </div>
+                              ) : (
                                 <input
-                                  type="text"
-                                  placeholder="Or custom status"
+                                  type={input.type || "text"}
+                                  maxLength={input.maxLength}
+                                  placeholder={input.placeholder}
                                   value={newEntryData[input.key] || ""}
                                   onChange={(e) =>
-                                    handleNewInputChange(input.key, e.target.value, "text")
+                                    handleNewInputChange(input.key, e.target.value, input.type)
                                   }
                                   className="w-full px-3.5 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-600 transition"
                                 />
-                              </div>
-                            ) : (
-                              <input
-                                type={input.type || "text"}
-                                maxLength={input.maxLength}
-                                placeholder={input.placeholder}
-                                value={newEntryData[input.key] || ""}
-                                onChange={(e) =>
-                                  handleNewInputChange(input.key, e.target.value, input.type)
-                                }
-                                className="w-full px-3.5 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/30 focus:border-purple-600 transition"
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
 
-                    <div className="flex justify-end pt-2">
-                      <button
-                        type="submit"
-                        disabled={isSubmitting}
-                        className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-md hover:shadow-lg transition active:scale-95 disabled:opacity-60"
-                      >
-                        {isSubmitting ? (
-                          <RefreshCw className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Plus className="h-4 w-4" />
-                        )}
-                        <span>Add {activeCategory.label}</span>
-                      </button>
-                    </div>
-                  </form>
+                      <div className="flex justify-end pt-2">
+                        <button
+                          type="submit"
+                          disabled={isSubmitting}
+                          className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-md hover:shadow-lg transition active:scale-95 disabled:opacity-60"
+                        >
+                          {isSubmitting ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Plus className="h-4 w-4" />
+                          )}
+                          <span>Add {activeCategory.label}</span>
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
               )}
 
@@ -920,7 +1563,90 @@ export default function MasterDataManagement() {
                               </div>
 
                               <div className={`grid grid-cols-1 ${activeCategory.id === "all_records" ? "md:grid-cols-2" : activeCategory.inputs.length === 3 ? "md:grid-cols-3" : activeCategory.inputs.length >= 2 ? "md:grid-cols-2" : ""} gap-3`}>
-                                {activeCategory.id === "all_records" ? (
+                                {activeCategory.id === "seal_and_signature" ? (
+                                  <div className="col-span-1 md:col-span-2 space-y-3">
+                                    {/* Edit Company Name */}
+                                    <div className="bg-white p-3 rounded-xl border border-gray-200">
+                                      <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1 flex items-center gap-1.5">
+                                        <Building2 className="h-3.5 w-3.5 text-purple-600" />
+                                        <span>Company Name (कंपनी का नाम) <span className="text-red-500">*</span></span>
+                                      </label>
+                                      <input
+                                        type="text"
+                                        placeholder="Enter company name"
+                                        value={editSealCompanyName}
+                                        onChange={(e) => setEditSealCompanyName(e.target.value)}
+                                        className="w-full px-3 py-1.5 text-sm bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 font-medium"
+                                      />
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      {/* Edit Seal Image */}
+                                      <div className="bg-white p-3 rounded-xl border border-rose-200">
+                                        <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5 mb-2">
+                                          <Stamp className="h-4 w-4 text-rose-600" />
+                                          Seal Image (मुहर / सील)
+                                        </label>
+                                        {editSealPreview ? (
+                                          <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-200 flex flex-col items-center">
+                                            <img src={editSealPreview} alt="Seal Edit" className="max-h-24 object-contain mb-2" />
+                                            <div className="flex gap-2">
+                                              <label className="px-2.5 py-1 text-xs bg-rose-50 text-rose-700 border border-rose-200 rounded-md cursor-pointer hover:bg-rose-100 flex items-center gap-1">
+                                                Replace Seal
+                                                <input type="file" accept="image/png,image/webp" className="hidden" onChange={(e) => handleImageSelect(e, "editSeal")} />
+                                              </label>
+                                              <button
+                                                type="button"
+                                                onClick={() => { setEditSealFile(null); setEditSealPreview(""); }}
+                                                className="px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 rounded-md"
+                                              >
+                                                Remove
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <label className="flex flex-col items-center justify-center p-4 border border-dashed border-rose-200 rounded-lg cursor-pointer hover:bg-rose-50/30">
+                                            <UploadCloud className="h-5 w-5 text-rose-500 mb-1" />
+                                            <span className="text-xs text-gray-600 font-medium">Select Transparent Seal Image</span>
+                                            <input type="file" accept="image/png,image/webp" className="hidden" onChange={(e) => handleImageSelect(e, "editSeal")} />
+                                          </label>
+                                        )}
+                                      </div>
+
+                                      {/* Edit Signature Image */}
+                                      <div className="bg-white p-3 rounded-xl border border-indigo-200">
+                                        <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5 mb-2">
+                                          <FileSignature className="h-4 w-4 text-indigo-600" />
+                                          Signature Image (हस्ताक्षर / सिग्नेचर)
+                                        </label>
+                                        {editSigPreview ? (
+                                          <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-200 flex flex-col items-center">
+                                            <img src={editSigPreview} alt="Signature Edit" className="max-h-24 object-contain mb-2" />
+                                            <div className="flex gap-2">
+                                              <label className="px-2.5 py-1 text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md cursor-pointer hover:bg-indigo-100 flex items-center gap-1">
+                                                Replace Signature
+                                                <input type="file" accept="image/png,image/webp" className="hidden" onChange={(e) => handleImageSelect(e, "editSig")} />
+                                              </label>
+                                              <button
+                                                type="button"
+                                                onClick={() => { setEditSigFile(null); setEditSigPreview(""); }}
+                                                className="px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 rounded-md"
+                                              >
+                                                Remove
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <label className="flex flex-col items-center justify-center p-4 border border-dashed border-indigo-200 rounded-lg cursor-pointer hover:bg-indigo-50/30">
+                                            <UploadCloud className="h-5 w-5 text-indigo-500 mb-1" />
+                                            <span className="text-xs text-gray-600 font-medium">Select Transparent Signature Image</span>
+                                            <input type="file" accept="image/png,image/webp" className="hidden" onChange={(e) => handleImageSelect(e, "editSig")} />
+                                          </label>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : activeCategory.id === "all_records" ? (
                                   // In "All Records", allow editing any populated field
                                   Object.keys(editData).map((k) => {
                                     if (["id", "created_at"].includes(k)) return null;
@@ -1038,7 +1764,106 @@ export default function MasterDataManagement() {
 
                                 <div className="min-w-0 flex-1">
                                   {/* Custom Display Per Category */}
-                                  {activeCategory.id === "technician" ? (
+                                  {activeCategory.id === "seal_and_signature" ? (
+                                    <div className="w-full">
+                                      {/* Company Name Header */}
+                                      <div className="flex items-center gap-2 mb-2.5 pb-2 border-b border-gray-100">
+                                        <div className="p-1.5 rounded-lg bg-purple-50 text-purple-600 flex-shrink-0">
+                                          <Building2 className="h-4 w-4" />
+                                        </div>
+                                        <div className="min-w-0">
+                                          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Company</p>
+                                          <h4 className="text-sm font-bold text-gray-900 truncate">
+                                            {item.company_name || "Company Name Not Specified"}
+                                          </h4>
+                                        </div>
+                                      </div>
+
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+                                        {/* Seal Box */}
+                                        <div className="bg-gradient-to-br from-rose-50/40 to-slate-50 p-3 rounded-xl border border-rose-100 flex flex-col justify-between">
+                                          <div className="flex items-center justify-between mb-2">
+                                            <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                                              <Stamp className="h-3.5 w-3.5 text-rose-600" />
+                                              Seal (मुहर / सील)
+                                            </span>
+                                            {(item.seal || item.seal_url) ? (
+                                              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                                Available
+                                              </span>
+                                            ) : (
+                                              <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-gray-100 text-gray-400">
+                                                None
+                                              </span>
+                                            )}
+                                          </div>
+                                          {(item.seal || item.seal_url) ? (
+                                            <div
+                                              onClick={() => {
+                                                setPreviewModalUrl(item.seal || item.seal_url);
+                                                setPreviewModalTitle("Seal Image Preview");
+                                              }}
+                                              className="group cursor-pointer relative bg-white rounded-lg p-2 border border-gray-200 flex items-center justify-center min-h-[90px] hover:border-rose-300 transition shadow-sm"
+                                            >
+                                              <img
+                                                src={item.seal || item.seal_url}
+                                                alt="Seal"
+                                                className="max-h-20 max-w-full object-contain"
+                                              />
+                                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 rounded-lg flex items-center justify-center text-white transition-opacity gap-1 text-xs font-medium backdrop-blur-[1px]">
+                                                <Eye className="h-4 w-4" /> View Full
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <div className="text-xs text-gray-400 italic py-5 text-center bg-white/60 rounded-lg border border-dashed border-gray-200">
+                                              No seal uploaded
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Signature Box */}
+                                        <div className="bg-gradient-to-br from-indigo-50/40 to-slate-50 p-3 rounded-xl border border-indigo-100 flex flex-col justify-between">
+                                          <div className="flex items-center justify-between mb-2">
+                                            <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                                              <FileSignature className="h-3.5 w-3.5 text-indigo-600" />
+                                              Signature (हस्ताक्षर / सिग्नेचर)
+                                            </span>
+                                            {(item.signature || item.signature_url) ? (
+                                              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                                Available
+                                              </span>
+                                            ) : (
+                                              <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-gray-100 text-gray-400">
+                                                None
+                                              </span>
+                                            )}
+                                          </div>
+                                          {(item.signature || item.signature_url) ? (
+                                            <div
+                                              onClick={() => {
+                                                setPreviewModalUrl(item.signature || item.signature_url);
+                                                setPreviewModalTitle("Signature Image Preview");
+                                              }}
+                                              className="group cursor-pointer relative bg-white rounded-lg p-2 border border-gray-200 flex items-center justify-center min-h-[90px] hover:border-indigo-300 transition shadow-sm"
+                                            >
+                                              <img
+                                                src={item.signature || item.signature_url}
+                                                alt="Signature"
+                                                className="max-h-20 max-w-full object-contain"
+                                              />
+                                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 rounded-lg flex items-center justify-center text-white transition-opacity gap-1 text-xs font-medium backdrop-blur-[1px]">
+                                                <Eye className="h-4 w-4" /> View Full
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <div className="text-xs text-gray-400 italic py-5 text-center bg-white/60 rounded-lg border border-dashed border-gray-200">
+                                              No signature uploaded
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : activeCategory.id === "technician" ? (
                                     <div>
                                       <p className="text-sm font-semibold text-gray-900">
                                         {item.technician_name || "Unnamed Technician"}
@@ -1235,6 +2060,58 @@ export default function MasterDataManagement() {
           </div>
         </div>
       </div>
+
+      {/* ================= IMAGE PREVIEW MODAL ================= */}
+      {previewModalUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in"
+          onClick={() => setPreviewModalUrl(null)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl relative border border-gray-200 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b pb-3 border-gray-100">
+              <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                <ImageIcon className="h-5 w-5 text-rose-600" />
+                {previewModalTitle || "Image Preview"}
+              </h3>
+              <button
+                onClick={() => setPreviewModalUrl(null)}
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="bg-gray-50 p-4 rounded-xl flex items-center justify-center min-h-[240px] max-h-[65vh] overflow-auto border border-gray-100">
+              <img
+                src={previewModalUrl}
+                alt="Preview"
+                className="max-h-[55vh] max-w-full object-contain rounded-lg drop-shadow-md"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <a
+                href={previewModalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition flex items-center gap-1.5"
+              >
+                <Maximize2 className="h-3.5 w-3.5" /> Open in New Tab
+              </a>
+              <button
+                type="button"
+                onClick={() => setPreviewModalUrl(null)}
+                className="px-4 py-2 text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
